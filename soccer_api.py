@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
 import requests
 
 app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës")
@@ -43,7 +44,7 @@ def merr_skedinen():
         "x-apisports-key": API_KEY,
         "x-apisports-host": "v3.football.api-sports.io"
     }
-    data_sot = "2026-06-08"
+    data_sot = datetime.today().strftime('%Y-%m-%d')
 
     url_fixtures = "https://v3.football.api-sports.io/fixtures"
     resp_fixtures = requests.get(url_fixtures, headers=headers, params={"date": data_sot})
