@@ -18,32 +18,48 @@ API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
 # ---------------------------------------------------------
-# TRURI I PARASHIKIMEVE (Algoritmi i Përkohshëm)
+# TRURI I PARASHIKIMEVE
 # ---------------------------------------------------------
 def analizo_ndeshjen(ekipi_1, ekipi_2):
-    """
-    Ky funksion merr dy ekipet dhe nxjerr një parashikim të qëndrueshëm logjik.
-    Më vonë, kjo pjesë do të zëvendësohet nga modeli i vërtetë i Machine Learning.
-    """
-    # Krijojmë një çelës unik për këtë ndeshje që parashikimi të mos ndryshojë sa herë bëjmë refresh
     çelësi_ndeshjes = f"{ekipi_1}-{ekipi_2}-{datetime.utcnow().strftime('%Y-%m-%d')}"
     random.seed(çelësi_ndeshjes)
     
-    # Probabilitetet e basteve: Favorizojmë pak më shumë fitoren e vendasve (1) ose (1X)
     opsionet = ["1", "X", "2", "1X", "X2", "12"]
     peshat = [35, 20, 15, 15, 10, 5] 
-    
     parashikimi = random.choices(opsionet, weights=peshat, k=1)[0]
     
-    # Gjenerojmë një koeficient logjik bazuar tek lloji i parashikimit
     if parashikimi == "1" or parashikimi == "2":
         koeficienti = round(random.uniform(1.40, 2.60), 2)
     elif parashikimi == "X":
         koeficienti = round(random.uniform(2.80, 3.80), 2)
-    else: # Për shanset e dyfishta (1X, X2, 12) koeficientët janë më të vegjël
+    else:
         koeficienti = round(random.uniform(1.15, 1.65), 2)
         
     return parashikimi, f"{koeficienti:.2f}"
+
+# ---------------------------------------------------------
+# RENDITJA E LIGAVE (VIP LIST)
+# ---------------------------------------------------------
+LIGAT_KRYESORE = [
+    "World Cup",
+    "Euro Championship", 
+    "Champions League",
+    "Europa League",
+    "England - Premier League",
+    "Spain - La Liga", 
+    "Italy - Serie A",
+    "Germany - Bundesliga",
+    "France - Ligue 1",
+    "World - Friendlies",
+    "World - UEFA Nations League",
+    "Albania - Superliga"
+]
+
+def merr_rendesine_e_liges(emri_liges):
+    for i, liga_top in enumerate(LIGAT_KRYESORE):
+        if liga_top.lower() in emri_liges.lower():
+            return i 
+    return 999 
 
 # ---------------------------------------------------------
 # FAQJA KRYESORE
@@ -75,7 +91,6 @@ def merr_parashikimet():
                 ekipi_1 = n["teams"]["home"]["name"]
                 ekipi_2 = n["teams"]["away"]["name"]
                 
-                # Formatimi i kohës
                 data_ora_iso = n["fixture"]["date"]
                 try:
                     data_obj = datetime.strptime(data_ora_iso[:19], "%Y-%m-%dT%H:%M:%S")
@@ -85,7 +100,6 @@ def merr_parashikimet():
                     data_sakte = data_target
                     ora_sakte = "N/A"
                 
-                # 🔥 LIDHJA ME TRURIN: Thërrasim algoritmin për këtë ndeshje
                 rez_parashikimit, rez_koeficientit = analizo_ndeshjen(ekipi_1, ekipi_2)
                 
                 ndeshja_obj = {
@@ -106,6 +120,8 @@ def merr_parashikimet():
                 "liga": liga,
                 "ndeshjet": ndeshjet_e_liges
             })
+            
+        lista_finale = sorted(lista_finale, key=lambda x: (merr_rendesine_e_liges(x["liga"]), x["liga"]))
             
         if len(lista_finale) == 0:
              return {"mesazhi": "Sukses", "skedina_grupuar": [], "error_msg": "Nuk u gjet asnjë ndeshje sot."}
