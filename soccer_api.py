@@ -21,7 +21,7 @@ HEADERS = {
 }
 
 # ---------------------------------------------------------
-# FAQJA KRYESORE (Për të evituar gabimin 404)
+# FAQJA KRYESORE
 # ---------------------------------------------------------
 @app.get("/")
 def home():
@@ -32,6 +32,7 @@ def home():
 # ---------------------------------------------------------
 @app.get("/api/skedina")
 def merr_parashikimet():
+    # Përdorim datën UTC për saktësi
     data_neser = (datetime.utcnow() + timedelta(days=1)).strftime('%Y-%m-%d')
     url = "https://v3.football.api-sports.io/fixtures"
     querystring = {"date": data_neser}
@@ -41,29 +42,29 @@ def merr_parashikimet():
         te_dhenat = response.json()
         
         ndeshjet_sugjeruara = []
-        koeficienti_total = 1.0
         
         if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
+            # Marrim 4 ndeshjet e para që kthehen, pavarësisht koeficientëve
             for ndeshje in te_dhenat["response"][:4]:
                 ekipi_1 = ndeshje["teams"]["home"]["name"]
                 ekipi_2 = ndeshje["teams"]["away"]["name"]
                 
-                koeficienti_ndeshjes = 1.50
-                koeficienti_total *= koeficienti_ndeshjes
-                
                 ndeshjet_sugjeruara.append({
                     "ndeshja": f"{ekipi_1} vs {ekipi_2}",
-                    "parashikimi": "1X",
-                    "koeficienti": koeficienti_ndeshjes
+                    "parashikimi": "Analizë në proces",
+                    "koeficienti": 1.0
                 })
-                
-        if len(ndeshjet_sugjeruara) == 0:
-            return {"mesazhi": "Nuk u gjetën ndeshje për të nesërmen", "koeficienti_total": 0, "skedina": []}
+        else:
+            # Shto një ndeshje testuese nëse API-ja nuk kthen asgjë fare
+            ndeshjet_sugjeruara.append({
+                "ndeshja": "NUK KA NDESHJE NE API",
+                "parashikimi": "N/A",
+                "koeficienti": 0
+            })
             
         return {
             "mesazhi": "Sukses", 
             "data": data_neser,
-            "koeficienti_total": round(koeficienti_total, 2),
             "skedina": ndeshjet_sugjeruara
         }
     except Exception as e:
