@@ -14,18 +14,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Çelësi yt zyrtar i API-së (i përbashkët për të dyja funksionet)
+# Çelësi yt zyrtar i API-së
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {
     "x-apisports-key": API_KEY
 }
 
 # ---------------------------------------------------------
+# FAQJA KRYESORE (Për të evituar gabimin 404)
+# ---------------------------------------------------------
+@app.get("/")
+def home():
+    return {"mesazhi": "API-ja e Futbollit është LIVE! Përdor /api/skedina ose /api/live"}
+
+# ---------------------------------------------------------
 # DERA 1: Skedina e Ditës (Parashikimet për të Nesërmen)
 # ---------------------------------------------------------
 @app.get("/api/skedina")
 def merr_parashikimet():
-    # Marrim datën e nesërme automatikisht
     data_neser = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
     url = "https://v3.football.api-sports.io/fixtures"
     querystring = {"date": data_neser}
@@ -38,13 +44,11 @@ def merr_parashikimet():
         koeficienti_total = 1.0
         
         if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
-            # Analizojmë ndeshjet e para që kthehen
-            for ndeshje in te_dhenat["response"][:4]:  # Këtu merr 4 ndeshje për shembull
+            for ndeshje in te_dhenat["response"][:4]:
                 ekipi_1 = ndeshje["teams"]["home"]["name"]
                 ekipi_2 = ndeshje["teams"]["away"]["name"]
                 
-                # Këtu mund të integrosh logjikën tënde të AI për koeficientin
-                koeficienti_ndeshjes = 1.50 # Koeficient shembull
+                koeficienti_ndeshjes = 1.50
                 koeficienti_total *= koeficienti_ndeshjes
                 
                 ndeshjet_sugjeruara.append({
@@ -71,7 +75,6 @@ def merr_parashikimet():
 @app.get("/api/live")
 def merr_ndeshjet_live():
     url = "https://v3.football.api-sports.io/fixtures"
-    # Kërkojmë specifikisht vetëm ato që janë në fushë tani
     querystring = {"live": "all"} 
     
     try:
@@ -88,7 +91,6 @@ def merr_ndeshjet_live():
                 gola_mik = ndeshje["goals"]["away"]
                 minuta = ndeshje["fixture"]["status"]["elapsed"]
                 
-                # Nëse loja sapo ka filluar dhe ska gola, e bëjmë 0 në vend të 'None'
                 if gola_shtepia is None: gola_shtepia = 0
                 if gola_mik is None: gola_mik = 0
                 
