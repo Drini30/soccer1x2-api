@@ -26,27 +26,21 @@ def home():
     return {"mesazhi": "API-ja e Futbollit është LIVE! Rrugët: /api/skedina ose /api/live"}
 
 # ---------------------------------------------------------
-# DERA 1: Skedina e Ditës
+# DERA 1: Skedina e Ditës (TESTIMI PËR DATËN 1 QERSHOR 2024)
 # ---------------------------------------------------------
 @app.get("/api/skedina")
 def merr_parashikimet():
-    # Kërkojmë për nesër fillimisht
-    data_target = (datetime.utcnow() + timedelta(days=1)).strftime('%Y-%m-%d')
+    # TEST: Po e detyrojmë të kërkojë një datë ku jemi të sigurt që ka pasur ndeshje
+    data_target = "2024-06-01" 
     url = "https://v3.football.api-sports.io/fixtures"
     
     try:
         response = requests.get(url, headers=HEADERS, params={"date": data_target})
         te_dhenat = response.json()
         
-        # Nëse lista vjen bosh, provojmë datën e sotme
-        if not te_dhenat.get("response"):
-            data_sot = datetime.utcnow().strftime('%Y-%m-%d')
-            response = requests.get(url, headers=HEADERS, params={"date": data_sot})
-            te_dhenat = response.json()
-
         skedina = []
         
-        # Nëse gjejmë ndeshje, marrim deri në 5 prej tyre
+        # Nëse gjejmë ndeshje
         if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
             for n in te_dhenat["response"][:5]:
                 ekipi_1 = n["teams"]["home"]["name"]
@@ -58,10 +52,10 @@ def merr_parashikimet():
                     "koeficienti": "1.50"
                 })
         
-        # Nëse as nesër dhe as sot nuk ka ndeshje fare në databazë
+        # Nëse as kjo datë nuk punon
         if len(skedina) == 0:
             skedina.append({
-                "ndeshja": "S'ka ndeshje në databazë për këtë datë",
+                "ndeshja": "Ende s'ka ndeshje - API mund të ketë kufizime",
                 "parashikimi": "-",
                 "koeficienti": "0"
             })
