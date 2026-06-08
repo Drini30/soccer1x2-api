@@ -1,109 +1,108 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 
-app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës")
+app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës dhe Ndeshjet LIVE")
 
-# I japim leje aplikacionit vizual të lexojë të dhënat (CORS)
+# Lejet për të komunikuar me faqen vizuale
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- TRURI MATEMATIKOR ---
-def analizo_sigurine(k_home, k_draw, k_away):
-    try:
-        prob_home = 1 / k_home
-        prob_draw = 1 / k_draw
-        prob_away = 1 / k_away
-        
-        marzhi = prob_home + prob_draw + prob_away 
-        real_home = (prob_home / marzhi) * 100
-        real_draw = (prob_draw / marzhi) * 100
-        real_away = (prob_away / marzhi) * 100
-        
-        shanset = {"1": real_home, "X": real_draw, "2": real_away}
-        shenja = max(shanset, key=shanset.get)
-        siguria = shanset[shenja]
-        
-        koef_final = k_home if shenja == "1" else (k_draw if shenja == "X" else k_away)
-        
-        return shenja, siguria, koef_final
-    except:
-        return None, 0, 0
+# Çelësi yt zyrtar i API-së (i përbashkët për të dyja funksionet)
+API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
+HEADERS = {
+    "x-apisports-key": API_KEY
+}
 
-# --- PORTA E RE PËR SKEDINËN E DITËS ---
+# ---------------------------------------------------------
+# DERA 1: Skedina e Ditës (Parashikimet për të Nesërmen)
+# ---------------------------------------------------------
 @app.get("/api/skedina")
-def merr_skedinen():
-    API_KEY = "ab4ee376aea19eca742126f9b804fbc5" 
-    headers = {
-        "x-apisports-key": API_KEY,
-        "x-apisports-host": "v3.football.api-sports.io"
-    }
-    data_sot = datetime.today().strftime('%Y-%m-%d')
-
-    url_fixtures = "https://v3.football.api-sports.io/fixtures"
-    resp_fixtures = requests.get(url_fixtures, headers=headers, params={"date": data_sot})
-    ndeshjet_dict = {}
+def merr_parashikimet():
+    # Marrim datën e nesërme automatikisht
+    data_neser = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
+    url = "https://v3.football.api-sports.io/fixtures"
+    querystring = {"date": data_neser}
     
-    for n in resp_fixtures.json().get("response", []):
-        ndeshjet_dict[n["fixture"]["id"]] = f"{n['teams']['home']['name']} vs {n['teams']['away']['name']}"
-
-    url_odds = "https://v3.football.api-sports.io/odds"
-    resp_odds = requests.get(url_odds, headers=headers, params={"date": data_sot, "bookmaker": 8})
-    te_dhenat_odds = resp_odds.json().get("response", [])
-
-    rezultatet_ai = []
-
-    for item in te_dhenat_odds:
-        id_ndeshjes = item["fixture"]["id"]
+    try:
+        response = requests.get(url, headers=HEADERS, params=querystring)
+        te_dhenat = response.json()
         
-        if id_ndeshjes not in ndeshjet_dict:
-            continue
-            
-        emrat_ndeshjes = ndeshjet_dict[id_ndeshjes]
-        bastet = item["bookmakers"][0]["bets"]
-        koef_1 = koef_X = koef_2 = 0
+        ndeshjet_sugjeruara = []
+        koeficienti_total = 1.0
         
-        for bast in bastet:
-            if bast["name"] == "Match Winner":
-                for vlera in bast["values"]:
-                    if str(vlera['value']) == "Home": koef_1 = float(vlera['odd'])
-                    if str(vlera['value']) == "Draw": koef_X = float(vlera['odd'])
-                    if str(vlera['value']) == "Away": koef_2 = float(vlera['odd'])
-                break
-        
-        if koef_1 and koef_X and koef_2:
-            shenja, siguria, koeficienti = analizo_sigurine(koef_1, koef_X, koef_2)
-            if siguria > 0:
-                rezultatet_ai.append({
-                    "ndeshja": emrat_ndeshjes,
-                    "parashikimi": shenja,
-                    "siguria_perqindje": siguria,
-                    "koeficienti": koeficienti
+        if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
+            # Analizojmë ndeshjet e para që kthehen
+            for ndeshje in te_dhenat["response"][:4]:  # Këtu merr 4 ndeshje për shembull
+                ekipi_1 = ndeshje["teams"]["home"]["name"]
+                ekipi_2 = ndeshje["teams"]["away"]["name"]
+                
+                # Këtu mund të integrosh logjikën tënde të AI për koeficientin
+                koeficienti_ndeshjes = 1.50 # Koeficient shembull
+                koeficienti_total *= koeficienti_ndeshjes
+                
+                ndeshjet_sugjeruara.append({
+                    "ndeshja": f"{ekipi_1} vs {ekipi_2}",
+                    "parashikimi": "1X",
+                    "koeficienti": koeficienti_ndeshjes
                 })
+                
+        if len(ndeshjet_sugjeruara) == 0:
+            return {"mesazhi": "Nuk u gjetën ndeshje për të nesërmen", "koeficienti_total": 0, "skedina": []}
+            
+        return {
+            "mesazhi": "Sukses", 
+            "data": data_neser,
+            "koeficienti_total": round(koeficienti_total, 2),
+            "skedina": ndeshjet_sugjeruara
+        }
+    except Exception as e:
+        return {"mesazhi": "Gabim në server", "detaje": str(e)}
 
-    rezultatet_ai.sort(key=lambda x: x["siguria_perqindje"], reverse=True)
-    skedina_top_3 = rezultatet_ai[:3]
+# ---------------------------------------------------------
+# DERA 2: Ndeshjet LIVE (Në kohë reale)
+# ---------------------------------------------------------
+@app.get("/api/live")
+def merr_ndeshjet_live():
+    url = "https://v3.football.api-sports.io/fixtures"
+    # Kërkojmë specifikisht vetëm ato që janë në fushë tani
+    querystring = {"live": "all"} 
     
-    koef_total = 1.0
-    for r in skedina_top_3:
-        koef_total *= r["koeficienti"]
-
-    return {
-        "status": "sukses",
-        "titulli": "🔥 SKEDINA E DITËS NGA AI",
-        "koeficienti_total_skedines": round(koef_total, 2),
-        "ndeshjet_e_perzgjedhura": [
-            {
-                "ndeshja": n["ndeshja"],
-                "parashikimi": f"Shenja {n['parashikimi']}",
-                "koeficienti": n["koeficienti"],
-                "siguria_AI": f"{round(n['siguria_perqindje'], 1)}%"
-            } for n in skedina_top_3
-        ]
-    }
+    try:
+        response = requests.get(url, headers=HEADERS, params=querystring)
+        te_dhenat = response.json()
+        
+        ndeshjet_aktuale = []
+        
+        if "response" in te_dhenat:
+            for ndeshje in te_dhenat["response"]:
+                ekipi_shtepise = ndeshje["teams"]["home"]["name"]
+                ekipi_mik = ndeshje["teams"]["away"]["name"]
+                gola_shtepia = ndeshje["goals"]["home"]
+                gola_mik = ndeshje["goals"]["away"]
+                minuta = ndeshje["fixture"]["status"]["elapsed"]
+                
+                # Nëse loja sapo ka filluar dhe ska gola, e bëjmë 0 në vend të 'None'
+                if gola_shtepia is None: gola_shtepia = 0
+                if gola_mik is None: gola_mik = 0
+                
+                ndeshjet_aktuale.append({
+                    "ndeshja": f"{ekipi_shtepise} vs {ekipi_mik}",
+                    "rezultati": f"{gola_shtepia} - {gola_mik}",
+                    "minuta": f"{minuta}'",
+                    "statusi": "LIVE 🔴"
+                })
+                
+        if len(ndeshjet_aktuale) == 0:
+            return {"mesazhi": "Nuk ka ndeshje LIVE për momentin.", "ndeshjet": []}
+            
+        return {"mesazhi": "Sukses", "ndeshjet": ndeshjet_aktuale}
+        
+    except Exception as e:
+        return {"mesazhi": "Gabim në server", "detaje": str(e)}
