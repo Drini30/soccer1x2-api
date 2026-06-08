@@ -3,109 +3,42 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
 import requests
 
-app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës dhe Ndeshjet LIVE")
+app = FastAPI()
 
-# Lejet për të komunikuar me faqen vizuale
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Çelësi yt zyrtar i API-së
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
-HEADERS = {
-    "x-apisports-key": API_KEY
-}
+HEADERS = {"x-apisports-key": API_KEY}
 
-# ---------------------------------------------------------
-# FAQJA KRYESORE
-# ---------------------------------------------------------
-@app.get("/")
-def home():
-    return {"mesazhi": "API-ja e Futbollit është LIVE! Përdor /api/skedina ose /api/live"}
-
-# ---------------------------------------------------------
-# DERA 1: Skedina e Ditës (Parashikimet për të Nesërmen)
-# ---------------------------------------------------------
 @app.get("/api/skedina")
 def merr_parashikimet():
-    # Përdorim datën UTC për saktësi
-    data_neser = (datetime.utcnow() + timedelta(days=1)).strftime('%Y-%m-%d')
+    # Provojmë nesër, nëse s'ka, provojmë sot
+    data_target = (datetime.utcnow() + timedelta(days=1)).strftime('%Y-%m-%d')
     url = "https://v3.football.api-sports.io/fixtures"
-    querystring = {"date": data_neser}
     
-    try:
-        response = requests.get(url, headers=HEADERS, params=querystring)
+    response = requests.get(url, headers=HEADERS, params={"date": data_target})
+    te_dhenat = response.json()
+    
+    # Nëse lista është bosh, provo sot
+    if not te_dhenat.get("response"):
+        data_target = datetime.utcnow().strftime('%Y-%m-%d')
+        response = requests.get(url, headers=HEADERS, params={"date": data_target})
         te_dhenat = response.json()
-        
-        ndeshjet_sugjeruara = []
-        
-        if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
-            # Marrim 4 ndeshjet e para që kthehen, pavarësisht koeficientëve
-            for ndeshje in te_dhenat["response"][:4]:
-                ekipi_1 = ndeshje["teams"]["home"]["name"]
-                ekipi_2 = ndeshje["teams"]["away"]["name"]
-                
-                ndeshjet_sugjeruara.append({
-                    "ndeshja": f"{ekipi_1} vs {ekipi_2}",
-                    "parashikimi": "Analizë në proces",
-                    "koeficienti": 1.0
-                })
-        else:
-            # Shto një ndeshje testuese nëse API-ja nuk kthen asgjë fare
-            ndeshjet_sugjeruara.append({
-                "ndeshja": "NUK KA NDESHJE NE API",
-                "parashikimi": "N/A",
-                "koeficienti": 0
-            })
-            
-        return {
-            "mesazhi": "Sukses", 
-            "data": data_neser,
-            "skedina": ndeshjet_sugjeruara
-        }
-    except Exception as e:
-        return {"mesazhi": "Gabim në server", "detaje": str(e)}
 
-# ---------------------------------------------------------
-# DERA 2: Ndeshjet LIVE (Në kohë reale)
-# ---------------------------------------------------------
-@app.get("/api/live")
-def merr_ndeshjet_live():
-    url = "https://v3.football.api-sports.io/fixtures"
-    querystring = {"live": "all"} 
-    
-    try:
-        response = requests.get(url, headers=HEADERS, params=querystring)
-        te_dhenat = response.json()
-        
-        ndeshjet_aktuale = []
-        
-        if "response" in te_dhenat:
-            for ndeshje in te_dhenat["response"]:
-                ekipi_shtepise = ndeshje["teams"]["home"]["name"]
-                ekipi_mik = ndeshje["teams"]["away"]["name"]
-                gola_shtepia = ndeshje["goals"]["home"]
-                gola_mik = ndeshje["goals"]["away"]
-                minuta = ndeshje["fixture"]["status"]["elapsed"]
-                
-                if gola_shtepia is None: gola_shtepia = 0
-                if gola_mik is None: gola_mik = 0
-                
-                ndeshjet_aktuale.append({
-                    "ndeshja": f"{ekipi_shtepise} vs {ekipi_mik}",
-                    "rezultati": f"{gola_shtepia} - {gola_mik}",
-                    "minuta": f"{minuta}'",
-                    "statusi": "LIVE 🔴"
-                })
-                
-        if len(ndeshjet_aktuale) == 0:
-            return {"mesazhi": "Nuk ka ndeshje LIVE për momentin.", "ndeshjet": []}
+    skedina = []
+    if "response" in te_dhenat and te_dhenat["response"]:
+        for n in te_dhenat["response"][:4]:
+            skedina.append({
+                "ndeshja": f"{n['teams']['home']['name']} vs {n['teams']['away']['name']}",
+                "parashikimi": "1X",
+                "koeficienti": "1.50"
+            })
+    else:
+        skedina.append({"ndeshja": "Nuk ka ndeshje për momentin", "parashikimi": "-", "koeficienti": "0"})
             
-        return {"mesazhi": "Sukses", "ndeshjet": ndeshjet_aktuale}
-        
-    except Exception as e:
-        return {"mesazhi": "Gabim në server", "detaje": str(e)}
+    return {"skedina": skedina}
