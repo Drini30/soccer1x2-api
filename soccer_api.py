@@ -22,22 +22,17 @@ def home():
 
 @app.get("/api/skedina")
 def merr_parashikimet():
-    # Kërkojmë datën e nesërme
-    data_target = (datetime.utcnow() + timedelta(days=1)).strftime('%Y-%m-%d')
+    # Kërkojmë datën e sotme ose të nesërme (Të lejuara nga Plani Falas)
+    data_target = datetime.utcnow().strftime('%Y-%m-%d')
     url = "https://v3.football.api-sports.io/fixtures"
     
     try:
         response = requests.get(url, headers=HEADERS, params={"date": data_target})
         te_dhenat = response.json()
         
+        # Detektivi i gabimeve
         if "errors" in te_dhenat and te_dhenat["errors"]:
-            return {"mesazhi": "Gabim", "skedina": [], "error_msg": str(te_dhenat["errors"])}
-            
-        if not te_dhenat.get("response"):
-            # Nëse nesër s'ka ndeshje, provojmë sot
-            data_target = datetime.utcnow().strftime('%Y-%m-%d')
-            response = requests.get(url, headers=HEADERS, params={"date": data_target})
-            te_dhenat = response.json()
+            return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
         # Fjalor për të grupuar ndeshjet sipas ligës
         ligat_grup = {}
@@ -49,7 +44,7 @@ def merr_parashikimet():
                 ekipi_1 = n["teams"]["home"]["name"]
                 ekipi_2 = n["teams"]["away"]["name"]
                 
-                # Formatimi i Datës dhe Orës (Nga ISO në format të lexueshëm)
+                # Formatimi i Datës dhe Orës 
                 data_ora_iso = n["fixture"]["date"]
                 try:
                     data_obj = datetime.strptime(data_ora_iso[:19], "%Y-%m-%dT%H:%M:%S")
@@ -63,7 +58,7 @@ def merr_parashikimet():
                     "ndeshja": f"{ekipi_1} vs {ekipi_2}",
                     "data": data_sakte,
                     "ora": ora_sakte,
-                    "koeficienti": "1.50", # Këtu do të lidhet Endpoint-i i Odds kur të kesh Premium
+                    "koeficienti": "1.50", 
                     "parashikimi": "1X"
                 }
                 
@@ -72,7 +67,7 @@ def merr_parashikimet():
                     ligat_grup[emri_liges] = []
                 ligat_grup[emri_liges].append(ndeshja_obj)
         
-        # Kthejmë fjalorin në një listë për ta lexuar lehtë JavaScript
+        # Kthejmë fjalorin në një listë
         lista_finale = []
         for liga, ndeshjet_e_liges in ligat_grup.items():
             lista_finale.append({
@@ -80,10 +75,13 @@ def merr_parashikimet():
                 "ndeshjet": ndeshjet_e_liges
             })
             
+        if len(lista_finale) == 0:
+             return {"mesazhi": "Sukses", "skedina_grupuar": [], "error_msg": "Nuk u gjet asnjë ndeshje sot."}
+            
         return {"mesazhi": "Sukses", "skedina_grupuar": lista_finale}
         
     except Exception as e:
-        return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
+        return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": [], "error_msg": "Gabim i brendshëm në server."}
 
 @app.get("/api/live")
 def merr_ndeshjet_live():
