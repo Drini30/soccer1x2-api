@@ -32,7 +32,7 @@ def home():
 # ---------------------------------------------------------
 @app.get("/api/skedina")
 def merr_parashikimet():
-    data_neser = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
+    data_neser = (datetime.utcnow() + timedelta(days=1)).strftime('%Y-%m-%d')
     url = "https://v3.football.api-sports.io/fixtures"
     querystring = {"date": data_neser}
     
