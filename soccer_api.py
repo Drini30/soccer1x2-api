@@ -26,7 +26,7 @@ def home():
     return {"mesazhi": "API-ja e Futbollit është LIVE! Rrugët: /api/skedina ose /api/live"}
 
 # ---------------------------------------------------------
-# DERA 1: Skedina e Ditës (TESTIMI PËR DATËN 1 QERSHOR 2024)
+# DERA 1: Skedina e Ditës (KAPJA E GABIMIT NGA API)
 # ---------------------------------------------------------
 @app.get("/api/skedina")
 def merr_parashikimet():
@@ -38,6 +38,18 @@ def merr_parashikimet():
         response = requests.get(url, headers=HEADERS, params={"date": data_target})
         te_dhenat = response.json()
         
+        # 🚨 KËTU KAPIM GABIMIN E API-së
+        if "errors" in te_dhenat and te_dhenat["errors"]:
+            gabimi_nga_api = str(te_dhenat["errors"])
+            return {
+                "mesazhi": "Kufizim API", 
+                "skedina": [{
+                    "ndeshja": f"Arsyeja nga API: {gabimi_nga_api}", 
+                    "parashikimi": "BLOKUAR", 
+                    "koeficienti": "0"
+                }]
+            }
+            
         skedina = []
         
         # Nëse gjejmë ndeshje
@@ -52,10 +64,10 @@ def merr_parashikimet():
                     "koeficienti": "1.50"
                 })
         
-        # Nëse as kjo datë nuk punon
+        # Nëse as kjo datë nuk punon dhe s'ka mesazh gabimi
         if len(skedina) == 0:
             skedina.append({
-                "ndeshja": "Ende s'ka ndeshje - API mund të ketë kufizime",
+                "ndeshja": "Ende s'ka ndeshje",
                 "parashikimi": "-",
                 "koeficienti": "0"
             })
