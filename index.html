@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOCCER 1X2</title>
+    <style>
+        /* Dizajni i Aplikacionit (Dark Mode) */
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+        }
+        .app-container {
+            width: 100%;
+            max-width: 400px; /* E bën të duket fiks si ekran telefoni */
+            background-color: #1e1e1e;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        h1 {
+            text-align: center;
+            color: #00ff88; /* E gjelbër Neoni */
+            font-size: 28px;
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #aaaaaa;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+        .total-odds-card {
+            background: linear-gradient(135deg, #ff8a00, #e52e71);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 15px rgba(229, 46, 113, 0.4);
+        }
+        .total-odds-card h2 {
+            margin: 0;
+            font-size: 16px;
+            text-transform: uppercase;
+        }
+        .total-odds-card .odds-value {
+            font-size: 36px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .match-card {
+            background-color: #2a2a2a;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 5px solid #00ff88;
+        }
+        .match-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .match-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            color: #cccccc;
+        }
+        .prediction {
+            background-color: #3a3a3a;
+            padding: 5px 10px;
+            border-radius: 5px;
+            color: #00ff88;
+            font-weight: bold;
+        }
+        #loading {
+            text-align: center;
+            color: #00ff88;
+            font-style: italic;
+            margin-top: 50px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <h1>SOCCER 1X2</h1>
+    <div class="subtitle">AI Sports Predictions</div>
+
+    <div id="loading">Duke analizuar ndeshjet botërore... ⏳</div>
+    
+    <div id="content" style="display: none;">
+        <div class="total-odds-card">
+            <h2>🔥 Skedina e Ditës</h2>
+            <div class="odds-value" id="total-odds">0.00</div>
+        </div>
+
+        <div id="matches-list"></div>
+    </div>
+</div>
+
+<script>
+    // Lidhja me Serverin Python të SOCCER 1X2
+    const API_URL = "http://127.0.0.1:8000/api/skedina";
+
+    async function merrSkedinen() {
+        try {
+            const response = await fetch(API_URL);
+            const data = await response.json();
+
+            // Fshehim tekstin e ngarkimit dhe shfaqim përmbajtjen
+            document.getElementById("loading").style.display = "none";
+            document.getElementById("content").style.display = "block";
+
+            // Vendosim Koeficientin Total
+            document.getElementById("total-odds").innerText = data.koeficienti_total_skedines;
+
+            // Krijojmë kartat vizuale për secilën ndeshje
+            const matchesContainer = document.getElementById("matches-list");
+            
+            data.ndeshjet_e_perzgjedhura.forEach(ndeshja => {
+                const card = document.createElement("div");
+                card.className = "match-card";
+                card.innerHTML = `
+                    <div class="match-title">${ndeshja.ndeshja}</div>
+                    <div class="match-details">
+                        <span class="prediction">${ndeshja.parashikimi}</span>
+                        <span>Koeficienti: <b>${ndeshja.koeficienti}</b></span>
+                        <span>Siguria: <b>${ndeshja.siguria_AI}</b></span>
+                    </div>
+                `;
+                matchesContainer.appendChild(card);
+            });
+
+        } catch (error) {
+            document.getElementById("loading").innerText = "Gabim në lidhje me serverin. Sigurohu që serveri Python është i ndezur!";
+            document.getElementById("loading").style.color = "#ff4444";
+        }
+    }
+
+    // Ekzekuto funksionin sapo të hapet faqja
+    merrSkedinen();
+</script>
+
+</body>
+</html>
