@@ -17,9 +17,9 @@ app.add_middleware(
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
-# 🔥 KONFIGURIMI I DATABAZËS TËNDE SUPABASE 🔥
+# 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
-SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y" # <-- ÇELËSI YT ËSHTË VENDOSUR KËTU!
+SUPABASE_ANON_KEY = "VENDOS_KODIN_TËND_KËTU"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -29,15 +29,12 @@ SUPABASE_HEADERS = {
 }
 
 def ruaj_ne_sfond(paketa_per_db):
-    """ Dërgon të dhënat në Databazë në sfond pa bllokuar aplikacionin """
-    if paketa_per_db:
+    if SUPABASE_ANON_KEY != "VENDOS_KODIN_TËND_KËTU" and paketa_per_db:
         try:
-            # Dërgojmë vetëm një numër të caktuar për të mos bllokuar serverin falas
             for pako in paketa_per_db[:15]:
-                # Timeout 2 sekonda, nese s'pergjigjet, e harrojme dhe nuk i prishim pune front-endit
                 requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=2)
         except:
-            pass # Injoro cdo gabim te Supabase qe te mos ngrije aplikacioni
+            pass 
 
 @app.get("/")
 def root():
@@ -65,32 +62,50 @@ def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
     form2, atk2, def2, power2 = llogarit_intuiten_ekipit(ekipi_2, date_target, is_home=False)
     
     diferenca = abs(power1 - power2)
-    besueshmeria = round(min(65.0 + (diferenca * 3), 98.5), 1)
     
     potenciali_gola_1 = max(0, int(atk1 - (def2 * 0.5) + random.uniform(-0.5, 1.5)))
     potenciali_gola_2 = max(0, int(atk2 - (def1 * 0.5) + random.uniform(-0.5, 1.0))) 
     
-    gola_1 = potenciali_gola_1
-    gola_2 = potenciali_gola_2
+    # 🔥 FAKTORI GUXIM & RISK (35% SHANS PËR BLOF) 🔥
+    is_bluff = random.choices([True, False], weights=[35, 65])[0]
+    
+    if is_bluff:
+        # Kthejmë ndeshjen përmbys (Favoriti dështon)
+        if power1 > power2:
+            gola_1 = max(0, potenciali_gola_1 - random.randint(1, 2))
+            gola_2 = potenciali_gola_2 + random.randint(1, 2)
+        else:
+            gola_1 = potenciali_gola_1 + random.randint(1, 2)
+            gola_2 = max(0, potenciali_gola_2 - random.randint(1, 2))
+            
+        hint_id = random.choice([5, 6]) # ID-të e reja për Blofet
+        besueshmeria = round(random.uniform(50.0, 75.0), 1) # Siguri më e ulët
+        koef_rez_sakt = round(random.uniform(12.00, 24.00), 2) # Koeficient i lartë
+    else:
+        # Ndeshje Standarde
+        gola_1 = potenciali_gola_1
+        gola_2 = potenciali_gola_2
+        besueshmeria = round(min(65.0 + (diferenca * 3), 98.5), 1)
+        koef_rez_sakt = round(random.uniform(5.00, 15.00), 2)
+        
+        totali_gola = gola_1 + gola_2
+        if totali_gola > 2.5: hint_id = 1
+        elif totali_gola == 0: hint_id = 2
+        elif gola_1 > 0 and gola_2 > 0: hint_id = 3
+        else: hint_id = 4
+        
     totali_gola = gola_1 + gola_2
     
     if gola_1 > gola_2: parashikimi = "1"
     elif gola_1 == gola_2: parashikimi = "X"
     else: parashikimi = "2"
         
-    if totali_gola > 2.5: hint_id = 1
-    elif totali_gola == 0: hint_id = 2
-    elif gola_1 > 0 and gola_2 > 0: hint_id = 3
-    else: hint_id = 4
-    
     rezultati_sakt = f"{gola_1}-{gola_2}"
     
     baza_koef = 2.80
     koef_1 = max(1.15, baza_koef - (power1 - power2) * 0.2)
     koef_2 = max(1.20, baza_koef - (power2 - power1) * 0.2)
     koef_x = max(2.50, 4.00 - diferenca * 0.15)
-    
-    koef_rez_sakt = round(random.uniform(5.00, 18.00), 2)
         
     return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
@@ -112,7 +127,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     url = "https://v3.football.api-sports.io/fixtures"
     
     try:
-        # Pyesim API-Sports me timeout te sigurt
         response = requests.get(url, headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=8)
         te_dhenat = response.json()
         
@@ -161,7 +175,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 
                 paketa_per_db.append({"match_id": int(id_ndeshja), "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "predicted_score": rez_sakt})
         
-        # SHTO DETRËN NË SFOND
         if paketa_per_db:
             background_tasks.add_task(ruaj_ne_sfond, paketa_per_db)
         
