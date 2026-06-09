@@ -19,7 +19,7 @@ HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
-SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y"
+SUPABASE_ANON_KEY = "VENDOS_KODIN_TËND_KËTU"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -29,7 +29,7 @@ SUPABASE_HEADERS = {
 }
 
 def ruaj_ne_sfond(paketa_per_db):
-    if SUPABASE_ANON_KEY != "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y" and paketa_per_db:
+    if SUPABASE_ANON_KEY != "VENDOS_KODIN_TËND_KËTU" and paketa_per_db:
         try:
             for pako in paketa_per_db[:15]:
                 requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=2)
@@ -40,7 +40,42 @@ def ruaj_ne_sfond(paketa_per_db):
 def root():
     return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe i lidhur me Supabase!"}
 
-# 🔥 FJALORI I GIGANTËVE TË FUTBOLLIT (Tier System) 🔥
+# 🔥 TERHEQJA E KOEFICIENTEVE REALE NGA BET365 🔥
+def merr_koeficientet_bet365(date_str):
+    odds_map = {}
+    try:
+        url = "https://v3.football.api-sports.io/odds"
+        res = requests.get(url, headers=HEADERS, params={"date": date_str, "bookmaker": 8, "page": 1}, timeout=10)
+        data = res.json()
+        
+        def parse_odds(response_list):
+            for item in response_list:
+                fix_id = str(item["fixture"]["id"])
+                try:
+                    bets = item["bookmakers"][0]["bets"]
+                    mw = next((b for b in bets if b["id"] == 1 or b["name"] == "Match Winner"), None)
+                    if mw:
+                        v = mw["values"]
+                        k1 = next((x["odd"] for x in v if x["value"] == "Home"), None)
+                        kx = next((x["odd"] for x in v if x["value"] == "Draw"), None)
+                        k2 = next((x["odd"] for x in v if x["value"] == "Away"), None)
+                        if k1 and kx and k2:
+                            odds_map[fix_id] = {"1": k1, "X": kx, "2": k2}
+                except:
+                    pass
+                    
+        if "response" in data:
+            parse_odds(data["response"])
+            total_pages = data.get("paging", {}).get("total", 1)
+            # Marrim deri ne 2 faqe te Bet365 per te mos e vonuar serverin
+            pages_to_fetch = min(total_pages, 2)
+            for p in range(2, pages_to_fetch + 1):
+                res_p = requests.get(url, headers=HEADERS, params={"date": date_str, "bookmaker": 8, "page": p}, timeout=5)
+                parse_odds(res_p.json().get("response", []))
+    except Exception as e:
+        print("Gabim me Bet365:", e)
+    return odds_map
+
 GIGANTET = {
     "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92,
     "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86,
@@ -53,18 +88,14 @@ GIGANTET = {
 }
 
 def merr_fuqine_reale(ekipi):
-    # Kontrollon nëse ekipi ekziston në fjalor
     for emri, fuqia in GIGANTET.items():
-        if emri.lower() in ekipi.lower():
-            return fuqia
-    # Nëse është ekip i panjohur, i jepet një fuqi mesatare bazuar te emri
+        if emri.lower() in ekipi.lower(): return fuqia
     random.seed(ekipi)
     return random.randint(65, 75)
 
 def llogarit_intuiten_ekipit(ekipi, date_target, is_home):
     random.seed(f"form-{ekipi}-{date_target}")
     fuqia_baze = merr_fuqine_reale(ekipi)
-    
     forma_piket = random.randint(2, 15) 
     fuqia_sulmuese = (fuqia_baze / 100) * round(random.uniform(1.5, 3.0), 2)
     dobesia_mbrojtese = ((100 - fuqia_baze) / 100) * round(random.uniform(1.0, 2.5), 2)
@@ -85,40 +116,23 @@ def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
     
     diferenca = power1 - power2
     
-    # 🎯 RREGULLIMI PRECIZ I KOEFICIENTËVE 🎯
-    if diferenca > 15: # Ekipi 1 Super Favorit (psh. Anglia vs Costa Rica)
-        koef_1 = round(random.uniform(1.10, 1.45), 2)
-        koef_x = round(random.uniform(4.50, 6.50), 2)
-        koef_2 = round(random.uniform(7.00, 15.00), 2)
-    elif diferenca > 5: # Ekipi 1 Favorit i Lehtë
-        koef_1 = round(random.uniform(1.50, 2.10), 2)
-        koef_x = round(random.uniform(3.20, 3.80), 2)
-        koef_2 = round(random.uniform(3.50, 5.50), 2)
-    elif diferenca < -15: # Ekipi 2 Super Favorit
-        koef_1 = round(random.uniform(7.00, 15.00), 2)
-        koef_x = round(random.uniform(4.50, 6.50), 2)
-        koef_2 = round(random.uniform(1.10, 1.45), 2)
-    elif diferenca < -5: # Ekipi 2 Favorit i Lehtë
-        koef_1 = round(random.uniform(3.50, 5.50), 2)
-        koef_x = round(random.uniform(3.20, 3.80), 2)
-        koef_2 = round(random.uniform(1.50, 2.10), 2)
-    else: # Ndeshje e Ekuilibruar
-        koef_1 = round(random.uniform(2.30, 2.80), 2)
-        koef_x = round(random.uniform(2.90, 3.30), 2)
-        koef_2 = round(random.uniform(2.30, 2.80), 2)
+    # Këto koeficientë gjenerohen VETËM nëse Bet365 nuk e ofron si ndeshje (Fallback)
+    baza_k1 = 2.60 - (diferenca * 0.05)
+    baza_k2 = 2.60 + (diferenca * 0.05)
+    koef_1_sim = f"{round(max(1.20, min(8.00, baza_k1)), 2):.2f}"
+    koef_2_sim = f"{round(max(1.20, min(8.00, baza_k2)), 2):.2f}"
+    koef_x_sim = f"{round(random.uniform(3.10, 4.50), 2):.2f}"
     
     potenciali_gola_1 = max(0, int(atk1 - (def2 * 0.5) + (diferenca * 0.05)))
     potenciali_gola_2 = max(0, int(atk2 - (def1 * 0.5) - (diferenca * 0.05)))
     
-    # ⚠️ Faktori Blof (35% risk)
     is_bluff = random.choices([True, False], weights=[35, 65])[0]
     
     if is_bluff and abs(diferenca) > 10: 
-        # Blofi ndodh zakonisht kur ka një favorit të qartë
-        if diferenca > 0: # Ekipi 1 favorit, por dështon
+        if diferenca > 0:
             gola_1 = max(0, potenciali_gola_1 - random.randint(1, 2))
             gola_2 = potenciali_gola_2 + random.randint(1, 2)
-        else: # Ekipi 2 favorit, por dështon
+        else:
             gola_1 = potenciali_gola_1 + random.randint(1, 2)
             gola_2 = max(0, potenciali_gola_2 - random.randint(1, 2))
             
@@ -143,7 +157,7 @@ def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
         
     rezultati_sakt = f"{gola_1}-{gola_2}"
         
-    return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
+    return koef_1_sim, koef_x_sim, koef_2_sim, parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
 LIGAT_KRYESORE = [
     "World Cup", "Euro Championship", "Champions League", "Europa League",
@@ -169,6 +183,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         if "errors" in te_dhenat and te_dhenat["errors"]:
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
+        # 🔥 MARRIM KOEFICIENTËT NGA BET365 🔥
+        bet365_odds = merr_koeficientet_bet365(data_target)
+
         lista_e_te_gjithave = []
         paketa_per_db = []
         
@@ -183,13 +200,23 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 
                 statusi_kod = n["fixture"]["status"]["short"]
                 minuta_loje = n["fixture"]["status"]["elapsed"] or 0
-                
                 gola_1 = n["goals"]["home"]
                 gola_2 = n["goals"]["away"]
                 rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else "0 - 0"
                 
-                koef_1, koef_x, koef_2, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, data_target)
+                # Inteligjenca llogarit parashikimin dhe sigurinë
+                k1_s, kx_s, k2_s, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, data_target)
                 
+                # ZËVENDËSIMI ME KOEFICIENTËT REALË TË BET365
+                if id_ndeshja in bet365_odds:
+                    koef_1 = bet365_odds[id_ndeshja]["1"]
+                    koef_x = bet365_odds[id_ndeshja]["X"]
+                    koef_2 = bet365_odds[id_ndeshja]["2"]
+                else:
+                    koef_1 = k1_s
+                    koef_x = kx_s
+                    koef_2 = k2_s
+
                 data_sakte = data_target
                 ora_sakte = "N/A"
                 if n["fixture"]["date"]:
