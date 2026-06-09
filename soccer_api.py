@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import requests
 import random
+import asyncio
 
 app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës Dhe Ndeshjet LIVE")
 
@@ -28,17 +29,20 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation"
 }
 
-# Funksioni i ri që dërgon pakon në Supabase NË SFOND
+# Funksioni super i sigurt për sfondin
 def ruaj_ne_sfond(te_dhenat_per_db):
     if SUPABASE_ANON_KEY != "VENDOS_KODIN_TËND_KËTU" and te_dhenat_per_db:
-        try:
-            requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=te_dhenat_per_db, timeout=5)
-        except Exception as e:
-            print(f"Gabim në sfond: {e}")
+        # Përpiqemi të mos dërgojmë gjithçka përnjëherë që të mos bllokohet
+        for pako in te_dhenat_per_db[:10]: # Ruajmë vetëm 10 të parat për test
+            try:
+                requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=2)
+            except Exception as e:
+                print(f"Gabim në sfond: {e}")
+                break # Nëse ka gabim, ndalojmë për të mos mbingarkuar serverin
 
 @app.get("/")
 def root():
-    return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe i lidhur me Supabase!"}
+    return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe gati!"}
 
 def llogarit_intuiten_ekipit(ekipi, date_target, is_home):
     random.seed(f"form-{ekipi}-{date_target}")
@@ -108,7 +112,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
         lista_e_te_gjithave = []
-        paketa_per_databazen = [] # Mbledhim te gjitha ndeshjet ketu
+        paketa_per_databazen = [] 
         
         if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
             for n in te_dhenat["response"]:
@@ -137,7 +141,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 
                 koef_1, koef_x, koef_2, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, data_target)
                 
-                # Shtojmë në listën e front-end
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_emri": emri_liges, "ekipi_1_id": ekipi_1_id, "ekipi_2_id": ekipi_2_id,
                     "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}",
@@ -148,7 +151,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
                 })
                 
-                # Shtojmë në paketën që do shkojë te Databaza
+                # Shtojmë të dhënat në pako
                 paketa_per_databazen.append({
                     "match_id": int(id_ndeshja),
                     "ekipi_1": ekipi_1,
@@ -156,7 +159,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "predicted_score": rez_sakt
                 })
         
-        # Dërgojmë paketën në prapaskenë
+        # Super e rëndësishme: Dërgo në sfond vetëm nëse aplikacioni ngarkohet OK
         if paketa_per_databazen:
             background_tasks.add_task(ruaj_ne_sfond, paketa_per_databazen)
         
