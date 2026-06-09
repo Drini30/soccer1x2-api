@@ -19,7 +19,7 @@ HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
-SUPABASE_ANON_KEY = "VENDOS_KODIN_TËND_KËTU"
+SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -29,7 +29,7 @@ SUPABASE_HEADERS = {
 }
 
 def ruaj_ne_sfond(paketa_per_db):
-    if SUPABASE_ANON_KEY != "VENDOS_KODIN_TËND_KËTU" and paketa_per_db:
+    if SUPABASE_ANON_KEY != "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y" and paketa_per_db:
         try:
             for pako in paketa_per_db[:15]:
                 requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=2)
