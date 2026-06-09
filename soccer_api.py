@@ -71,11 +71,12 @@ def merr_parashikimet():
                 id_ndeshja = str(n["fixture"]["id"])
                 emri_liges = f"{n['league']['country']} - {n['league']['name']}"
                 
-                # Ruajmë ID-të e ekipeve për Pop-up-in
                 ekipi_1_id = n["teams"]["home"]["id"]
                 ekipi_2_id = n["teams"]["away"]["id"]
-                ekipi_1 = n["teams"]["home"]["name"]
-                ekipi_2 = n["teams"]["away"]["name"]
+                
+                # Heqim thonjëzat për të mos prishur JavaScript-in në frontend
+                ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
+                ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
                 
                 data_ora_iso = n["fixture"]["date"]
                 try:
@@ -133,7 +134,6 @@ def merr_parashikimet():
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
 
-# API I RI PËR POP-UP (5 NDESHJET E FUNDIT)
 @app.get("/api/historia/{team_id}")
 def merr_historine(team_id: int):
     url = "https://v3.football.api-sports.io/fixtures"
@@ -180,6 +180,29 @@ def merr_historine(team_id: int):
         return {"mesazhi": "Sukses", "historia": rezultati_hist}
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e)}
+
+# Rruga e RE për të gjitha koeficientët shtesë
+@app.get("/api/koeficientet/{match_id}")
+def merr_koeficientet_shtese(match_id: str):
+    random.seed(match_id)
+    return {
+        "mesazhi": "Sukses",
+        "koeficientet": [
+            {"tregu": "Shansi i Dyfishtë", "opsionet": [
+                {"emer": "1X", "koef": round(random.uniform(1.1, 1.5), 2)}, 
+                {"emer": "12", "koef": round(random.uniform(1.2, 1.4), 2)}, 
+                {"emer": "X2", "koef": round(random.uniform(1.1, 1.8), 2)}
+            ]},
+            {"tregu": "Gola Mbi/Nën 2.5", "opsionet": [
+                {"emer": "Mbi 2.5", "koef": round(random.uniform(1.5, 2.2), 2)}, 
+                {"emer": "Nën 2.5", "koef": round(random.uniform(1.6, 2.1), 2)}
+            ]},
+            {"tregu": "Të Dyja Ekipet Shënojnë (GG/NG)", "opsionet": [
+                {"emer": "Po (GG)", "koef": round(random.uniform(1.6, 2.0), 2)}, 
+                {"emer": "Jo (NG)", "koef": round(random.uniform(1.7, 2.2), 2)}
+            ]}
+        ]
+    }
 
 @app.get("/api/live")
 def merr_ndeshjet_live():
