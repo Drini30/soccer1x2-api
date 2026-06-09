@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import requests
@@ -21,7 +21,6 @@ HEADERS = {"x-apisports-key": API_KEY}
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y"
 
-# Headers specialë që Supabase të pranojë të dhënat tona
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
     "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
@@ -29,21 +28,13 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation"
 }
 
-def ruaj_parashikimin_ne_database(match_id, ekipi_1, ekipi_2, score):
-    """ Dërgon parashikimin në memorien e databazës në Supabase """
-    payload = {
-        "match_id": str(match_id),
-        "ekipi_1": ekipi_1,
-        "ekipi_2": ekipi_2,
-        "predicted_score": score,
-        "actual_score": None,
-        "is_correct": None
-    }
-    try:
-        # Bëjmë një POST request direkt te databaza
-        requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=payload, timeout=3)
-    except Exception as e:
-        print(f"Gabim gjatë ruajtjes në DB: {e}")
+# Funksioni i ri që dërgon pakon në Supabase NË SFOND
+def ruaj_ne_sfond(te_dhenat_per_db):
+    if SUPABASE_ANON_KEY != "VENDOS_KODIN_TËND_KËTU" and te_dhenat_per_db:
+        try:
+            requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=te_dhenat_per_db, timeout=5)
+        except Exception as e:
+            print(f"Gabim në sfond: {e}")
 
 @app.get("/")
 def root():
@@ -64,7 +55,6 @@ def llogarit_intuiten_ekipit(ekipi, date_target, is_home):
         fuqia_sulmuese = fuqia_sulmuese * 0.80 
         
     fuqia_totale = (((forma_piket * 0.4) + (fuqia_sulmuese * 2) - dobesia_mbrojtese) * avantazh_fushe) * penallti_lendimi
-    
     return forma_piket, fuqia_sulmuese, dobesia_mbrojtese, fuqia_totale
 
 def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
@@ -98,14 +88,11 @@ def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
     koef_x = max(2.50, 4.00 - diferenca * 0.15)
     
     koef_rez_sakt = round(random.uniform(5.00, 18.00), 2)
-    
-    # 🔥 THIRRJA E FUNKSIONIT SHTESË: Ruajmë gjithçka në Supabase në sfond! 🔥
-    ruaj_parashikimin_ne_database(match_id, ekipi_1, ekipi_2, rezultati_sakt)
         
     return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
 @app.get("/api/skedina")
-def merr_parashikimet(date: str = None):
+def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     if date:
         data_target = date
     else:
@@ -121,6 +108,7 @@ def merr_parashikimet(date: str = None):
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
         lista_e_te_gjithave = []
+        paketa_per_databazen = [] # Mbledhim te gjitha ndeshjet ketu
         
         if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
             for n in te_dhenat["response"]:
@@ -147,9 +135,9 @@ def merr_parashikimet(date: str = None):
                 gola_2 = n["goals"]["away"]
                 rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else "0 - 0"
                 
-                # Kalojmë edhe id_ndeshja tek funksioni
                 koef_1, koef_x, koef_2, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, data_target)
                 
+                # Shtojmë në listën e front-end
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_emri": emri_liges, "ekipi_1_id": ekipi_1_id, "ekipi_2_id": ekipi_2_id,
                     "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}",
@@ -159,6 +147,18 @@ def merr_parashikimet(date: str = None):
                     "parashikimi": parashikimi_ai, "hint_id": hint_id, "besueshmeria": besueshmeria,
                     "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
                 })
+                
+                # Shtojmë në paketën që do shkojë te Databaza
+                paketa_per_databazen.append({
+                    "match_id": int(id_ndeshja),
+                    "ekipi_1": ekipi_1,
+                    "ekipi_2": ekipi_2,
+                    "predicted_score": rez_sakt
+                })
+        
+        # Dërgojmë paketën në prapaskenë
+        if paketa_per_databazen:
+            background_tasks.add_task(ruaj_ne_sfond, paketa_per_databazen)
         
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
         for i in range(min(5, len(lista_e_te_gjithave))):
