@@ -19,7 +19,7 @@ HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
-SUPABASE_ANON_KEY = "VENDOS_KODIN_TËND_KËTU"
+SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -29,7 +29,7 @@ SUPABASE_HEADERS = {
 }
 
 def ruaj_ne_sfond(paketa_per_db):
-    if SUPABASE_ANON_KEY != "VENDOS_KODIN_TËND_KËTU" and paketa_per_db:
+    if SUPABASE_ANON_KEY != "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y" and paketa_per_db:
         try:
             for pako in paketa_per_db[:15]:
                 requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=2)
@@ -40,72 +40,108 @@ def ruaj_ne_sfond(paketa_per_db):
 def root():
     return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe i lidhur me Supabase!"}
 
+# 🔥 FJALORI I GIGANTËVE TË FUTBOLLIT (Tier System) 🔥
+GIGANTET = {
+    "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92,
+    "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86,
+    "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80,
+    "Costa Rica": 65, "Albania": 70, "Bulgaria": 62, "San Marino": 45, "Andorra": 45,
+    "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92,
+    "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89,
+    "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85,
+    "Dortmund": 84, "Tottenham": 86, "Aston Villa": 83, "Chelsea": 84
+}
+
+def merr_fuqine_reale(ekipi):
+    # Kontrollon nëse ekipi ekziston në fjalor
+    for emri, fuqia in GIGANTET.items():
+        if emri.lower() in ekipi.lower():
+            return fuqia
+    # Nëse është ekip i panjohur, i jepet një fuqi mesatare bazuar te emri
+    random.seed(ekipi)
+    return random.randint(65, 75)
+
 def llogarit_intuiten_ekipit(ekipi, date_target, is_home):
     random.seed(f"form-{ekipi}-{date_target}")
+    fuqia_baze = merr_fuqine_reale(ekipi)
+    
     forma_piket = random.randint(2, 15) 
-    fuqia_sulmuese = round(random.uniform(0.5, 3.0), 2)
-    dobesia_mbrojtese = round(random.uniform(0.5, 2.5), 2)
-    avantazh_fushe = 1.15 if is_home else 1.00 
+    fuqia_sulmuese = (fuqia_baze / 100) * round(random.uniform(1.5, 3.0), 2)
+    dobesia_mbrojtese = ((100 - fuqia_baze) / 100) * round(random.uniform(1.0, 2.5), 2)
+    avantazh_fushe = 1.10 if is_home else 1.00 
     
     ka_lendime = random.choices([True, False], weights=[15, 85])[0]
     penallti_lendimi = 1.00
-    
     if ka_lendime:
         penallti_lendimi = 0.85 
-        fuqia_sulmuese = fuqia_sulmuese * 0.80 
+        fuqia_sulmuese *= 0.85 
         
-    fuqia_totale = (((forma_piket * 0.4) + (fuqia_sulmuese * 2) - dobesia_mbrojtese) * avantazh_fushe) * penallti_lendimi
+    fuqia_totale = ((fuqia_baze * 0.7) + (forma_piket * 2)) * avantazh_fushe * penallti_lendimi
     return forma_piket, fuqia_sulmuese, dobesia_mbrojtese, fuqia_totale
 
 def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
     form1, atk1, def1, power1 = llogarit_intuiten_ekipit(ekipi_1, date_target, is_home=True)
     form2, atk2, def2, power2 = llogarit_intuiten_ekipit(ekipi_2, date_target, is_home=False)
     
-    diferenca = abs(power1 - power2)
+    diferenca = power1 - power2
     
-    potenciali_gola_1 = max(0, int(atk1 - (def2 * 0.5) + random.uniform(-0.5, 1.5)))
-    potenciali_gola_2 = max(0, int(atk2 - (def1 * 0.5) + random.uniform(-0.5, 1.0))) 
+    # 🎯 RREGULLIMI PRECIZ I KOEFICIENTËVE 🎯
+    if diferenca > 15: # Ekipi 1 Super Favorit (psh. Anglia vs Costa Rica)
+        koef_1 = round(random.uniform(1.10, 1.45), 2)
+        koef_x = round(random.uniform(4.50, 6.50), 2)
+        koef_2 = round(random.uniform(7.00, 15.00), 2)
+    elif diferenca > 5: # Ekipi 1 Favorit i Lehtë
+        koef_1 = round(random.uniform(1.50, 2.10), 2)
+        koef_x = round(random.uniform(3.20, 3.80), 2)
+        koef_2 = round(random.uniform(3.50, 5.50), 2)
+    elif diferenca < -15: # Ekipi 2 Super Favorit
+        koef_1 = round(random.uniform(7.00, 15.00), 2)
+        koef_x = round(random.uniform(4.50, 6.50), 2)
+        koef_2 = round(random.uniform(1.10, 1.45), 2)
+    elif diferenca < -5: # Ekipi 2 Favorit i Lehtë
+        koef_1 = round(random.uniform(3.50, 5.50), 2)
+        koef_x = round(random.uniform(3.20, 3.80), 2)
+        koef_2 = round(random.uniform(1.50, 2.10), 2)
+    else: # Ndeshje e Ekuilibruar
+        koef_1 = round(random.uniform(2.30, 2.80), 2)
+        koef_x = round(random.uniform(2.90, 3.30), 2)
+        koef_2 = round(random.uniform(2.30, 2.80), 2)
     
-    # 🔥 FAKTORI GUXIM & RISK (35% SHANS PËR BLOF) 🔥
+    potenciali_gola_1 = max(0, int(atk1 - (def2 * 0.5) + (diferenca * 0.05)))
+    potenciali_gola_2 = max(0, int(atk2 - (def1 * 0.5) - (diferenca * 0.05)))
+    
+    # ⚠️ Faktori Blof (35% risk)
     is_bluff = random.choices([True, False], weights=[35, 65])[0]
     
-    if is_bluff:
-        # Kthejmë ndeshjen përmbys (Favoriti dështon)
-        if power1 > power2:
+    if is_bluff and abs(diferenca) > 10: 
+        # Blofi ndodh zakonisht kur ka një favorit të qartë
+        if diferenca > 0: # Ekipi 1 favorit, por dështon
             gola_1 = max(0, potenciali_gola_1 - random.randint(1, 2))
             gola_2 = potenciali_gola_2 + random.randint(1, 2)
-        else:
+        else: # Ekipi 2 favorit, por dështon
             gola_1 = potenciali_gola_1 + random.randint(1, 2)
             gola_2 = max(0, potenciali_gola_2 - random.randint(1, 2))
             
-        hint_id = random.choice([5, 6]) # ID-të e reja për Blofet
-        besueshmeria = round(random.uniform(50.0, 75.0), 1) # Siguri më e ulët
-        koef_rez_sakt = round(random.uniform(12.00, 24.00), 2) # Koeficient i lartë
+        hint_id = random.choice([5, 6])
+        besueshmeria = round(random.uniform(50.0, 70.0), 1) 
+        koef_rez_sakt = round(random.uniform(15.00, 28.00), 2) 
     else:
-        # Ndeshje Standarde
         gola_1 = potenciali_gola_1
         gola_2 = potenciali_gola_2
-        besueshmeria = round(min(65.0 + (diferenca * 3), 98.5), 1)
-        koef_rez_sakt = round(random.uniform(5.00, 15.00), 2)
+        besueshmeria = round(min(65.0 + (abs(diferenca) * 1.5), 98.5), 1)
+        koef_rez_sakt = round(random.uniform(5.00, 12.00), 2)
         
         totali_gola = gola_1 + gola_2
         if totali_gola > 2.5: hint_id = 1
         elif totali_gola == 0: hint_id = 2
         elif gola_1 > 0 and gola_2 > 0: hint_id = 3
         else: hint_id = 4
-        
-    totali_gola = gola_1 + gola_2
     
     if gola_1 > gola_2: parashikimi = "1"
     elif gola_1 == gola_2: parashikimi = "X"
     else: parashikimi = "2"
         
     rezultati_sakt = f"{gola_1}-{gola_2}"
-    
-    baza_koef = 2.80
-    koef_1 = max(1.15, baza_koef - (power1 - power2) * 0.2)
-    koef_2 = max(1.20, baza_koef - (power2 - power1) * 0.2)
-    koef_x = max(2.50, 4.00 - diferenca * 0.15)
         
     return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
