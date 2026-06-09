@@ -17,22 +17,51 @@ app.add_middleware(
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
-def analizo_ndeshjen_premium(ekipi_1, ekipi_2, date_target):
-    çelësi = f"{ekipi_1}-{ekipi_2}-{date_target}"
-    random.seed(çelësi)
-    koef_1 = round(random.uniform(1.40, 3.20), 2)
-    koef_x = round(random.uniform(2.90, 4.20), 2)
-    koef_2 = round(random.uniform(1.80, 4.50), 2)
-    besueshmeria = round(random.uniform(60.0, 99.0), 1)
+# 🔥 MOTORRI I RI I INTUITËS DHE FORMËS 🔥
+def llogarit_intuiten_ekipit(ekipi, date_target, is_home):
+    """ Simulon nxjerrjen e të dhënave historike nga Databaza për llogaritjet ML """
+    random.seed(f"form-{ekipi}-{date_target}")
     
-    gola_1 = random.choices([0, 1, 2, 3, 4], weights=[30, 35, 20, 10, 5])[0]
-    gola_2 = random.choices([0, 1, 2, 3, 4], weights=[35, 35, 20, 8, 2])[0]
+    # Forma nga 5 ndeshjet e fundit (Min: 0 pikë, Max: 15 pikë)
+    forma_piket = random.randint(2, 15) 
+    
+    # Sa gola shënon mesatarisht për ndeshje
+    fuqia_sulmuese = round(random.uniform(0.5, 3.0), 2)
+    
+    # Sa gola pëson mesatarisht për ndeshje
+    dobesia_mbrojtese = round(random.uniform(0.5, 2.5), 2)
+    
+    # Faktori psikologjik i fushës (Home Advantage)
+    avantazh_fushe = 1.15 if is_home else 1.00 # Ekipi vendas merr 15% Bonus
+    
+    # Fuqia Totale Matematikore e Ekipit për këtë ndeshje
+    fuqia_totale = ((forma_piket * 0.4) + (fuqia_sulmuese * 2) - dobesia_mbrojtese) * avantazh_fushe
+    
+    return forma_piket, fuqia_sulmuese, dobesia_mbrojtese, fuqia_totale
+
+def analizo_ndeshjen_premium(ekipi_1, ekipi_2, date_target):
+    # 1. Përdorim Intuitën për të dyja ekipet
+    form1, atk1, def1, power1 = llogarit_intuiten_ekipit(ekipi_1, date_target, is_home=True)
+    form2, atk2, def2, power2 = llogarit_intuiten_ekipit(ekipi_2, date_target, is_home=False)
+    
+    # 2. Përcaktojmë Sigurinë bazuar në diferencën e fuqive
+    diferenca = abs(power1 - power2)
+    besueshmeria = round(min(65.0 + (diferenca * 3), 98.5), 1)
+    
+    # 3. Përplasja e Golave (Sulmi i E1 vs Mbrojtja e E2)
+    potenciali_gola_1 = max(0, int(atk1 - (def2 * 0.5) + random.uniform(-0.5, 1.5)))
+    potenciali_gola_2 = max(0, int(atk2 - (def1 * 0.5) + random.uniform(-0.5, 1.0))) # Mysafirët kanë pak më pak shans
+    
+    gola_1 = potenciali_gola_1
+    gola_2 = potenciali_gola_2
     totali_gola = gola_1 + gola_2
     
+    # 4. Parashikimi Përfundimtar
     if gola_1 > gola_2: parashikimi = "1"
     elif gola_1 == gola_2: parashikimi = "X"
     else: parashikimi = "2"
         
+    # 5. Përzgjedhja e Hint-it Inteligjent
     if totali_gola > 2.5: hint_id = 1
     elif totali_gola == 0: hint_id = 2
     elif gola_1 > 0 and gola_2 > 0: hint_id = 3
@@ -40,7 +69,14 @@ def analizo_ndeshjen_premium(ekipi_1, ekipi_2, date_target):
     
     rezultati_sakt = f"{gola_1}-{gola_2}"
     
-    # 🔥 Zgjeruam kufirin për të kapur koeficientët 5.00 - 8.99 ($39.99) 🔥
+    # 6. Gjenerimi logjik i koeficientëve
+    # Nëse Ekipi 1 është shumë më i fortë, koeficienti i tij bie.
+    baza_koef = 2.80
+    koef_1 = max(1.15, baza_koef - (power1 - power2) * 0.2)
+    koef_2 = max(1.20, baza_koef - (power2 - power1) * 0.2)
+    koef_x = max(2.50, 4.00 - diferenca * 0.15)
+    
+    # Koeficienti i saktë i VIP (Përshtatur me sistemin $39-$69)
     koef_rez_sakt = round(random.uniform(5.00, 18.00), 2)
         
     return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
@@ -254,7 +290,3 @@ def merr_koeficientet_shtese(match_id: str):
             {"tregu_id": "correct_score", "opsionet": [{"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)}, {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, {"emer": "0-0", "koef": round(random.uniform(7.00, 12.00), 2)}, {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}, {"emer": "0-1", "koef": round(random.uniform(7.50, 15.00), 2)}, {"emer": "1-2", "koef": round(random.uniform(8.50, 17.00), 2)}, {"emer": "Tjetër", "koef": round(random.uniform(4.50, 7.50), 2)}]}
         ]
     }
-
-@app.get("/api/live")
-def merr_ndeshjet_live():
-    return {"mesazhi": "Sukses", "ndeshjet": []}
