@@ -40,7 +40,6 @@ def ruaj_ne_sfond(paketa_per_db):
 def root():
     return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe i lidhur me Supabase!"}
 
-# 🔥 TERHEQJA E KOEFICIENTEVE REALE NGA BET365 🔥
 def merr_koeficientet_bet365(date_str):
     odds_map = {}
     try:
@@ -67,7 +66,6 @@ def merr_koeficientet_bet365(date_str):
         if "response" in data:
             parse_odds(data["response"])
             total_pages = data.get("paging", {}).get("total", 1)
-            # Marrim deri ne 2 faqe te Bet365 per te mos e vonuar serverin
             pages_to_fetch = min(total_pages, 2)
             for p in range(2, pages_to_fetch + 1):
                 res_p = requests.get(url, headers=HEADERS, params={"date": date_str, "bookmaker": 8, "page": p}, timeout=5)
@@ -116,7 +114,6 @@ def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
     
     diferenca = power1 - power2
     
-    # Këto koeficientë gjenerohen VETËM nëse Bet365 nuk e ofron si ndeshje (Fallback)
     baza_k1 = 2.60 - (diferenca * 0.05)
     baza_k2 = 2.60 + (diferenca * 0.05)
     koef_1_sim = f"{round(max(1.20, min(8.00, baza_k1)), 2):.2f}"
@@ -183,7 +180,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         if "errors" in te_dhenat and te_dhenat["errors"]:
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
-        # 🔥 MARRIM KOEFICIENTËT NGA BET365 🔥
         bet365_odds = merr_koeficientet_bet365(data_target)
 
         lista_e_te_gjithave = []
@@ -204,10 +200,8 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 gola_2 = n["goals"]["away"]
                 rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else "0 - 0"
                 
-                # Inteligjenca llogarit parashikimin dhe sigurinë
                 k1_s, kx_s, k2_s, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, data_target)
                 
-                # ZËVENDËSIMI ME KOEFICIENTËT REALË TË BET365
                 if id_ndeshja in bet365_odds:
                     koef_1 = bet365_odds[id_ndeshja]["1"]
                     koef_x = bet365_odds[id_ndeshja]["X"]
@@ -323,23 +317,101 @@ def merr_historine(team_id: int):
         return {"mesazhi": "Sukses", "historia": rezultati_hist}
     except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e)}
 
+# 🔥 MAGJIA E RE: KOEFICIENTËT REALË TË BET365 NË POP-UP 🔥
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
-    random.seed(match_id)
-    return {
-        "mesazhi": "Sukses",
-        "koeficientet": [
-            {"tregu_id": "ht_result", "opsionet": [{"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}]},
-            {"tregu_id": "double_chance", "opsionet": [{"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}]},
-            {"tregu_id": "ht_ft", "opsionet": [{"emer": "1/1", "koef": round(random.uniform(2.50, 4.50), 2)}, {"emer": "X/1", "koef": round(random.uniform(4.00, 7.50), 2)}, {"emer": "2/2", "koef": round(random.uniform(3.50, 6.50), 2)}, {"emer": "X/X", "koef": round(random.uniform(4.50, 6.00), 2)}]},
-            {"tregu_id": "goals_25", "opsionet": [{"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}]},
-            {"tregu_id": "goals_35_65", "opsionet": [{"emer": "Mbi 3.5", "koef": round(random.uniform(2.30, 4.50), 2)}, {"emer": "Nën 3.5", "koef": round(random.uniform(1.20, 1.55), 2)}, {"emer": "Mbi 6.5", "koef": round(random.uniform(6.50, 16.00), 2)}, {"emer": "Nën 6.5", "koef": round(random.uniform(1.01, 1.08), 2)}]},
-            {"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}]},
-            {"tregu_id": "exact_goals", "opsionet": [{"emer": "0", "koef": round(random.uniform(7.00, 12.00), 2)}, {"emer": "1", "koef": round(random.uniform(4.00, 6.50), 2)}, {"emer": "2", "koef": round(random.uniform(3.20, 4.50), 2)}, {"emer": "3+", "koef": round(random.uniform(2.00, 3.80), 2)}]},
-            {"tregu_id": "odd_even", "opsionet": [{"emer": "Tek (Odd)", "koef": round(random.uniform(1.85, 1.95), 2)}, {"emer": "Çift (Even)", "koef": round(random.uniform(1.85, 1.95), 2)}]},
-            {"tregu_id": "correct_score", "opsionet": [{"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)}, {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, {"emer": "0-0", "koef": round(random.uniform(7.00, 12.00), 2)}, {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}, {"emer": "0-1", "koef": round(random.uniform(7.50, 15.00), 2)}, {"emer": "1-2", "koef": round(random.uniform(8.50, 17.00), 2)}, {"emer": "Tjetër", "koef": round(random.uniform(4.50, 7.50), 2)}]}
-        ]
-    }
+    try:
+        url = "https://v3.football.api-sports.io/odds"
+        # Bëjmë 1 kërkesë ekzakte për këtë ndeshje te Bet365 (bookmaker=8)
+        res = requests.get(url, headers=HEADERS, params={"fixture": match_id, "bookmaker": 8}, timeout=8)
+        data = res.json()
+
+        if not data.get("response"):
+            # Nese Bet365 nuk ka koeficiente per kete ndeshje (psh. ka mbaruar), i simulojme qe klienti te mos shohe bosh
+            random.seed(match_id)
+            return {
+                "mesazhi": "Simuluar (Ndeshja s'ka koeficientë aktivë)",
+                "koeficientet": [
+                    {"tregu_id": "ht_result", "opsionet": [{"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}]},
+                    {"tregu_id": "double_chance", "opsionet": [{"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}]},
+                    {"tregu_id": "goals_25", "opsionet": [{"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}]},
+                    {"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}]},
+                    {"tregu_id": "correct_score", "opsionet": [{"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)}, {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}]}
+                ]
+            }
+
+        bets = data["response"][0]["bookmakers"][0]["bets"]
+        tregjet_rezultat = []
+
+        def get_bet(bet_id):
+            return next((b for b in bets if b["id"] == bet_id), None)
+
+        # 1. Pjesa e Pare (HT) - API id 13
+        bet_13 = get_bet(13)
+        if bet_13:
+            ops = []
+            for v in bet_13["values"]:
+                emer = v["value"].replace("Home", "1").replace("Draw", "X").replace("Away", "2") + " (HT)"
+                ops.append({"emer": emer, "koef": v["odd"]})
+            tregjet_rezultat.append({"tregu_id": "ht_result", "opsionet": ops})
+
+        # 2. Double Chance - API id 12
+        bet_12 = get_bet(12)
+        if bet_12:
+            ops = []
+            for v in bet_12["values"]:
+                emer = v["value"].replace("Home/Draw", "1X").replace("Home/Away", "12").replace("Draw/Away", "X2")
+                ops.append({"emer": emer, "koef": v["odd"]})
+            tregjet_rezultat.append({"tregu_id": "double_chance", "opsionet": ops})
+
+        # 3. Over/Under Goals - API id 5 (Zgjedhim 1.5, 2.5, 3.5 qe te mos dalin 50 opsione)
+        bet_5 = get_bet(5)
+        if bet_5:
+            ops_25 = []
+            ops_other = []
+            for v in bet_5["values"]:
+                if v["value"] == "Over 2.5": ops_25.append({"emer": "Mbi 2.5", "koef": v["odd"]})
+                if v["value"] == "Under 2.5": ops_25.append({"emer": "Nën 2.5", "koef": v["odd"]})
+                if v["value"] == "Over 3.5": ops_other.append({"emer": "Mbi 3.5", "koef": v["odd"]})
+                if v["value"] == "Under 3.5": ops_other.append({"emer": "Nën 3.5", "koef": v["odd"]})
+                if v["value"] == "Over 1.5": ops_other.append({"emer": "Mbi 1.5", "koef": v["odd"]})
+                if v["value"] == "Under 1.5": ops_other.append({"emer": "Nën 1.5", "koef": v["odd"]})
+            if ops_25: tregjet_rezultat.append({"tregu_id": "goals_25", "opsionet": ops_25})
+            if ops_other: tregjet_rezultat.append({"tregu_id": "goals_35_65", "opsionet": ops_other[:4]}) # Shfaqim vetem 4 te tjerat
+
+        # 4. BTTS (Të Dyja Shënojnë) - API id 8
+        bet_8 = get_bet(8)
+        if bet_8:
+            ops = []
+            for v in bet_8["values"]:
+                emer = "Po (GG)" if v["value"] == "Yes" else "Jo (NG)"
+                ops.append({"emer": emer, "koef": v["odd"]})
+            tregjet_rezultat.append({"tregu_id": "btts", "opsionet": ops})
+
+        # 5. HT/FT - API id 15
+        bet_15 = get_bet(15)
+        if bet_15:
+            ops = []
+            pop_htft = ["Home/Home", "Draw/Home", "Away/Away", "Draw/Draw"]
+            for v in bet_15["values"]:
+                if v["value"] in pop_htft:
+                    emer = v["value"].replace("Home", "1").replace("Draw", "X").replace("Away", "2")
+                    ops.append({"emer": emer, "koef": v["odd"]})
+            if ops: tregjet_rezultat.append({"tregu_id": "ht_ft", "opsionet": ops})
+
+        # 6. Correct Score - API id 10
+        bet_10 = get_bet(10)
+        if bet_10:
+            ops = []
+            popular = ["1:0", "2:0", "2:1", "0:0", "1:1", "0:1", "1:2"]
+            for v in bet_10["values"]:
+                if v["value"] in popular:
+                    ops.append({"emer": v["value"].replace(":", "-"), "koef": v["odd"]})
+            if ops: tregjet_rezultat.append({"tregu_id": "correct_score", "opsionet": ops})
+
+        return {"mesazhi": "Sukses", "koeficientet": tregjet_rezultat}
+    except Exception as e:
+        return {"mesazhi": "Gabim", "detaje": str(e), "koeficientet": []}
 
 @app.get("/api/live")
 def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
