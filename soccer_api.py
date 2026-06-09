@@ -17,33 +17,57 @@ app.add_middleware(
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
-# 🔥 RREGOLLOJMË "404 NOT FOUND" PËR RENDER 🔥
+# 🔥 KONFIGURIMI I DATABAZËS TËNDE SUPABASE 🔥
+SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
+SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y"
+
+# Headers specialë që Supabase të pranojë të dhënat tona
+SUPABASE_HEADERS = {
+    "apikey": SUPABASE_ANON_KEY,
+    "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+}
+
+def ruaj_parashikimin_ne_database(match_id, ekipi_1, ekipi_2, score):
+    """ Dërgon parashikimin në memorien e databazës në Supabase """
+    payload = {
+        "match_id": str(match_id),
+        "ekipi_1": ekipi_1,
+        "ekipi_2": ekipi_2,
+        "predicted_score": score,
+        "actual_score": None,
+        "is_correct": None
+    }
+    try:
+        # Bëjmë një POST request direkt te databaza
+        requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=payload, timeout=3)
+    except Exception as e:
+        print(f"Gabim gjatë ruajtjes në DB: {e}")
+
 @app.get("/")
 def root():
-    return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe po punon në perfeksion!"}
+    return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe i lidhur me Supabase!"}
 
 def llogarit_intuiten_ekipit(ekipi, date_target, is_home):
-    """ Simulon nxjerrjen e të dhënave historike dhe lëndimeve """
     random.seed(f"form-{ekipi}-{date_target}")
-    
     forma_piket = random.randint(2, 15) 
     fuqia_sulmuese = round(random.uniform(0.5, 3.0), 2)
     dobesia_mbrojtese = round(random.uniform(0.5, 2.5), 2)
     avantazh_fushe = 1.15 if is_home else 1.00 
     
-    # 🔥 FILTRI I LËNDIMEVE (15% shans për lëndim të një lojtari kyç) 🔥
     ka_lendime = random.choices([True, False], weights=[15, 85])[0]
     penallti_lendimi = 1.00
     
     if ka_lendime:
-        penallti_lendimi = 0.85 # Ulet fuqia totale me 15%
-        fuqia_sulmuese = fuqia_sulmuese * 0.80 # Bije fuqia sulmuese
+        penallti_lendimi = 0.85 
+        fuqia_sulmuese = fuqia_sulmuese * 0.80 
         
     fuqia_totale = (((forma_piket * 0.4) + (fuqia_sulmuese * 2) - dobesia_mbrojtese) * avantazh_fushe) * penallti_lendimi
     
     return forma_piket, fuqia_sulmuese, dobesia_mbrojtese, fuqia_totale
 
-def analizo_ndeshjen_premium(ekipi_1, ekipi_2, date_target):
+def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
     form1, atk1, def1, power1 = llogarit_intuiten_ekipit(ekipi_1, date_target, is_home=True)
     form2, atk2, def2, power2 = llogarit_intuiten_ekipit(ekipi_2, date_target, is_home=False)
     
@@ -74,6 +98,9 @@ def analizo_ndeshjen_premium(ekipi_1, ekipi_2, date_target):
     koef_x = max(2.50, 4.00 - diferenca * 0.15)
     
     koef_rez_sakt = round(random.uniform(5.00, 18.00), 2)
+    
+    # 🔥 THIRRJA E FUNKSIONIT SHTESË: Ruajmë gjithçka në Supabase në sfond! 🔥
+    ruaj_parashikimin_ne_database(match_id, ekipi_1, ekipi_2, rezultati_sakt)
         
     return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
@@ -120,30 +147,17 @@ def merr_parashikimet(date: str = None):
                 gola_2 = n["goals"]["away"]
                 rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else "0 - 0"
                 
-                koef_1, koef_x, koef_2, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(ekipi_1, ekipi_2, data_target)
+                # Kalojmë edhe id_ndeshja tek funksioni
+                koef_1, koef_x, koef_2, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, data_target)
                 
                 lista_e_te_gjithave.append({
-                    "id": id_ndeshja,
-                    "liga_emri": emri_liges,
-                    "ekipi_1_id": ekipi_1_id,
-                    "ekipi_2_id": ekipi_2_id,
-                    "ekipi_1": ekipi_1,
-                    "ekipi_2": ekipi_2,
-                    "ndeshja": f"{ekipi_1} vs {ekipi_2}",
-                    "data": data_sakte,
-                    "ora": ora_sakte,
-                    "statusi": statusi_kod,
-                    "minuta": minuta_loje,
-                    "rezultati": rezultati,
-                    "koef_1": koef_1,
-                    "koef_x": koef_x,
-                    "koef_2": koef_2,
-                    "parashikimi": parashikimi_ai,
-                    "hint_id": hint_id,
-                    "besueshmeria": besueshmeria,
-                    "rezultati_sakt": rez_sakt,
-                    "koef_rez_sakt": koef_rez_sakt,
-                    "is_premium": False
+                    "id": id_ndeshja, "liga_emri": emri_liges, "ekipi_1_id": ekipi_1_id, "ekipi_2_id": ekipi_2_id,
+                    "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}",
+                    "data": data_sakte, "ora": "FT" if statusi_kod == "FT" else ora_sakte,
+                    "statusi": statusi_kod, "minuta": minuta_loje, "rezultati": rezultati,
+                    "koef_1": koef_1, "koef_x": koef_x, "koef_2": koef_2,
+                    "parashikimi": parashikimi_ai, "hint_id": hint_id, "besueshmeria": besueshmeria,
+                    "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
                 })
         
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
@@ -171,10 +185,7 @@ def merr_detajet_ndeshjes(match_id: int):
     try:
         response = requests.get(url, headers=HEADERS, params={"id": match_id})
         te_dhenat = response.json()
-        
-        if not te_dhenat.get("response"):
-            return {"mesazhi": "Nuk u gjetën të dhëna"}
-            
+        if not te_dhenat.get("response"): return {"mesazhi": "Nuk u gjetën të dhëna"}
         ndeshja = te_dhenat["response"][0]
         events = ndeshja.get("events", [])
         statistics = ndeshja.get("statistics", [])
@@ -183,11 +194,9 @@ def merr_detajet_ndeshjes(match_id: int):
         for ev in events:
             if ev['type'] in ['Goal', 'Card']:
                 lista_evente.append({
-                    "koha": f"{ev['time']['elapsed']}'",
-                    "ekipi": ev['team']['name'],
+                    "koha": f"{ev['time']['elapsed']}'", "ekipi": ev['team']['name'],
                     "lojtari": ev['player']['name'] if ev['player']['name'] else "Lojtar",
-                    "lloj": ev['type'],
-                    "detaj": ev['detail']
+                    "lloj": ev['type'], "detaj": ev['detail']
                 })
         
         stats_formated = {}
@@ -195,9 +204,7 @@ def merr_detajet_ndeshjes(match_id: int):
             team1 = statistics[0]['team']['name']
             team2 = statistics[1]['team']['name']
             stats_formated = {"ekipi_1": team1, "ekipi_2": team2, "statistikat": []}
-            
             kriteret = ["Shots on Goal", "Ball Possession"]
-            
             if statistics[0].get('statistics') and statistics[1].get('statistics'):
                 for i in range(len(statistics[0]['statistics'])):
                     stat_name = statistics[0]['statistics'][i]['type']
@@ -206,10 +213,7 @@ def merr_detajet_ndeshjes(match_id: int):
                         val2 = statistics[1]['statistics'][i]['value']
                         if val1 is None: val1 = 0
                         if val2 is None: val2 = 0
-                        stats_formated["statistikat"].append({
-                            "lloji": stat_name, "vler_1": val1, "vler_2": val2
-                        })
-
+                        stats_formated["statistikat"].append({"lloji": stat_name, "vler_1": val1, "vler_2": val2})
         return {"mesazhi": "Sukses", "evente": lista_evente, "statistika": stats_formated}
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e)}
@@ -221,7 +225,6 @@ def merr_historine(team_id: int):
         response = requests.get(url, headers=HEADERS, params={"team": team_id, "last": 5})
         te_dhenat = response.json()
         rezultati_hist = []
-        
         if "response" in te_dhenat:
             for n in te_dhenat["response"]:
                 home_name = n["teams"]["home"]["name"]
@@ -229,33 +232,17 @@ def merr_historine(team_id: int):
                 score = n.get("score", {})
                 ht = score.get("halftime", {})
                 ft = score.get("fulltime", {})
-                
-                ht_h = ht.get("home") if ht else None
-                ht_a = ht.get("away") if ht else None
-                ft_h = ft.get("home") if ft else None
-                ft_a = ft.get("away") if ft else None
-                
-                ht_str = f"{ht_h}-{ht_a}" if ht_h is not None else "0-0"
-                ft_str = f"{ft_h}-{ft_a}" if ft_h is not None else "0-0"
-                
+                ht_str = f"{ht.get('home')}-{ht.get('away')}" if ht and ht.get('home') is not None else "0-0"
+                ft_str = f"{ft.get('home')}-{ft.get('away')}" if ft and ft.get('home') is not None else "0-0"
                 random.seed(n["fixture"]["id"])
                 koef_1 = f"{round(random.uniform(1.40, 2.90), 2)}"
                 koef_x = f"{round(random.uniform(2.80, 3.80), 2)}"
                 koef_2 = f"{round(random.uniform(1.90, 4.20), 2)}"
-                
-                try:
-                    data_obj = datetime.strptime(n["fixture"]["date"][:10], "%Y-%m-%d")
-                    data_sakte = data_obj.strftime("%d/%m/%y")
-                except:
-                    data_sakte = "N/A"
-                
-                rezultati_hist.append({
-                    "data": data_sakte, "ora": "FT", "ndeshja": f"{home_name} vs {away_name}",
-                    "ht": ht_str, "ft": ft_str, "koef_1": koef_1, "koef_x": koef_x, "koef_2": koef_2
-                })
+                try: data_sakte = datetime.strptime(n["fixture"]["date"][:10], "%Y-%m-%d").strftime("%d/%m/%y")
+                except: data_sakte = "N/A"
+                rezultati_hist.append({"data": data_sakte, "ora": "FT", "ndeshja": f"{home_name} vs {away_name}", "ht": ht_str, "ft": ft_str, "koef_1": koef_1, "koef_x": koef_x, "koef_2": koef_2})
         return {"mesazhi": "Sukses", "historia": rezultati_hist}
-    except Exception as e:
-        return {"mesazhi": "Gabim", "detaje": str(e)}
+    except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e)}
 
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
@@ -276,5 +263,4 @@ def merr_koeficientet_shtese(match_id: str):
     }
 
 @app.get("/api/live")
-def merr_ndeshjet_live():
-    return {"mesazhi": "Sukses", "ndeshjet": []}
+def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
