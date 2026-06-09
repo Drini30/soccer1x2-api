@@ -40,7 +40,7 @@ def analizo_ndeshjen_premium(ekipi_1, ekipi_2, date_target):
     
     rezultati_sakt = f"{gola_1}-{gola_2}"
     
-    # 🔥 U hoq kufiri minimal prej 7.00. Tani gjeneron nga 5.00 e lart për të kapur çdo çmim 🔥
+    # 🔥 Zgjeruam kufirin për të kapur koeficientët 5.00 - 8.99 ($39.99) 🔥
     koef_rez_sakt = round(random.uniform(5.00, 18.00), 2)
         
     return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
