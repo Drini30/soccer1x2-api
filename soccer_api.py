@@ -37,8 +37,11 @@ def analizo_ndeshjen_premium(ekipi_1, ekipi_2):
     elif totali_gola == 0: hint = "Ndeshje shumë e mbyllur, kujdes me golat."
     elif gola_1 > 0 and gola_2 > 0: hint = "Të dyja ekipet kanë potencial për të shënuar."
     else: hint = "Pritet dominim në fushë, nën 3 gola."
+    
+    # Ruajmë rezultatin e saktë fshehurazi për ta "shitur"
+    rezultati_sakt = f"{gola_1}-{gola_2}"
         
-    return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint, besueshmeria
+    return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint, besueshmeria, rezultati_sakt
 
 LIGAT_KRYESORE = [
     "World Cup", "Euro Championship", "Champions League", "Europa League",
@@ -73,8 +76,6 @@ def merr_parashikimet():
                 
                 ekipi_1_id = n["teams"]["home"]["id"]
                 ekipi_2_id = n["teams"]["away"]["id"]
-                
-                # Heqim thonjëzat për të mos prishur JavaScript-in në frontend
                 ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
                 ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
                 
@@ -92,7 +93,7 @@ def merr_parashikimet():
                 gola_2 = n["goals"]["away"]
                 rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else ""
                 
-                koef_1, koef_x, koef_2, parashikimi_ai, hint_ai, besueshmeria = analizo_ndeshjen_premium(ekipi_1, ekipi_2)
+                koef_1, koef_x, koef_2, parashikimi_ai, hint_ai, besueshmeria, rez_sakt = analizo_ndeshjen_premium(ekipi_1, ekipi_2)
                 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja,
@@ -112,6 +113,7 @@ def merr_parashikimet():
                     "parashikimi": parashikimi_ai,
                     "hint": hint_ai,
                     "besueshmeria": besueshmeria,
+                    "rezultati_sakt": rez_sakt,
                     "is_premium": False
                 })
         
@@ -159,29 +161,34 @@ def merr_historine(team_id: int):
                 ht_str = f"{ht_h}-{ht_a}" if ht_h is not None else "?-?"
                 ft_str = f"{ft_h}-{ft_a}" if ft_h is not None else "?-?"
                 
-                if ft_h is not None and ft_a is not None:
-                    if ft_h > ft_a: rez_1x2 = "1"
-                    elif ft_h == ft_a: rez_1x2 = "X"
-                    else: rez_1x2 = "2"
-                else: rez_1x2 = "?"
-                    
+                # Gjenerimi i 3 koeficientëve (të përafërt për të shkuarën)
                 random.seed(n["fixture"]["id"])
-                koef = f"{round(random.uniform(1.50, 4.00), 2)}"
-                data_sakte = datetime.strptime(n["fixture"]["date"][:10], "%Y-%m-%d").strftime("%d/%m/%y")
+                koef_1 = f"{round(random.uniform(1.40, 2.90), 2)}"
+                koef_x = f"{round(random.uniform(2.80, 3.80), 2)}"
+                koef_2 = f"{round(random.uniform(1.90, 4.20), 2)}"
+                
+                try:
+                    data_obj = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S")
+                    data_sakte = data_obj.strftime("%d/%m/%y")
+                    ora_sakte = data_obj.strftime("%H:%M")
+                except:
+                    data_sakte = "N/A"
+                    ora_sakte = "N/A"
                 
                 rezultati_hist.append({
                     "data": data_sakte,
+                    "ora": ora_sakte,
                     "ndeshja": f"{home_name} vs {away_name}",
                     "ht": ht_str,
                     "ft": ft_str,
-                    "rezultati": rez_1x2,
-                    "koeficienti": koef
+                    "koef_1": koef_1,
+                    "koef_x": koef_x,
+                    "koef_2": koef_2
                 })
         return {"mesazhi": "Sukses", "historia": rezultati_hist}
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e)}
 
-# Rruga e RE për të gjitha koeficientët shtesë
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
     random.seed(match_id)
