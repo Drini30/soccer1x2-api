@@ -4,7 +4,7 @@ from datetime import datetime
 import requests
 import random
 
-app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës dhe Ndeshjet LIVE")
+app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës Dhe Ndeshjet LIVE")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,33 +17,32 @@ app.add_middleware(
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
-def analizo_ndeshjen_premium(ekipi_1, ekipi_2):
-    çelësi = f"{ekipi_1}-{ekipi_2}-{datetime.utcnow().strftime('%Y-%m-%d')}"
+def analizo_ndeshjen_premium(ekipi_1, ekipi_2, date_target):
+    çelësi = f"{ekipi_1}-{ekipi_2}-{date_target}"
     random.seed(çelësi)
     koef_1 = round(random.uniform(1.40, 3.20), 2)
     koef_x = round(random.uniform(2.90, 4.20), 2)
     koef_2 = round(random.uniform(1.80, 4.50), 2)
     besueshmeria = round(random.uniform(60.0, 99.0), 1)
     
-    gola_1 = random.choices([0, 1, 2, 3], weights=[30, 40, 20, 10])[0]
-    gola_2 = random.choices([0, 1, 2, 3], weights=[40, 35, 20, 5])[0]
+    gola_1 = random.choices([0, 1, 2, 3, 4], weights=[30, 35, 20, 10, 5])[0]
+    gola_2 = random.choices([0, 1, 2, 3, 4], weights=[35, 35, 20, 8, 2])[0]
     totali_gola = gola_1 + gola_2
     
     if gola_1 > gola_2: parashikimi = "1"
     elif gola_1 == gola_2: parashikimi = "X"
     else: parashikimi = "2"
         
-    if totali_gola > 2.5: hint = "Ndeshje e hapur, priten mbi 2 gola total."
-    elif totali_gola == 0: hint = "Ndeshje shumë e mbyllur, kujdes me golat."
-    elif gola_1 > 0 and gola_2 > 0: hint = "Të dyja ekipet kanë potencial për të shënuar."
-    else: hint = "Pritet dominim në fushë, nën 3 gola."
+    # Përdorim ID në vend të tekstit për t'u përkthyer saktë në frontend
+    if totali_gola > 2.5: hint_id = 1
+    elif totali_gola == 0: hint_id = 2
+    elif gola_1 > 0 and gola_2 > 0: hint_id = 3
+    else: hint_id = 4
     
     rezultati_sakt = f"{gola_1}-{gola_2}"
-    
-    # 🔥 GJENERIMI I KOEFICIENTIT PREMIUM PËR REZULTATIN E SAKTË
     koef_rez_sakt = round(random.uniform(6.50, 24.00), 2)
         
-    return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
+    return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
 LIGAT_KRYESORE = [
     "World Cup", "Euro Championship", "Champions League", "Europa League",
@@ -58,12 +57,18 @@ def merr_rendesine_e_liges(emri_liges):
     return 999 
 
 @app.get("/api/skedina")
-def merr_parashikimet():
-    data_target = datetime.utcnow().strftime('%Y-%m-%d')
+def merr_parashikimet(date: str = None):
+    # Lexojmë datën nga kalendari i përdoruesit, ose marrim të sotmen
+    if date:
+        data_target = date
+    else:
+        data_target = datetime.utcnow().strftime('%Y-%m-%d')
+        
     url = "https://v3.football.api-sports.io/fixtures"
     
     try:
-        response = requests.get(url, headers=HEADERS, params={"date": data_target})
+        # Shtojmë timezone "Europe/Tirane" për të mos humbur asnjë ndeshje aziatike/australiane të mëngjesit
+        response = requests.get(url, headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"})
         te_dhenat = response.json()
         
         if "errors" in te_dhenat and te_dhenat["errors"]:
@@ -90,13 +95,13 @@ def merr_parashikimet():
                     ora_sakte = "N/A"
                 
                 statusi_kod = n["fixture"]["status"]["short"]
-                minuta_loje = n["fixture"]["status"]["elapsed"] or 0 # 🔥 Marrja e minutave Live nga API
+                minuta_loje = n["fixture"]["status"]["elapsed"] or 0
                 
                 gola_1 = n["goals"]["home"]
                 gola_2 = n["goals"]["away"]
                 rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else "0 - 0"
                 
-                koef_1, koef_x, koef_2, parashikimi_ai, hint_ai, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(ekipi_1, ekipi_2)
+                koef_1, koef_x, koef_2, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(ekipi_1, ekipi_2, data_target)
                 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja,
@@ -115,10 +120,10 @@ def merr_parashikimet():
                     "koef_x": koef_x,
                     "koef_2": koef_2,
                     "parashikimi": parashikimi_ai,
-                    "hint": hint_ai,
+                    "hint_id": hint_id,
                     "besueshmeria": besueshmeria,
                     "rezultati_sakt": rez_sakt,
-                    "koef_rez_sakt": koef_rez_sakt, # 🔥 Shtuar në objekt
+                    "koef_rez_sakt": koef_rez_sakt,
                     "is_premium": False
                 })
         
@@ -196,22 +201,55 @@ def merr_koeficientet_shtese(match_id: str):
     return {
         "mesazhi": "Sukses",
         "koeficientet": [
-            {"tregu": "Shansi i Dyfishtë", "opsionet": [
-                {"emer": "1X", "koef": round(random.uniform(1.1, 1.5), 2)}, 
-                {"emer": "12", "koef": round(random.uniform(1.2, 1.4), 2)}, 
-                {"emer": "X2", "koef": round(random.uniform(1.1, 1.8), 2)}
+            {"tregu_id": "ht_result", "opsionet": [
+                {"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, 
+                {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, 
+                {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}
             ]},
-            {"tregu": "Gola Mbi/Nën 2.5", "opsionet": [
-                {"emer": "Mbi 2.5", "koef": round(random.uniform(1.5, 2.2), 2)}, 
-                {"emer": "Nën 2.5", "koef": round(random.uniform(1.6, 2.1), 2)}
+            {"tregu_id": "double_chance", "opsionet": [
+                {"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, 
+                {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, 
+                {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}
             ]},
-            {"tregu": "Të Dyja Ekipet Shënojnë (GG/NG)", "opsionet": [
-                {"emer": "Po (GG)", "koef": round(random.uniform(1.6, 2.0), 2)}, 
-                {"emer": "Jo (NG)", "koef": round(random.uniform(1.7, 2.2), 2)}
+            {"tregu_id": "ht_ft", "opsionet": [
+                {"emer": "1/1", "koef": round(random.uniform(2.50, 4.50), 2)}, 
+                {"emer": "X/1", "koef": round(random.uniform(4.00, 7.50), 2)}, 
+                {"emer": "2/2", "koef": round(random.uniform(3.50, 6.50), 2)},
+                {"emer": "X/X", "koef": round(random.uniform(4.50, 6.00), 2)}
+            ]},
+            {"tregu_id": "goals_25", "opsionet": [
+                {"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, 
+                {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}
+            ]},
+            {"tregu_id": "goals_35_65", "opsionet": [
+                {"emer": "Mbi 3.5", "koef": round(random.uniform(2.30, 4.50), 2)}, 
+                {"emer": "Nën 3.5", "koef": round(random.uniform(1.20, 1.55), 2)},
+                {"emer": "Mbi 6.5", "koef": round(random.uniform(6.50, 16.00), 2)}, 
+                {"emer": "Nën 6.5", "koef": round(random.uniform(1.01, 1.08), 2)}
+            ]},
+            {"tregu_id": "btts", "opsionet": [
+                {"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, 
+                {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}
+            ]},
+            {"tregu_id": "exact_goals", "opsionet": [
+                {"emer": "0", "koef": round(random.uniform(7.00, 12.00), 2)}, 
+                {"emer": "1", "koef": round(random.uniform(4.00, 6.50), 2)},
+                {"emer": "2", "koef": round(random.uniform(3.20, 4.50), 2)},
+                {"emer": "3+", "koef": round(random.uniform(2.00, 3.80), 2)}
+            ]},
+            {"tregu_id": "odd_even", "opsionet": [
+                {"emer": "Tek (Odd)", "koef": round(random.uniform(1.85, 1.95), 2)}, 
+                {"emer": "Çift (Even)", "koef": round(random.uniform(1.85, 1.95), 2)}
+            ]},
+            {"tregu_id": "correct_score", "opsionet": [
+                {"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, 
+                {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)},
+                {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, 
+                {"emer": "0-0", "koef": round(random.uniform(7.00, 12.00), 2)},
+                {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}, 
+                {"emer": "0-1", "koef": round(random.uniform(7.50, 15.00), 2)},
+                {"emer": "1-2", "koef": round(random.uniform(8.50, 17.00), 2)}, 
+                {"emer": "Tjetër", "koef": round(random.uniform(4.50, 7.50), 2)}
             ]}
         ]
     }
-
-@app.get("/api/live")
-def merr_ndeshjet_live():
-    return {"mesazhi": "Sukses", "ndeshjet": []}
