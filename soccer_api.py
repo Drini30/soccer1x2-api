@@ -38,10 +38,12 @@ def analizo_ndeshjen_premium(ekipi_1, ekipi_2):
     elif gola_1 > 0 and gola_2 > 0: hint = "Të dyja ekipet kanë potencial për të shënuar."
     else: hint = "Pritet dominim në fushë, nën 3 gola."
     
-    # Ruajmë rezultatin e saktë fshehurazi për ta "shitur"
     rezultati_sakt = f"{gola_1}-{gola_2}"
+    
+    # 🔥 GJENERIMI I KOEFICIENTIT PREMIUM PËR REZULTATIN E SAKTË
+    koef_rez_sakt = round(random.uniform(6.50, 24.00), 2)
         
-    return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint, besueshmeria, rezultati_sakt
+    return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
 LIGAT_KRYESORE = [
     "World Cup", "Euro Championship", "Champions League", "Europa League",
@@ -73,7 +75,6 @@ def merr_parashikimet():
             for n in te_dhenat["response"]:
                 id_ndeshja = str(n["fixture"]["id"])
                 emri_liges = f"{n['league']['country']} - {n['league']['name']}"
-                
                 ekipi_1_id = n["teams"]["home"]["id"]
                 ekipi_2_id = n["teams"]["away"]["id"]
                 ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
@@ -89,11 +90,13 @@ def merr_parashikimet():
                     ora_sakte = "N/A"
                 
                 statusi_kod = n["fixture"]["status"]["short"]
+                minuta_loje = n["fixture"]["status"]["elapsed"] or 0 # 🔥 Marrja e minutave Live nga API
+                
                 gola_1 = n["goals"]["home"]
                 gola_2 = n["goals"]["away"]
-                rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else ""
+                rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else "0 - 0"
                 
-                koef_1, koef_x, koef_2, parashikimi_ai, hint_ai, besueshmeria, rez_sakt = analizo_ndeshjen_premium(ekipi_1, ekipi_2)
+                koef_1, koef_x, koef_2, parashikimi_ai, hint_ai, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(ekipi_1, ekipi_2)
                 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja,
@@ -106,6 +109,7 @@ def merr_parashikimet():
                     "data": data_sakte,
                     "ora": ora_sakte,
                     "statusi": statusi_kod,
+                    "minuta": minuta_loje,
                     "rezultati": rezultati,
                     "koef_1": koef_1,
                     "koef_x": koef_x,
@@ -114,6 +118,7 @@ def merr_parashikimet():
                     "hint": hint_ai,
                     "besueshmeria": besueshmeria,
                     "rezultati_sakt": rez_sakt,
+                    "koef_rez_sakt": koef_rez_sakt, # 🔥 Shtuar në objekt
                     "is_premium": False
                 })
         
@@ -148,7 +153,6 @@ def merr_historine(team_id: int):
             for n in te_dhenat["response"]:
                 home_name = n["teams"]["home"]["name"]
                 away_name = n["teams"]["away"]["name"]
-                
                 score = n.get("score", {})
                 ht = score.get("halftime", {})
                 ft = score.get("fulltime", {})
@@ -158,26 +162,23 @@ def merr_historine(team_id: int):
                 ft_h = ft.get("home") if ft else None
                 ft_a = ft.get("away") if ft else None
                 
-                ht_str = f"{ht_h}-{ht_a}" if ht_h is not None else "?-?"
-                ft_str = f"{ft_h}-{ft_a}" if ft_h is not None else "?-?"
+                ht_str = f"{ht_h}-{ht_a}" if ht_h is not None else "0-0"
+                ft_str = f"{ft_h}-{ft_a}" if ft_h is not None else "0-0"
                 
-                # Gjenerimi i 3 koeficientëve (të përafërt për të shkuarën)
                 random.seed(n["fixture"]["id"])
                 koef_1 = f"{round(random.uniform(1.40, 2.90), 2)}"
                 koef_x = f"{round(random.uniform(2.80, 3.80), 2)}"
                 koef_2 = f"{round(random.uniform(1.90, 4.20), 2)}"
                 
                 try:
-                    data_obj = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S")
+                    data_obj = datetime.strptime(n["fixture"]["date"][:10], "%Y-%m-%d")
                     data_sakte = data_obj.strftime("%d/%m/%y")
-                    ora_sakte = data_obj.strftime("%H:%M")
                 except:
                     data_sakte = "N/A"
-                    ora_sakte = "N/A"
                 
                 rezultati_hist.append({
                     "data": data_sakte,
-                    "ora": ora_sakte,
+                    "ora": "FT",
                     "ndeshja": f"{home_name} vs {away_name}",
                     "ht": ht_str,
                     "ft": ft_str,
