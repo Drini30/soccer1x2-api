@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import requests
 import random
-import asyncio
 
 app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës Dhe Ndeshjet LIVE")
 
@@ -20,7 +19,7 @@ HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS TËNDE SUPABASE 🔥
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
-SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y"
+SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y" # <-- ÇELËSI YT ËSHTË VENDOSUR KËTU!
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -29,20 +28,20 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation"
 }
 
-# Funksioni super i sigurt për sfondin
-def ruaj_ne_sfond(te_dhenat_per_db):
-    if SUPABASE_ANON_KEY != "VENDOS_KODIN_TËND_KËTU" and te_dhenat_per_db:
-        # Përpiqemi të mos dërgojmë gjithçka përnjëherë që të mos bllokohet
-        for pako in te_dhenat_per_db[:10]: # Ruajmë vetëm 10 të parat për test
-            try:
+def ruaj_ne_sfond(paketa_per_db):
+    """ Dërgon të dhënat në Databazë në sfond pa bllokuar aplikacionin """
+    if paketa_per_db:
+        try:
+            # Dërgojmë vetëm një numër të caktuar për të mos bllokuar serverin falas
+            for pako in paketa_per_db[:15]:
+                # Timeout 2 sekonda, nese s'pergjigjet, e harrojme dhe nuk i prishim pune front-endit
                 requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=2)
-            except Exception as e:
-                print(f"Gabim në sfond: {e}")
-                break # Nëse ka gabim, ndalojmë për të mos mbingarkuar serverin
+        except:
+            pass # Injoro cdo gabim te Supabase qe te mos ngrije aplikacioni
 
 @app.get("/")
 def root():
-    return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe gati!"}
+    return {"status": "online", "mesazhi": "Soccer1X2 API është aktiv dhe i lidhur me Supabase!"}
 
 def llogarit_intuiten_ekipit(ekipi, date_target, is_home):
     random.seed(f"form-{ekipi}-{date_target}")
@@ -95,24 +94,33 @@ def analizo_ndeshjen_premium(match_id, ekipi_1, ekipi_2, date_target):
         
     return f"{koef_1:.2f}", f"{koef_x:.2f}", f"{koef_2:.2f}", parashikimi, hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
+LIGAT_KRYESORE = [
+    "World Cup", "Euro Championship", "Champions League", "Europa League",
+    "England - Premier League", "Spain - La Liga", "Italy - Serie A",
+    "Germany - Bundesliga", "France - Ligue 1", "World - Friendlies",
+    "World - UEFA Nations League", "Albania - Superliga"
+]
+
+def merr_rendesine_e_liges(emri_liges):
+    for i, liga_top in enumerate(LIGAT_KRYESORE):
+        if liga_top.lower() in emri_liges.lower(): return i 
+    return 999 
+
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
-    if date:
-        data_target = date
-    else:
-        data_target = datetime.utcnow().strftime('%Y-%m-%d')
-        
+    data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
     url = "https://v3.football.api-sports.io/fixtures"
     
     try:
-        response = requests.get(url, headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"})
+        # Pyesim API-Sports me timeout te sigurt
+        response = requests.get(url, headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=8)
         te_dhenat = response.json()
         
         if "errors" in te_dhenat and te_dhenat["errors"]:
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
         lista_e_te_gjithave = []
-        paketa_per_databazen = [] 
+        paketa_per_db = []
         
         if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
             for n in te_dhenat["response"]:
@@ -123,15 +131,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
                 ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
                 
-                data_ora_iso = n["fixture"]["date"]
-                try:
-                    data_obj = datetime.strptime(data_ora_iso[:19], "%Y-%m-%dT%H:%M:%S")
-                    data_sakte = data_obj.strftime("%d/%m/%Y")
-                    ora_sakte = data_obj.strftime("%H:%M")
-                except:
-                    data_sakte = data_target
-                    ora_sakte = "N/A"
-                
                 statusi_kod = n["fixture"]["status"]["short"]
                 minuta_loje = n["fixture"]["status"]["elapsed"] or 0
                 
@@ -141,6 +140,15 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 
                 koef_1, koef_x, koef_2, parashikimi_ai, hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, data_target)
                 
+                data_sakte = data_target
+                ora_sakte = "N/A"
+                if n["fixture"]["date"]:
+                    try:
+                        d_obj = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S")
+                        data_sakte = d_obj.strftime("%d/%m/%Y")
+                        ora_sakte = d_obj.strftime("%H:%M")
+                    except: pass
+
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_emri": emri_liges, "ekipi_1_id": ekipi_1_id, "ekipi_2_id": ekipi_2_id,
                     "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}",
@@ -151,17 +159,11 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
                 })
                 
-                # Shtojmë të dhënat në pako
-                paketa_per_databazen.append({
-                    "match_id": int(id_ndeshja),
-                    "ekipi_1": ekipi_1,
-                    "ekipi_2": ekipi_2,
-                    "predicted_score": rez_sakt
-                })
+                paketa_per_db.append({"match_id": int(id_ndeshja), "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "predicted_score": rez_sakt})
         
-        # Super e rëndësishme: Dërgo në sfond vetëm nëse aplikacioni ngarkohet OK
-        if paketa_per_databazen:
-            background_tasks.add_task(ruaj_ne_sfond, paketa_per_databazen)
+        # SHTO DETRËN NË SFOND
+        if paketa_per_db:
+            background_tasks.add_task(ruaj_ne_sfond, paketa_per_db)
         
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
         for i in range(min(5, len(lista_e_te_gjithave))):
@@ -173,11 +175,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
             if liga not in ligat_grup: ligat_grup[liga] = []
             ligat_grup[liga].append(ndeshja)
 
-        lista_finale = []
-        for liga, ndeshjet_e_liges in ligat_grup.items():
-            lista_finale.append({"liga": liga, "ndeshjet": ndeshjet_e_liges})
-            
-        lista_finale = sorted(lista_finale, key=lambda x: (x["liga"]))
+        lista_finale = [{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()]
+        lista_finale = sorted(lista_finale, key=lambda x: merr_rendesine_e_liges(x["liga"]))
+        
         return {"mesazhi": "Sukses", "skedina_grupuar": lista_finale}
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
