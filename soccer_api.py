@@ -33,7 +33,6 @@ def analizo_ndeshjen_premium(ekipi_1, ekipi_2, date_target):
     elif gola_1 == gola_2: parashikimi = "X"
     else: parashikimi = "2"
         
-    # Përdorim ID në vend të tekstit për t'u përkthyer saktë në frontend
     if totali_gola > 2.5: hint_id = 1
     elif totali_gola == 0: hint_id = 2
     elif gola_1 > 0 and gola_2 > 0: hint_id = 3
@@ -58,7 +57,6 @@ def merr_rendesine_e_liges(emri_liges):
 
 @app.get("/api/skedina")
 def merr_parashikimet(date: str = None):
-    # Lexojmë datën nga kalendari i përdoruesit, ose marrim të sotmen
     if date:
         data_target = date
     else:
@@ -67,7 +65,6 @@ def merr_parashikimet(date: str = None):
     url = "https://v3.football.api-sports.io/fixtures"
     
     try:
-        # Shtojmë timezone "Europe/Tirane" për të mos humbur asnjë ndeshje aziatike/australiane të mëngjesit
         response = requests.get(url, headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"})
         te_dhenat = response.json()
         
@@ -145,6 +142,58 @@ def merr_parashikimet(date: str = None):
         return {"mesazhi": "Sukses", "skedina_grupuar": lista_finale}
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
+
+# 🔥 API I RI: DETAJET E NDESHJES (STATISTIKAT & EVENTET) 🔥
+@app.get("/api/detajet/{match_id}")
+def merr_detajet_ndeshjes(match_id: int):
+    url = "https://v3.football.api-sports.io/fixtures"
+    try:
+        response = requests.get(url, headers=HEADERS, params={"id": match_id})
+        te_dhenat = response.json()
+        
+        if not te_dhenat.get("response"):
+            return {"mesazhi": "Nuk u gjetën të dhëna"}
+            
+        ndeshja = te_dhenat["response"][0]
+        events = ndeshja.get("events", [])
+        statistics = ndeshja.get("statistics", [])
+        
+        # Përpunimi i Eventeve (Kartonat, Golat, etj.)
+        lista_evente = []
+        for ev in events:
+            lista_evente.append({
+                "koha": f"{ev['time']['elapsed']}'",
+                "ekipi": ev['team']['name'],
+                "lojtari": ev['player']['name'] if ev['player']['name'] else "",
+                "lloj": ev['type'],
+                "detaj": ev['detail']
+            })
+        
+        # Përpunimi i Statistikave (% Topit, Goditjet)
+        stats_formated = {}
+        if statistics and len(statistics) >= 2:
+            team1 = statistics[0]['team']['name']
+            team2 = statistics[1]['team']['name']
+            stats_formated = {"ekipi_1": team1, "ekipi_2": team2, "statistikat": []}
+            
+            if statistics[0].get('statistics') and statistics[1].get('statistics'):
+                for i in range(len(statistics[0]['statistics'])):
+                    stat_name = statistics[0]['statistics'][i]['type']
+                    val1 = statistics[0]['statistics'][i]['value']
+                    val2 = statistics[1]['statistics'][i]['value']
+                    
+                    if val1 is None: val1 = 0
+                    if val2 is None: val2 = 0
+                    
+                    stats_formated["statistikat"].append({
+                        "lloji": stat_name,
+                        "vler_1": val1,
+                        "vler_2": val2
+                    })
+
+        return {"mesazhi": "Sukses", "evente": lista_evente, "statistika": stats_formated}
+    except Exception as e:
+        return {"mesazhi": "Gabim", "detaje": str(e)}
 
 @app.get("/api/historia/{team_id}")
 def merr_historine(team_id: int):
@@ -253,3 +302,7 @@ def merr_koeficientet_shtese(match_id: str):
             ]}
         ]
     }
+
+@app.get("/api/live")
+def merr_ndeshjet_live():
+    return {"mesazhi": "Sukses", "ndeshjet": []}
