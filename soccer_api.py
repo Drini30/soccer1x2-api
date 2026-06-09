@@ -143,7 +143,6 @@ def merr_parashikimet(date: str = None):
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
 
-# 🔥 API I RI: DETAJET E NDESHJES (STATISTIKAT & EVENTET) 🔥
 @app.get("/api/detajet/{match_id}")
 def merr_detajet_ndeshjes(match_id: int):
     url = "https://v3.football.api-sports.io/fixtures"
@@ -158,38 +157,36 @@ def merr_detajet_ndeshjes(match_id: int):
         events = ndeshja.get("events", [])
         statistics = ndeshja.get("statistics", [])
         
-        # Përpunimi i Eventeve (Kartonat, Golat, etj.)
         lista_evente = []
         for ev in events:
-            lista_evente.append({
-                "koha": f"{ev['time']['elapsed']}'",
-                "ekipi": ev['team']['name'],
-                "lojtari": ev['player']['name'] if ev['player']['name'] else "",
-                "lloj": ev['type'],
-                "detaj": ev['detail']
-            })
+            if ev['type'] in ['Goal', 'Card']:
+                lista_evente.append({
+                    "koha": f"{ev['time']['elapsed']}'",
+                    "ekipi": ev['team']['name'],
+                    "lojtari": ev['player']['name'] if ev['player']['name'] else "Lojtar",
+                    "lloj": ev['type'],
+                    "detaj": ev['detail']
+                })
         
-        # Përpunimi i Statistikave (% Topit, Goditjet)
         stats_formated = {}
         if statistics and len(statistics) >= 2:
             team1 = statistics[0]['team']['name']
             team2 = statistics[1]['team']['name']
             stats_formated = {"ekipi_1": team1, "ekipi_2": team2, "statistikat": []}
             
+            kriteret = ["Shots on Goal", "Ball Possession"]
+            
             if statistics[0].get('statistics') and statistics[1].get('statistics'):
                 for i in range(len(statistics[0]['statistics'])):
                     stat_name = statistics[0]['statistics'][i]['type']
-                    val1 = statistics[0]['statistics'][i]['value']
-                    val2 = statistics[1]['statistics'][i]['value']
-                    
-                    if val1 is None: val1 = 0
-                    if val2 is None: val2 = 0
-                    
-                    stats_formated["statistikat"].append({
-                        "lloji": stat_name,
-                        "vler_1": val1,
-                        "vler_2": val2
-                    })
+                    if stat_name in kriteret:
+                        val1 = statistics[0]['statistics'][i]['value']
+                        val2 = statistics[1]['statistics'][i]['value']
+                        if val1 is None: val1 = 0
+                        if val2 is None: val2 = 0
+                        stats_formated["statistikat"].append({
+                            "lloji": stat_name, "vler_1": val1, "vler_2": val2
+                        })
 
         return {"mesazhi": "Sukses", "evente": lista_evente, "statistika": stats_formated}
     except Exception as e:
@@ -231,14 +228,8 @@ def merr_historine(team_id: int):
                     data_sakte = "N/A"
                 
                 rezultati_hist.append({
-                    "data": data_sakte,
-                    "ora": "FT",
-                    "ndeshja": f"{home_name} vs {away_name}",
-                    "ht": ht_str,
-                    "ft": ft_str,
-                    "koef_1": koef_1,
-                    "koef_x": koef_x,
-                    "koef_2": koef_2
+                    "data": data_sakte, "ora": "FT", "ndeshja": f"{home_name} vs {away_name}",
+                    "ht": ht_str, "ft": ft_str, "koef_1": koef_1, "koef_x": koef_x, "koef_2": koef_2
                 })
         return {"mesazhi": "Sukses", "historia": rezultati_hist}
     except Exception as e:
@@ -250,56 +241,15 @@ def merr_koeficientet_shtese(match_id: str):
     return {
         "mesazhi": "Sukses",
         "koeficientet": [
-            {"tregu_id": "ht_result", "opsionet": [
-                {"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, 
-                {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, 
-                {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}
-            ]},
-            {"tregu_id": "double_chance", "opsionet": [
-                {"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, 
-                {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, 
-                {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}
-            ]},
-            {"tregu_id": "ht_ft", "opsionet": [
-                {"emer": "1/1", "koef": round(random.uniform(2.50, 4.50), 2)}, 
-                {"emer": "X/1", "koef": round(random.uniform(4.00, 7.50), 2)}, 
-                {"emer": "2/2", "koef": round(random.uniform(3.50, 6.50), 2)},
-                {"emer": "X/X", "koef": round(random.uniform(4.50, 6.00), 2)}
-            ]},
-            {"tregu_id": "goals_25", "opsionet": [
-                {"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, 
-                {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}
-            ]},
-            {"tregu_id": "goals_35_65", "opsionet": [
-                {"emer": "Mbi 3.5", "koef": round(random.uniform(2.30, 4.50), 2)}, 
-                {"emer": "Nën 3.5", "koef": round(random.uniform(1.20, 1.55), 2)},
-                {"emer": "Mbi 6.5", "koef": round(random.uniform(6.50, 16.00), 2)}, 
-                {"emer": "Nën 6.5", "koef": round(random.uniform(1.01, 1.08), 2)}
-            ]},
-            {"tregu_id": "btts", "opsionet": [
-                {"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, 
-                {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}
-            ]},
-            {"tregu_id": "exact_goals", "opsionet": [
-                {"emer": "0", "koef": round(random.uniform(7.00, 12.00), 2)}, 
-                {"emer": "1", "koef": round(random.uniform(4.00, 6.50), 2)},
-                {"emer": "2", "koef": round(random.uniform(3.20, 4.50), 2)},
-                {"emer": "3+", "koef": round(random.uniform(2.00, 3.80), 2)}
-            ]},
-            {"tregu_id": "odd_even", "opsionet": [
-                {"emer": "Tek (Odd)", "koef": round(random.uniform(1.85, 1.95), 2)}, 
-                {"emer": "Çift (Even)", "koef": round(random.uniform(1.85, 1.95), 2)}
-            ]},
-            {"tregu_id": "correct_score", "opsionet": [
-                {"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, 
-                {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)},
-                {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, 
-                {"emer": "0-0", "koef": round(random.uniform(7.00, 12.00), 2)},
-                {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}, 
-                {"emer": "0-1", "koef": round(random.uniform(7.50, 15.00), 2)},
-                {"emer": "1-2", "koef": round(random.uniform(8.50, 17.00), 2)}, 
-                {"emer": "Tjetër", "koef": round(random.uniform(4.50, 7.50), 2)}
-            ]}
+            {"tregu_id": "ht_result", "opsionet": [{"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}]},
+            {"tregu_id": "double_chance", "opsionet": [{"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}]},
+            {"tregu_id": "ht_ft", "opsionet": [{"emer": "1/1", "koef": round(random.uniform(2.50, 4.50), 2)}, {"emer": "X/1", "koef": round(random.uniform(4.00, 7.50), 2)}, {"emer": "2/2", "koef": round(random.uniform(3.50, 6.50), 2)}, {"emer": "X/X", "koef": round(random.uniform(4.50, 6.00), 2)}]},
+            {"tregu_id": "goals_25", "opsionet": [{"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}]},
+            {"tregu_id": "goals_35_65", "opsionet": [{"emer": "Mbi 3.5", "koef": round(random.uniform(2.30, 4.50), 2)}, {"emer": "Nën 3.5", "koef": round(random.uniform(1.20, 1.55), 2)}, {"emer": "Mbi 6.5", "koef": round(random.uniform(6.50, 16.00), 2)}, {"emer": "Nën 6.5", "koef": round(random.uniform(1.01, 1.08), 2)}]},
+            {"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}]},
+            {"tregu_id": "exact_goals", "opsionet": [{"emer": "0", "koef": round(random.uniform(7.00, 12.00), 2)}, {"emer": "1", "koef": round(random.uniform(4.00, 6.50), 2)}, {"emer": "2", "koef": round(random.uniform(3.20, 4.50), 2)}, {"emer": "3+", "koef": round(random.uniform(2.00, 3.80), 2)}]},
+            {"tregu_id": "odd_even", "opsionet": [{"emer": "Tek (Odd)", "koef": round(random.uniform(1.85, 1.95), 2)}, {"emer": "Çift (Even)", "koef": round(random.uniform(1.85, 1.95), 2)}]},
+            {"tregu_id": "correct_score", "opsionet": [{"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)}, {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, {"emer": "0-0", "koef": round(random.uniform(7.00, 12.00), 2)}, {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}, {"emer": "0-1", "koef": round(random.uniform(7.50, 15.00), 2)}, {"emer": "1-2", "koef": round(random.uniform(8.50, 17.00), 2)}, {"emer": "Tjetër", "koef": round(random.uniform(4.50, 7.50), 2)}]}
         ]
     }
 
