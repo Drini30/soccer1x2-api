@@ -41,10 +41,10 @@ class LoginData(BaseModel):
 def regjistro_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
     
-    # 1. Pyesim Supabase nëse ky email ekziston tashmë
+    # 1. Kontrollojmë nëse emaili ekziston në Supabase
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_HEADERS)
     if res.status_code == 200 and len(res.json()) > 0:
-        return {"sukses": False, "mesazhi": "ekziston"} # Ky sinjal nxit UI të nxjerrë "Email is already registered"
+        return {"sukses": False, "mesazhi": "ekziston"}
 
     emri_ndare = data.name.strip().split(" ", 1)
     emri = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
@@ -61,25 +61,25 @@ def regjistro_perdorues(data: LoginData):
         "blerjet": []
     }
     
-    # 2. E RUAJMË NË DATABAZËN REALE TË SUPABASE
+    # 2. E ruajmë në Databazën Reale Supabase
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
     
     if res_insert.status_code in [200, 201, 204]:
         return {"sukses": True, "perdoruesi": user_payload}
     else:
-        return {"sukses": False, "mesazhi": "Gabim në lidhjen me Databazën. Kontrollo tabelën 'users'."}
+        # KJO ËSHTË JETIKE: Kthen gabimin e vërtetë nga Supabase nëse mungon ndonjë kolonë
+        return {"sukses": False, "mesazhi": f"Gabim Databaze: {res_insert.text}"}
 
 @app.post("/api/login")
 def login_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
     
-    # Kërkojmë në Supabase emailin dhe fjalëkalimin ekzakt
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}&password=eq.{data.password}", headers=SUPABASE_HEADERS)
     
     if res.status_code == 200:
         users = res.json()
         if len(users) > 0:
-            return {"sukses": True, "perdoruesi": users[0]} # Login i suksesshëm
+            return {"sukses": True, "perdoruesi": users[0]}
             
     return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
 
@@ -87,7 +87,6 @@ def login_perdorues(data: LoginData):
 def perditeso_perdorues(user_data: dict):
     email = user_data.get("email", "").lower().strip()
     if email:
-        # Kur klienti blen diçka, përditësojmë vetëm fushat financiare në Supabase
         update_payload = {
             "portofoli": user_data.get("portofoli", 0.0),
             "isVip": user_data.get("isVip", False),
