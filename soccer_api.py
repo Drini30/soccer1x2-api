@@ -95,7 +95,37 @@ def llogarit_motivimin(emri_liges):
         return 1.05 
     else: return 1.00 
 
-# 🔥 ALGORITMI I PËRDITËSUAR: MERR KOMANDËN MAKRO TË BLLOFIT NGA LART 🔥
+# 🔥 MOTORRI I RI I GJERNERIMIT TË TEKSTIT DINAMIK DHESHKURTË PËR SECILËN NDESHJE 🔥
+def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof):
+    try: g1, g2 = map(int, rez_sakt.split('-'))
+    except: g1, g2 = 1, 0
+    
+    if eshte_bllof:
+        sq = "⚠️ <b>Faktori Risk (Kurth):</b> Historiku paralajmëron rrezik për Gafë nga favoriti. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë ose Shansi i Dyfishtë kundër favoritit."
+        en = "⚠️ <b>Risk Factor (Trap):</b> Historical data warns of a potential upset. <br><b style='color:#f2cc60;'>Suggestion:</b> Double Chance against the favorite."
+    elif rez_sakt == "0-0":
+        sq = "Mbrojtje ultra-kompakte nga të dyja skuadrat. Luhet me kujdes maksimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> Nën 2.5 gola total."
+        en = "Ultra-compact defenses on both sides. Highly cautious game. <br><b style='color:#f2cc60;'>Suggestion:</b> Under 2.5 total goals."
+    elif g1 == g2:
+        sq = "Skuadra me forca dhe mekanizma të barabartë. Pritet lojë e hapur. <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja ekipet shënojnë (GG) ose Barazim."
+        en = "Evenly matched teams. Open transition play expected. <br><b style='color:#f2cc60;'>Suggestion:</b> Both Teams to Score (GG) or Draw."
+    elif g1 > g2:
+        if (g1 + g2) >= 3:
+            sq = f"Dominim sulmues i <b>{ekipi_1}</b> në shtëpi. Pritet ritëm i lartë dhe gola. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola (xG i lartë)."
+            en = f"Offensive dominance by <b>{ekipi_1}</b>. High tempo and goals expected. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals."
+        else:
+            sq = f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë. Pritet fitore taktike. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola."
+            en = f"<b>{ekipi_1}</b> controls the pitch with solid defense. Tactical win expected. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals."
+    else:
+        if (g1 + g2) >= 3:
+            sq = f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë me kundërsulme të shpejta. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola."
+            en = f"<b>{ekipi_2}</b> excels away with dangerous fast counters. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals."
+        else:
+            sq = f"Ndeshje e vështirë ku <b>{ekipi_2}</b> pritet të menaxhojë lojën me rrezik minimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> Shansi i Dyfishtë X2 ose Nën 2.5 gola."
+            en = f"Tight match where <b>{ekipi_2}</b> is expected to manage low-risk play. <br><b style='color:#f2cc60;'>Suggestion:</b> Double Chance X2 or Under 2.5 goals."
+            
+    return {"sq": sq, "en": en, "de": sq, "fr": en, "it": sq}
+
 def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_str, emri_liges, eshte_ndeshje_bllof):
     try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
     except: k1, kx, k2 = 2.60, 3.10, 2.60 
@@ -119,19 +149,12 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8))
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8))
 
-    # Përmbysja matematikore nëse sistemi Makro e ka zgjedhur si Bllof
     if eshte_ndeshje_bllof and (k1 < 1.60 or k2 < 1.60):
-        if k1 < 1.60:
-            xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
-        else:
-            xg_1, xg_2 = xg_1_baze * 1.95, xg_2_baze * 0.40
-        hint_id = random.choice([5, 6]) 
+        if k1 < 1.60: xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
+        else: xg_1, xg_2 = xg_1_baze * 1.95, xg_2_baze * 0.40
     else:
         xg_1 = xg_1_baze * 1.15 * t1_atk * (1 / t2_def)
         xg_2 = xg_2_baze * 0.90 * t2_atk * (1 / (t1_def * 1.10))
-        if p1_real > 0.65 or p2_real > 0.65: hint_id = 4 
-        elif xg_1 > 1.4 and xg_2 > 1.4: hint_id = 3 
-        else: hint_id = 1
 
     def poisson(lmbda, k): return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
 
@@ -141,25 +164,22 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     for g1 in range(6):
         for g2 in range(6):
             prob_score = poisson(xg_1, g1) * poisson(xg_2, g2)
-            
             if not eshte_ndeshje_bllof:
                 if p1_real > p2_real + 0.15 and g1 <= g2: continue
                 if p2_real > p1_real + 0.15 and g2 <= g1: continue
-            
             if prob_score > max_prob:
                 max_prob = prob_score
                 rezultati_sakt = f"{g1}-{g2}"
     
     koef_rez_sakt = min(40.0, (1 / max_prob) * 0.85) if max_prob > 0 else 10.0
     
-    if eshte_ndeshje_bllof:
-        besueshmeria = round(random.uniform(45.0, 60.5), 1)
-    else:
-        # Për ndeshjet normale, nxjerrim besueshmërinë nga forca e Poisson-it
-        besueshmeria = round(min(99.0, max(65.0, (max(p1_real, p2_real) * 100) + (max_prob * 100))), 1)
+    if eshte_ndeshje_bllof: besueshmeria = round(random.uniform(45.0, 60.5), 1)
+    else: besueshmeria = round(min(99.0, max(65.0, (max(p1_real, p2_real) * 100) + (max_prob * 100))), 1)
     
-    return hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
-
+    # Thërrasim gjeneruesin e tekstit të ri
+    analiza_custom_dict = gjenero_analize_custom(ekipi_1, ekipi_2, rezultati_sakt, eshte_ndeshje_bllof)
+    
+    return analiza_custom_dict, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
@@ -173,7 +193,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         if "errors" in te_dhenat and te_dhenat["errors"]:
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
-        # Tërheqim Koeficientët Bet365
         bet365_odds = {}
         try:
             res_odds = requests.get("https://v3.football.api-sports.io/odds", headers=HEADERS, params={"date": data_target, "bookmaker": 8, "page": 1}, timeout=10)
@@ -193,7 +212,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     except: pass
         except: pass
 
-        # 🔥 HAPI I RI 1: GRUPOJMË NDESHJET PËR LIGË PËR TË LLOGARITUR BLLOFE MAKRO 🔥
         ligat_raw = {}
         if "response" in te_dhenat:
             for n in te_dhenat["response"]:
@@ -203,18 +221,11 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
         lista_e_te_gjithave = []
 
-        # 🔥 HAPI I RI 2: PËRPUNOJMË ÇDO LIGË DUKE I DHËNË QUOTËN 20-30% TË BLLOFEVE 🔥
         for emri_liges, ndeshjet_liges in ligat_raw.items():
             totali_ndeshjeve = len(ndeshjet_liges)
-            
-            # Llogarisim numrin fiks të bllofeve për këtë ligë (20% - 30%)
-            if totali_ndeshjeve > 3:
-                numri_bllofeve = int(totali_ndeshjeve * random.uniform(0.20, 0.30))
-            else:
-                # Nëse ka vetëm 1 ose 2 ndeshje në ligë sot, ka 25% shans të jetë bllof
-                numri_bllofeve = 1 if random.random() < 0.25 else 0
+            if totali_ndeshjeve > 3: numri_bllofeve = int(totali_ndeshjeve * random.uniform(0.20, 0.30))
+            else: numri_bllofeve = 1 if random.random() < 0.25 else 0
 
-            # Zgjedhim në mënyrë rastësore cilat indekse ndeshjesh do jenë bllofet
             indekset_bllof = random.sample(range(totali_ndeshjeve), numri_bllofeve) if numri_bllofeve > 0 else []
 
             for index, n in enumerate(ndeshjet_liges):
@@ -251,10 +262,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                         ora_sakte = d_obj.strftime("%H:%M")
                     except: pass
 
-                # A është kjo ndeshje e zgjedhur për të qenë bllofi i ligës?
                 eshte_bllof = (index in indekset_bllof)
 
-                hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(
+                analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(
                     id_ndeshja, ekipi_1, ekipi_2, koef_1, koef_x, koef_2, emri_liges, eshte_bllof
                 )
 
@@ -265,23 +275,18 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "data": data_sakte, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte,
                     "ora_sakte": ora_sakte, "statusi": statusi_kod, "minuta": minuta_loje, "rezultati": rezultati,
                     "koef_1": koef_1, "koef_x": koef_x, "koef_2": koef_2,
-                    "hint_id": hint_id, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
+                    "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
                 })
         
-        # 🔥 HAPI I RI 3: ZGJEDHJA E NDESHJES SË DITËS DHE VIP 🔥
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
         
         if lista_e_te_gjithave:
-            # 1. Ndeshja Absolutisht Më e Mirë bëhet "Ndeshja e Ditës"
             lista_e_te_gjithave[0]["is_premium"] = True
             lista_e_te_gjithave[0]["ndeshja"] = "🌟 NDESHJA E DITËS: " + lista_e_te_gjithave[0]["ndeshja"]
-            lista_e_te_gjithave[0]["besueshmeria"] = 99.0 # Llogaritet si gati e sigurt
-
-            # 2. Zgjedhim 4 të tjerat për të mbushur listën VIP
+            lista_e_te_gjithave[0]["besueshmeria"] = 99.0 
             for i in range(1, min(5, len(lista_e_te_gjithave))):
                 lista_e_te_gjithave[i]["is_premium"] = True
 
-        # Rigrupimi final për UI
         ligat_grup = {}
         for ndeshja in lista_e_te_gjithave:
             liga = ndeshja.pop("liga_emri")
@@ -290,7 +295,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
         lista_finale = [{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()]
         lista_finale = sorted(lista_finale, key=lambda x: merr_rendesine_e_liges(x["liga"]))
-        
         return {"mesazhi": "Sukses", "skedina_grupuar": lista_finale}
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
@@ -316,11 +320,7 @@ def merr_detajet_ndeshjes(match_id: int):
             if statistics[0].get('statistics') and statistics[1].get('statistics'):
                 for i in range(len(statistics[0]['statistics'])):
                     if statistics[0]['statistics'][i]['type'] in ["Shots on Goal", "Ball Possession"]:
-                        stats_formated["statistikat"].append({
-                            "lloji": statistics[0]['statistics'][i]['type'], 
-                            "vler_1": statistics[0]['statistics'][i]['value'] or 0, 
-                            "vler_2": statistics[1]['statistics'][i]['value'] or 0
-                        })
+                        stats_formated["statistikat"].append({"lloji": statistics[0]['statistics'][i]['type'], "vler_1": statistics[0]['statistics'][i]['value'] or 0, "vler_2": statistics[1]['statistics'][i]['value'] or 0})
         return {"mesazhi": "Sukses", "evente": lista_evente, "statistika": stats_formated}
     except: return {"mesazhi": "Gabim"}
 
@@ -351,17 +351,9 @@ def merr_renditjen(league_id: int, season: int):
         if "response" in data and len(data["response"]) > 0:
             standings = data["response"][0]["league"]["standings"][0]
             for rank in standings:
-                renditja_list.append({
-                    "pozicioni": rank["rank"],
-                    "ekipi": rank["team"]["name"],
-                    "piket": rank["points"],
-                    "ndeshje": rank["all"]["played"],
-                    "gola": f"{rank['all']['goals']['for']}:{rank['all']['goals']['against']}",
-                    "forma": rank["form"]
-                })
+                renditja_list.append({"pozicioni": rank["rank"], "ekipi": rank["team"]["name"], "piket": rank["points"], "ndeshje": rank["all"]["played"], "gola": f"{rank['all']['goals']['for']}:{rank['all']['goals']['against']}", "forma": rank["form"]})
         return {"mesazhi": "Sukses", "renditja": renditja_list}
-    except Exception as e:
-        return {"mesazhi": "Gabim", "renditja": [], "detaje": str(e)}
+    except Exception as e: return {"mesazhi": "Gabim", "renditja": [], "detaje": str(e)}
 
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
@@ -369,58 +361,35 @@ def merr_koeficientet_shtese(match_id: str):
         url = "https://v3.football.api-sports.io/odds"
         res = requests.get(url, headers=HEADERS, params={"fixture": match_id, "bookmaker": 8}, timeout=8)
         data = res.json()
-
         if not data.get("response"):
             random.seed(match_id)
-            return {
-                "mesazhi": "Simuluar",
-                "koeficientet": [
-                    {"tregu_id": "ht_result", "opsionet": [{"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}]},
-                    {"tregu_id": "double_chance", "opsionet": [{"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}]},
-                    {"tregu_id": "goals_25", "opsionet": [{"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}]},
-                    {"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}]},
-                    {"tregu_id": "correct_score", "opsionet": [{"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)}, {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}]}
-                ]
-            }
-
+            return {"mesazhi": "Simuluar", "koeficientet": [{"tregu_id": "ht_result", "opsionet": [{"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}]}, {"tregu_id": "double_chance", "opsionet": [{"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}]}, {"tregu_id": "goals_25", "opsionet": [{"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}]}, {"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}]}, {"tregu_id": "correct_score", "opsionet": [{"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)}, {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}]}]}
         bets = data["response"][0]["bookmakers"][0]["bets"]
         tregjet_rezultat = []
         def get_bet(bet_id): return next((b for b in bets if b["id"] == bet_id), None)
-
         bet_13 = get_bet(13)
-        if bet_13:
-            tregjet_rezultat.append({"tregu_id": "ht_result", "opsionet": [{"emer": v["value"].replace("Home","1").replace("Draw","X").replace("Away","2") + " (HT)", "koef": v["odd"]} for v in bet_13["values"]]})
-
+        if bet_13: tregjet_rezultat.append({"tregu_id": "ht_result", "opsionet": [{"emer": v["value"].replace("Home","1").replace("Draw","X").replace("Away","2") + " (HT)", "koef": v["odd"]} for v in bet_13["values"]]})
         bet_12 = get_bet(12)
-        if bet_12:
-            tregjet_rezultat.append({"tregu_id": "double_chance", "opsionet": [{"emer": v["value"].replace("Home/Draw","1X").replace("Home/Away","12").replace("Draw/Away","X2"), "koef": v["odd"]} for v in bet_12["values"]]})
-
+        if bet_12: tregjet_rezultat.append({"tregu_id": "double_chance", "opsionet": [{"emer": v["value"].replace("Home/Draw","1X").replace("Home/Away","12").replace("Draw/Away","X2"), "koef": v["odd"]} for v in bet_12["values"]]})
         bet_5 = get_bet(5)
         if bet_5:
             ops_gola = []
-            allowed_goals = ["0.5", "1.5", "2.5", "3.5", "4.5", "5.5"]
             for v in bet_5["values"]:
-                for g in allowed_goals:
+                for g in ["0.5", "1.5", "2.5", "3.5", "4.5", "5.5"]:
                     if f"Over {g}" == v["value"]: ops_gola.append({"emer": f"Mbi {g}", "koef": v["odd"]})
                     if f"Under {g}" == v["value"]: ops_gola.append({"emer": f"Nën {g}", "koef": v["odd"]})
             if ops_gola: tregjet_rezultat.append({"tregu_id": "goals_35_65", "opsionet": ops_gola})
-
         bet_8 = get_bet(8)
-        if bet_8:
-            tregjet_rezultat.append({"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)" if v["value"]=="Yes" else "Jo (NG)", "koef": v["odd"]} for v in bet_8["values"]]})
-
+        if bet_8: tregjet_rezultat.append({"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)" if v["value"]=="Yes" else "Jo (NG)", "koef": v["odd"]} for v in bet_8["values"]]})
         bet_10 = get_bet(10)
         if bet_10:
             ops_score = []
-            pop_scores = ["1:0", "2:0", "2:1", "3:0", "3:1", "3:2", "4:0", "4:1", "4:2", "0:0", "1:1", "2:2", "3:3", "0:1", "0:2", "1:2", "0:3", "1:3", "2:3", "0:4", "1:4"]
             for v in bet_10["values"]:
-                if v["value"] in pop_scores:
+                if v["value"] in ["1:0", "2:0", "2:1", "3:0", "3:1", "3:2", "4:0", "4:1", "4:2", "0:0", "1:1", "2:2", "3:3", "0:1", "0:2", "1:2", "0:3", "1:3", "2:3", "0:4", "1:4"]:
                     ops_score.append({"emer": v["value"].replace(":", "-"), "koef": v["odd"]})
             if ops_score: tregjet_rezultat.append({"tregu_id": "correct_score", "opsionet": ops_score})
-
         return {"mesazhi": "Sukses", "koeficientet": tregjet_rezultat}
-    except Exception as e:
-        return {"mesazhi": "Gabim", "detaje": str(e), "koeficientet": []}
+    except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e), "koeficientet": []}
 
 @app.get("/api/live")
 def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
