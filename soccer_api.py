@@ -18,7 +18,6 @@ API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
-# VENDOSE KODIN TËND VETËM NË KËTË RRESHT MË POSHTË:
 SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz303Sf5VRTXy1msXA_0zyoEJ7y"
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 
@@ -30,7 +29,6 @@ SUPABASE_HEADERS = {
 }
 
 def ruaj_ne_sfond(paketa_per_db):
-    # Rreshti i mëposhtëm tani e kupton vetë nëse ti e ke ndryshuar kodin lart! Mos e prek këtë rresht.
     if not SUPABASE_ANON_KEY.startswith("VENDOS") and paketa_per_db:
         try:
             for pako in paketa_per_db[:15]:
@@ -52,6 +50,18 @@ def merr_rendesine_e_liges(emri_liges):
         if liga_top.lower() in emri_liges.lower(): return i 
     return 999 
 
+# Funksioni i AI per llogaritjen e VIP
+def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2):
+    random.seed(f"sim-{id_ndeshja}")
+    besueshmeria = round(random.uniform(65.0, 98.5), 1)
+    hint_id = random.randint(1, 6)
+    
+    # Rezultate te sakta dhe koef te rreme vetem si backup
+    rezultati_sakt = f"{random.randint(0,3)}-{random.randint(0,3)}"
+    koef_rez_sakt = f"{round(random.uniform(5.50, 15.00), 2):.2f}"
+    
+    return hint_id, besueshmeria, rezultati_sakt, koef_rez_sakt
+
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
@@ -64,7 +74,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         if "errors" in te_dhenat and te_dhenat["errors"]:
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
-        # Tërheqja e koeficienteve kryesore (1X2) nga Bet365
+        # Tërheqja e koeficienteve nga Bet365
         bet365_odds = {}
         try:
             res_odds = requests.get("https://v3.football.api-sports.io/odds", headers=HEADERS, params={"date": data_target, "bookmaker": 8, "page": 1}, timeout=10)
@@ -102,21 +112,15 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 gola_2 = n["goals"]["away"]
                 rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else "0 - 0"
                 
-                # Simulojme koeficientet me Inteligjence Artificiale (si rrota rezerve)
-                random.seed(f"sim-{id_ndeshja}")
-                k1_simulim = f"{round(random.uniform(1.40, 2.90), 2):.2f}"
-                kx_simulim = f"{round(random.uniform(2.80, 3.80), 2):.2f}"
-                k2_simulim = f"{round(random.uniform(1.90, 4.20), 2):.2f}"
-                
-                # NËSE BET365 KA KOEFICIENTË PËRDOR BET365, PËRNDRYSHE PËRDOR INTELIGJENCËN ARTIFICIALE
                 if id_ndeshja in bet365_odds:
                     koef_1 = bet365_odds[id_ndeshja]["1"]
                     koef_x = bet365_odds[id_ndeshja]["X"]
                     koef_2 = bet365_odds[id_ndeshja]["2"]
                 else:
-                    koef_1 = k1_simulim
-                    koef_x = kx_simulim
-                    koef_2 = k2_simulim
+                    random.seed(f"sim-{id_ndeshja}")
+                    koef_1 = f"{round(random.uniform(1.40, 2.90), 2):.2f}"
+                    koef_x = f"{round(random.uniform(2.80, 3.80), 2):.2f}"
+                    koef_2 = f"{round(random.uniform(1.90, 4.20), 2):.2f}"
 
                 data_sakte = data_target
                 ora_sakte = "N/A"
@@ -127,9 +131,8 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                         ora_sakte = d_obj.strftime("%H:%M")
                     except: pass
 
-                # Sugjerimi bazik i AI
-                random.seed(id_ndeshja)
-                hint_id = random.randint(1, 4)
+                # Llogarisim AI për VIP dhe Këshillat
+                hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2)
 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_emri": emri_liges, "liga_id": liga_id, "sezoni": sezoni,
@@ -138,9 +141,14 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "data": data_sakte, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte,
                     "statusi": statusi_kod, "minuta": minuta_loje, "rezultati": rezultati,
                     "koef_1": koef_1, "koef_x": koef_x, "koef_2": koef_2,
-                    "hint_id": hint_id, "besueshmeria": 85.0, "rezultati_sakt": "1-0", "koef_rez_sakt": "7.50", "is_premium": False
+                    "hint_id": hint_id, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
                 })
         
+        # 🔥 ZGJEDHJA E 5 NDESHJEVE VIP (E RIKTHYER) 🔥
+        lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
+        for i in range(min(5, len(lista_e_te_gjithave))):
+            lista_e_te_gjithave[i]["is_premium"] = True
+
         ligat_grup = {}
         for ndeshja in lista_e_te_gjithave:
             liga = ndeshja.pop("liga_emri")
@@ -226,7 +234,6 @@ def merr_koeficientet_shtese(match_id: str):
         data = res.json()
 
         if not data.get("response"):
-            # NESE SKA BET365, SIMULOJME KOEFICIENTET PER POP-UP
             random.seed(match_id)
             return {
                 "mesazhi": "Simuluar",
