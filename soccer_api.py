@@ -85,28 +85,18 @@ def parashiko_formacionin(fuqia_ime, fuqia_kundershtarit, is_home):
         if is_home: return random.choice(["4-3-3", "4-2-3-1", "3-5-2"])
         else: return random.choice(["4-4-2", "4-2-3-1", "5-3-2"])
 
-# 🔥 FUNKSIONI I RI PËR KONTEKSTIN DHE MOTIVIMIN 🔥
 def llogarit_motivimin(emri_liges):
     liga = emri_liges.lower()
-    
-    # 1. Ndeshje ku rotacioni ose mungesa e motivimit është e lartë (Ul fuqinë e favoritit)
-    if any(x in liga for x in ["friend", "miqësore", "u20", "u23", "u19", "reserve", "women"]):
-        return 0.75 # Ul diferencën me 25%
-        
+    if any(x in liga for x in ["friend", "miqësore", "u20", "u23", "u19", "reserve", "women"]): return 0.75 
     elif any(x in liga for x in ["cup", "copa", "coppa", "kupa", "pokal", "shield"]):
-        if "world" in liga or "champions" in liga:
-            return 1.10 # Kupa ndërkombëtare (Maksimumi i motivimit)
-        return 0.85 # Kupa shtetërore (Trajnerët shpesh përdorin rezervat)
-        
-    # 2. Ndeshje Elitare (Rrit lehtësisht fuqinë e favoritit sepse luajnë me ekipin e parë)
+        if "world" in liga or "champions" in liga: return 1.10 
+        return 0.85 
     elif any(x in liga for x in ["champions league", "premier league", "la liga", "serie a", "bundesliga", "world cup", "euro"]):
         return 1.05 
-        
-    # 3. Kampionate Standarde (Nuk ka ndryshim drastik)
-    else:
-        return 1.00 
+    else: return 1.00 
 
-def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_str, emri_liges):
+# 🔥 ALGORITMI I PËRDITËSUAR: MERR KOMANDËN MAKRO TË BLLOFIT NGA LART 🔥
+def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_str, emri_liges, eshte_ndeshje_bllof):
     try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
     except: k1, kx, k2 = 2.60, 3.10, 2.60 
 
@@ -117,7 +107,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     fuqia_1 = merr_fuqine_reale(ekipi_1)
     fuqia_2 = merr_fuqine_reale(ekipi_2)
     
-    # 🔥 APLIKIMI I KONTEKSTIT TË LIGËS 🔥
     faktor_motivimi = llogarit_motivimin(emri_liges)
     diferenca_fuqise = ((fuqia_1 - fuqia_2) / 100.0) * faktor_motivimi
 
@@ -127,23 +116,15 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
     t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
 
-    random.seed(f"gafa-{ekipi_1}")
-    prirja_historike_bllof = random.randint(20, 30) 
-    random.seed(f"kurth-{id_ndeshja}")
-    shansi_aktual_kurth = random.randint(1, 100)
-
-    eshte_ndeshje_bllof = False
-    if (k1 < 1.55 or k2 < 1.55) and (shansi_aktual_kurth <= prirja_historike_bllof):
-        eshte_ndeshje_bllof = True
-
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8))
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8))
 
-    if eshte_ndeshje_bllof:
-        if k1 < 1.55:
-            xg_1, xg_2 = xg_1_baze * 0.45, xg_2_baze * 1.85 
+    # Përmbysja matematikore nëse sistemi Makro e ka zgjedhur si Bllof
+    if eshte_ndeshje_bllof and (k1 < 1.60 or k2 < 1.60):
+        if k1 < 1.60:
+            xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
         else:
-            xg_1, xg_2 = xg_1_baze * 1.85, xg_2_baze * 0.45
+            xg_1, xg_2 = xg_1_baze * 1.95, xg_2_baze * 0.40
         hint_id = random.choice([5, 6]) 
     else:
         xg_1 = xg_1_baze * 1.15 * t1_atk * (1 / t2_def)
@@ -172,11 +153,13 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     koef_rez_sakt = min(40.0, (1 / max_prob) * 0.85) if max_prob > 0 else 10.0
     
     if eshte_ndeshje_bllof:
-        besueshmeria = round(random.uniform(55.0, 64.5), 1)
+        besueshmeria = round(random.uniform(45.0, 60.5), 1)
     else:
-        besueshmeria = round(min(98.5, max(65.0, (max(p1_real, p2_real) * 100) + (abs(diferenca_fuqise)*15))), 1)
+        # Për ndeshjet normale, nxjerrim besueshmërinë nga forca e Poisson-it
+        besueshmeria = round(min(99.0, max(65.0, (max(p1_real, p2_real) * 100) + (max_prob * 100))), 1)
     
     return hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
+
 
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
@@ -184,12 +167,13 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     url = "https://v3.football.api-sports.io/fixtures"
     
     try:
-        response = requests.get(url, headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=8)
+        response = requests.get(url, headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=10)
         te_dhenat = response.json()
         
         if "errors" in te_dhenat and te_dhenat["errors"]:
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
+        # Tërheqim Koeficientët Bet365
         bet365_odds = {}
         try:
             res_odds = requests.get("https://v3.football.api-sports.io/odds", headers=HEADERS, params={"date": data_target, "bookmaker": 8, "page": 1}, timeout=10)
@@ -209,11 +193,32 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     except: pass
         except: pass
 
-        lista_e_te_gjithave = []
-        if "response" in te_dhenat and len(te_dhenat["response"]) > 0:
+        # 🔥 HAPI I RI 1: GRUPOJMË NDESHJET PËR LIGË PËR TË LLOGARITUR BLLOFE MAKRO 🔥
+        ligat_raw = {}
+        if "response" in te_dhenat:
             for n in te_dhenat["response"]:
-                id_ndeshja = str(n["fixture"]["id"])
                 emri_liges = f"{n['league']['country']} - {n['league']['name']}"
+                if emri_liges not in ligat_raw: ligat_raw[emri_liges] = []
+                ligat_raw[emri_liges].append(n)
+
+        lista_e_te_gjithave = []
+
+        # 🔥 HAPI I RI 2: PËRPUNOJMË ÇDO LIGË DUKE I DHËNË QUOTËN 20-30% TË BLLOFEVE 🔥
+        for emri_liges, ndeshjet_liges in ligat_raw.items():
+            totali_ndeshjeve = len(ndeshjet_liges)
+            
+            # Llogarisim numrin fiks të bllofeve për këtë ligë (20% - 30%)
+            if totali_ndeshjeve > 3:
+                numri_bllofeve = int(totali_ndeshjeve * random.uniform(0.20, 0.30))
+            else:
+                # Nëse ka vetëm 1 ose 2 ndeshje në ligë sot, ka 25% shans të jetë bllof
+                numri_bllofeve = 1 if random.random() < 0.25 else 0
+
+            # Zgjedhim në mënyrë rastësore cilat indekse ndeshjesh do jenë bllofet
+            indekset_bllof = random.sample(range(totali_ndeshjeve), numri_bllofeve) if numri_bllofeve > 0 else []
+
+            for index, n in enumerate(ndeshjet_liges):
+                id_ndeshja = str(n["fixture"]["id"])
                 liga_id = n["league"]["id"]
                 sezoni = n["league"]["season"]
                 ekipi_1_id = n["teams"]["home"]["id"]
@@ -246,9 +251,11 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                         ora_sakte = d_obj.strftime("%H:%M")
                     except: pass
 
-                # 🔥 PASIMI I EMRIT TË LIGËS PËR TË LLOGARITUR KONTEKSTIN 🔥
+                # A është kjo ndeshje e zgjedhur për të qenë bllofi i ligës?
+                eshte_bllof = (index in indekset_bllof)
+
                 hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(
-                    id_ndeshja, ekipi_1, ekipi_2, koef_1, koef_x, koef_2, emri_liges
+                    id_ndeshja, ekipi_1, ekipi_2, koef_1, koef_x, koef_2, emri_liges, eshte_bllof
                 )
 
                 lista_e_te_gjithave.append({
@@ -261,10 +268,20 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "hint_id": hint_id, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
                 })
         
+        # 🔥 HAPI I RI 3: ZGJEDHJA E NDESHJES SË DITËS DHE VIP 🔥
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
-        for i in range(min(5, len(lista_e_te_gjithave))):
-            lista_e_te_gjithave[i]["is_premium"] = True
+        
+        if lista_e_te_gjithave:
+            # 1. Ndeshja Absolutisht Më e Mirë bëhet "Ndeshja e Ditës"
+            lista_e_te_gjithave[0]["is_premium"] = True
+            lista_e_te_gjithave[0]["ndeshja"] = "🌟 NDESHJA E DITËS: " + lista_e_te_gjithave[0]["ndeshja"]
+            lista_e_te_gjithave[0]["besueshmeria"] = 99.0 # Llogaritet si gati e sigurt
 
+            # 2. Zgjedhim 4 të tjerat për të mbushur listën VIP
+            for i in range(1, min(5, len(lista_e_te_gjithave))):
+                lista_e_te_gjithave[i]["is_premium"] = True
+
+        # Rigrupimi final për UI
         ligat_grup = {}
         for ndeshja in lista_e_te_gjithave:
             liga = ndeshja.pop("liga_emri")
