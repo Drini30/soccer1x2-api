@@ -19,7 +19,7 @@ API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
-SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y"
+SUPABASE_ANON_KEY = "VENDOS_KODIN_TËND_KËTU"
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 
 SUPABASE_HEADERS = {
@@ -62,54 +62,103 @@ GIGANTET = {
     "Dortmund": 84, "Tottenham": 86, "Aston Villa": 83, "Chelsea": 84
 }
 
+# 🔥 MATRICA TJEGULLORE E FORMACIONEVE (xG Multipliers) 🔥
+TAKTIKAT = {
+    "4-3-3": {"atk": 1.15, "def_fortitude": 0.90},  # Sulmuese: Shënon +, Pëson +
+    "3-4-3": {"atk": 1.20, "def_fortitude": 0.85},  # Super Sulmuese
+    "4-4-2": {"atk": 1.00, "def_fortitude": 1.00},  # Ekuilibër
+    "4-2-3-1": {"atk": 1.05, "def_fortitude": 1.05}, # Ekuilibër Modern
+    "3-5-2": {"atk": 1.10, "def_fortitude": 0.95},  # Kontroll Mesfushe
+    "5-3-2": {"atk": 0.80, "def_fortitude": 1.20},  # Mbrojtëse: Shënon -, Pëson -
+    "5-4-1": {"atk": 0.70, "def_fortitude": 1.30},  # Parkim Autobusi
+}
+
 def merr_fuqine_reale(ekipi):
     for emri, fuqia in GIGANTET.items():
         if emri.lower() in ekipi.lower(): return fuqia
     return 70
 
+def parashiko_formacionin(fuqia_ime, fuqia_kundershtarit, is_home):
+    diferenca = fuqia_ime - fuqia_kundershtarit
+    if diferenca >= 15:
+        return random.choice(["4-3-3", "3-4-3", "4-2-3-1"]) # Favoriti dominon
+    elif diferenca <= -15:
+        return random.choice(["5-4-1", "5-3-2", "4-4-2"]) # Underdogu mbrohet
+    else:
+        if is_home: return random.choice(["4-3-3", "4-2-3-1", "3-5-2"]) # Vendasit shtyjnë
+        else: return random.choice(["4-4-2", "4-2-3-1", "5-3-2"]) # Miqtë kujdesen
+
+# 🔥 ALGORITMI I THELLË (HOME/AWAY & TACTICS) 🔥
 def analizo_ndeshjen_premium(ekipi_1, ekipi_2, k1_str, kx_str, k2_str):
     try:
         k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
     except:
         k1, kx, k2 = 2.60, 3.10, 2.60 
 
+    # 1. Zgjuarsia e Tregut
     prob_1 = 1 / k1
     prob_x = 1 / kx
     prob_2 = 1 / k2
     marzhi = prob_1 + prob_x + prob_2 
-    
-    p1_real = prob_1 / marzhi
-    px_real = prob_x / marzhi
-    p2_real = prob_2 / marzhi
+    p1_real, px_real, p2_real = prob_1 / marzhi, prob_x / marzhi, prob_2 / marzhi
 
+    # 2. Fuqia Relative
     fuqia_1 = merr_fuqine_reale(ekipi_1)
     fuqia_2 = merr_fuqine_reale(ekipi_2)
     diferenca_fuqise = (fuqia_1 - fuqia_2) / 100.0
 
-    xg_1 = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.6))
-    xg_2 = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.6))
+    # 3. Taktikat & Formacionet (Simuluar bazuar në situatë)
+    form_1 = parashiko_formacionin(fuqia_1, fuqia_2, is_home=True)
+    form_2 = parashiko_formacionin(fuqia_2, fuqia_1, is_home=False)
+    
+    t1_atk = TAKTIKAT[form_1]["atk"]
+    t1_def = TAKTIKAT[form_1]["def_fortitude"]
+    t2_atk = TAKTIKAT[form_2]["atk"]
+    t2_def = TAKTIKAT[form_2]["def_fortitude"]
 
+    # 4. Dinamika Brenda / Jashtë (Home Advantage Multipliers)
+    HOME_ATK_BOOST = 1.15
+    HOME_DEF_BOOST = 1.10
+    AWAY_ATK_PENALTY = 0.90
+    AWAY_DEF_PENALTY = 0.95
+
+    # 5. Llogaritja e Golave të Pritshëm (Expected Goals - xG) të Avancuar
+    # Baza = Probabiliteti i tregut + Diferenca e Fuqisë
+    xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8))
+    xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8))
+
+    # Aplikimi i Taktikave dhe Fushës
+    # Ekipi 1 shënon më shumë nëse ka sulm të mirë dhe Ekipi 2 ka mbrojtje të dobët
+    xg_1 = xg_1_baze * HOME_ATK_BOOST * t1_atk * (1 / t2_def)
+    
+    # Ekipi 2 shënon në varësi të penalitetit të transfertës dhe mbrojtjes së Ekipit 1
+    xg_2 = xg_2_baze * AWAY_ATK_PENALTY * t2_atk * (1 / (t1_def * HOME_DEF_BOOST))
+
+    # 6. Shpërndarja Poisson
     def poisson(lmbda, k): return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
 
     rezultati_sakt = "0-0"
     max_prob = 0
 
-    for g1 in range(5):
-        for g2 in range(5):
+    for g1 in range(6): # Deri në 5 gola të mundshëm
+        for g2 in range(6):
             prob_score = poisson(xg_1, g1) * poisson(xg_2, g2)
-            if p1_real > p2_real + 0.1 and g1 <= g2: continue
-            if p2_real > p1_real + 0.1 and g2 <= g1: continue
+            
+            # Shmangim blofet absurde nga matematika e pastër
+            if p1_real > p2_real + 0.15 and g1 <= g2: continue
+            if p2_real > p1_real + 0.15 and g2 <= g1: continue
             
             if prob_score > max_prob:
                 max_prob = prob_score
                 rezultati_sakt = f"{g1}-{g2}"
     
     koef_rez_sakt = min(40.0, (1 / max_prob) * 0.85) if max_prob > 0 else 10.0
-    besueshmeria = round(min(98.5, max(55.0, (max(p1_real, p2_real) * 100) + (abs(diferenca_fuqise)*10))), 1)
+    besueshmeria = round(min(98.5, max(55.0, (max(p1_real, p2_real) * 100) + (abs(diferenca_fuqise)*15))), 1)
 
-    if p1_real > 0.65 or p2_real > 0.65: hint_id = 4 
-    elif px_real > 0.32 or abs(p1_real - p2_real) < 0.1: hint_id = 2 
-    elif xg_1 > 1.3 and xg_2 > 1.3: hint_id = 3 
+    # 7. Këshillat Inteligjente (Hints) bazuar në xG
+    if p1_real > 0.65 or p2_real > 0.65: hint_id = 4 # Kontroll absolut
+    elif form_1 in ["5-4-1", "5-3-2"] and form_2 in ["5-4-1", "5-3-2"]: hint_id = 2 # Ndeshje ultra mbrojtëse
+    elif xg_1 > 1.4 and xg_2 > 1.4: hint_id = 3 # GG e qartë
     else: hint_id = 1 
     
     return hint_id, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
@@ -227,7 +276,6 @@ def merr_detajet_ndeshjes(match_id: int):
         for ev in events:
             if ev['type'] in ['Goal', 'Card']:
                 lista_evente.append({"koha": f"{ev['time']['elapsed']}'", "ekipi": ev['team']['name'], "lojtari": ev['player']['name'] if ev['player']['name'] else "Lojtar", "lloj": ev['type'], "detaj": ev['detail']})
-        
         stats_formated = {}
         if statistics and len(statistics) >= 2:
             team1, team2 = statistics[0]['team']['name'], statistics[1]['team']['name']
