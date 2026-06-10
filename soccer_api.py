@@ -39,37 +39,53 @@ class LoginData(BaseModel):
 
 @app.post("/api/register")
 def regjistro_perdorues(data: LoginData):
-    # Kontrollo nëse emaili ekziston
-    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{data.email}", headers=SUPABASE_HEADERS)
+    email_clean = data.email.lower().strip()
+    
+    # 1. Kontrollojmë nëse emaili ekziston në Supabase
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_HEADERS)
     if res.status_code == 200 and len(res.json()) > 0:
-        return {"sukses": False, "mesazhi": "Kjo adresë email ekziston tashmë!"}
+        return {"sukses": False, "mesazhi": "ekziston"} # Kjo fjalë kyçe nxit Netlify të nxjerrë mesazhin tënd
 
-    emri_ndare = data.name.split(" ", 1)
-    emri = emri_ndare[0]
+    emri_ndare = data.name.strip().split(" ", 1)
+    emri = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
     mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
 
     user_payload = {
-        "email": data.email, "password": data.password, "emri": emri,
-        "mbiemri": mbiemri, "portofoli": 0.0, "isVip": False, "blerjet": []
+        "email": email_clean, 
+        "password": data.password, 
+        "emri": emri,
+        "mbiemri": mbiemri, 
+        "portofoli": 0.0, 
+        "isVip": False, 
+        "blerjet": []
     }
     
-    requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
-    return {"sukses": True, "perdoruesi": user_payload}
+    # 2. Bëjmë ruajtjen e VËRTETË në Supabase
+    res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
+    
+    if res_insert.status_code in [200, 201, 204]:
+        return {"sukses": True, "perdoruesi": user_payload}
+    else:
+        # Nëse Supabase e refuzon (P.sh tabela mungon ose ka rregulla RLS), të lajmërojmë
+        return {"sukses": False, "mesazhi": "Gabim në Databazë! Kontrollo nëse tabela 'users' është krijuar saktë dhe RLS është fikur."}
 
 @app.post("/api/login")
 def login_perdorues(data: LoginData):
-    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{data.email}&password=eq.{data.password}", headers=SUPABASE_HEADERS)
+    email_clean = data.email.lower().strip()
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}&password=eq.{data.password}", headers=SUPABASE_HEADERS)
+    
     if res.status_code == 200:
         users = res.json()
         if len(users) > 0:
             return {"sukses": True, "perdoruesi": users[0]}
+            
     return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
 
 @app.post("/api/update_user")
 def perditeso_perdorues(user_data: dict):
     email = user_data.get("email")
     if email:
-        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=user_data)
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email.lower()}", headers=SUPABASE_HEADERS, json=user_data)
     return {"sukses": True}
 
 # ---------------------------------------------
