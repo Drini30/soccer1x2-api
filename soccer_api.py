@@ -1,5 +1,6 @@
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from datetime import datetime
 import requests
 import random
@@ -20,7 +21,8 @@ HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
 SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y"
-SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
+SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
+SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -29,8 +31,51 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation"
 }
 
+# --- MODELET E TË DHËNAVE PËR AUTENTIFIKIM ---
+class LoginData(BaseModel):
+    email: str
+    password: str
+    name: str = ""
+
+@app.post("/api/register")
+def regjistro_perdorues(data: LoginData):
+    # Kontrollo nëse emaili ekziston
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{data.email}", headers=SUPABASE_HEADERS)
+    if res.status_code == 200 and len(res.json()) > 0:
+        return {"sukses": False, "mesazhi": "Kjo adresë email ekziston tashmë!"}
+
+    emri_ndare = data.name.split(" ", 1)
+    emri = emri_ndare[0]
+    mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
+
+    user_payload = {
+        "email": data.email, "password": data.password, "emri": emri,
+        "mbiemri": mbiemri, "portofoli": 0.0, "isVip": False, "blerjet": []
+    }
+    
+    requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
+    return {"sukses": True, "perdoruesi": user_payload}
+
+@app.post("/api/login")
+def login_perdorues(data: LoginData):
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{data.email}&password=eq.{data.password}", headers=SUPABASE_HEADERS)
+    if res.status_code == 200:
+        users = res.json()
+        if len(users) > 0:
+            return {"sukses": True, "perdoruesi": users[0]}
+    return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
+
+@app.post("/api/update_user")
+def perditeso_perdorues(user_data: dict):
+    email = user_data.get("email")
+    if email:
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=user_data)
+    return {"sukses": True}
+
+# ---------------------------------------------
+
 def ruaj_ne_db_zyrtare(pako):
-    try: requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=5)
+    try: requests.post(SUPABASE_URL_PREDS, headers=SUPABASE_HEADERS, json=pako, timeout=5)
     except: pass
 
 @app.get("/")
@@ -89,7 +134,6 @@ def llogarit_motivimin(emri_liges):
     elif any(x in liga for x in ["champions league", "premier league", "la liga", "serie a", "bundesliga"]): return 1.05 
     else: return 1.00 
 
-# 🔥 GJENERIMI I TEKSTIT NË 5 GJUHË 🔥
 def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof):
     try: g1, g2 = map(int, rez_sakt.split('-'))
     except: g1, g2 = 1, 0
@@ -306,9 +350,8 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         
         if lista_e_te_gjithave:
             lista_e_te_gjithave[0]["is_premium"] = True
-            lista_e_te_gjithave[0]["is_motd"] = True # Shënjues për Ndeshjen e Ditës
+            lista_e_te_gjithave[0]["is_motd"] = True 
             lista_e_te_gjithave[0]["besueshmeria"] = 99.0 
-            # E dërgojmë direkt në Supabase për Machine Learning
             ruaj_ne_db_zyrtare(lista_e_te_gjithave[0])
 
             for i in range(1, min(5, len(lista_e_te_gjithave))):
