@@ -19,7 +19,7 @@ app.add_middleware(
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
-# 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
+# 🔥 KONFIGURIMI I DATABAZËS REALE SUPABASE 🔥
 SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y"
 SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
@@ -41,15 +41,16 @@ class LoginData(BaseModel):
 def regjistro_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
     
-    # 1. Kontrollojmë nëse emaili ekziston në Supabase
+    # 1. Pyesim Supabase nëse ky email ekziston tashmë
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_HEADERS)
     if res.status_code == 200 and len(res.json()) > 0:
-        return {"sukses": False, "mesazhi": "ekziston"} # Kjo fjalë kyçe nxit Netlify të nxjerrë mesazhin tënd
+        return {"sukses": False, "mesazhi": "ekziston"} # Ky sinjal nxit UI të nxjerrë "Email is already registered"
 
     emri_ndare = data.name.strip().split(" ", 1)
     emri = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
     mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
 
+    # Krijojmë profilin e plotë
     user_payload = {
         "email": email_clean, 
         "password": data.password, 
@@ -60,32 +61,39 @@ def regjistro_perdorues(data: LoginData):
         "blerjet": []
     }
     
-    # 2. Bëjmë ruajtjen e VËRTETË në Supabase
+    # 2. E RUAJMË NË DATABAZËN REALE TË SUPABASE
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
     
     if res_insert.status_code in [200, 201, 204]:
         return {"sukses": True, "perdoruesi": user_payload}
     else:
-        # Nëse Supabase e refuzon (P.sh tabela mungon ose ka rregulla RLS), të lajmërojmë
-        return {"sukses": False, "mesazhi": "Gabim në Databazë! Kontrollo nëse tabela 'users' është krijuar saktë dhe RLS është fikur."}
+        return {"sukses": False, "mesazhi": "Gabim në lidhjen me Databazën. Kontrollo tabelën 'users'."}
 
 @app.post("/api/login")
 def login_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
+    
+    # Kërkojmë në Supabase emailin dhe fjalëkalimin ekzakt
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}&password=eq.{data.password}", headers=SUPABASE_HEADERS)
     
     if res.status_code == 200:
         users = res.json()
         if len(users) > 0:
-            return {"sukses": True, "perdoruesi": users[0]}
+            return {"sukses": True, "perdoruesi": users[0]} # Login i suksesshëm
             
     return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
 
 @app.post("/api/update_user")
 def perditeso_perdorues(user_data: dict):
-    email = user_data.get("email")
+    email = user_data.get("email", "").lower().strip()
     if email:
-        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email.lower()}", headers=SUPABASE_HEADERS, json=user_data)
+        # Kur klienti blen diçka, përditësojmë vetëm fushat financiare në Supabase
+        update_payload = {
+            "portofoli": user_data.get("portofoli", 0.0),
+            "isVip": user_data.get("isVip", False),
+            "blerjet": user_data.get("blerjet", [])
+        }
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_payload)
     return {"sukses": True}
 
 # ---------------------------------------------
