@@ -18,7 +18,7 @@ app.add_middleware(
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
-# 🔥 KONFIGURIMI I DATABAZËS SUPABASE (I RREGULLUAR) 🔥
+# 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
 SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y"
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 
@@ -79,75 +79,79 @@ def merr_fuqine_reale(ekipi):
 
 def parashiko_formacionin(fuqia_ime, fuqia_kundershtarit, is_home):
     diferenca = fuqia_ime - fuqia_kundershtarit
-    if diferenca >= 15:
-        return random.choice(["4-3-3", "3-4-3", "4-2-3-1"])
-    elif diferenca <= -15:
-        return random.choice(["5-4-1", "5-3-2", "4-4-2"])
+    if diferenca >= 15: return random.choice(["4-3-3", "3-4-3", "4-2-3-1"])
+    elif diferenca <= -15: return random.choice(["5-4-1", "5-3-2", "4-4-2"])
     else:
         if is_home: return random.choice(["4-3-3", "4-2-3-1", "3-5-2"])
         else: return random.choice(["4-4-2", "4-2-3-1", "5-3-2"])
 
-# 🔥 ALGORITMI I ZBRETUR ME FAKTORIN BLLOF HISTORIK (20-30%) 🔥
-def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_str):
-    try:
-        k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
-    except:
-        k1, kx, k2 = 2.60, 3.10, 2.60 
+# 🔥 FUNKSIONI I RI PËR KONTEKSTIN DHE MOTIVIMIN 🔥
+def llogarit_motivimin(emri_liges):
+    liga = emri_liges.lower()
+    
+    # 1. Ndeshje ku rotacioni ose mungesa e motivimit është e lartë (Ul fuqinë e favoritit)
+    if any(x in liga for x in ["friend", "miqësore", "u20", "u23", "u19", "reserve", "women"]):
+        return 0.75 # Ul diferencën me 25%
+        
+    elif any(x in liga for x in ["cup", "copa", "coppa", "kupa", "pokal", "shield"]):
+        if "world" in liga or "champions" in liga:
+            return 1.10 # Kupa ndërkombëtare (Maksimumi i motivimit)
+        return 0.85 # Kupa shtetërore (Trajnerët shpesh përdorin rezervat)
+        
+    # 2. Ndeshje Elitare (Rrit lehtësisht fuqinë e favoritit sepse luajnë me ekipin e parë)
+    elif any(x in liga for x in ["champions league", "premier league", "la liga", "serie a", "bundesliga", "world cup", "euro"]):
+        return 1.05 
+        
+    # 3. Kampionate Standarde (Nuk ka ndryshim drastik)
+    else:
+        return 1.00 
 
-    prob_1 = 1 / k1
-    prob_x = 1 / kx
-    prob_2 = 1 / k2
+def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_str, emri_liges):
+    try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
+    except: k1, kx, k2 = 2.60, 3.10, 2.60 
+
+    prob_1, prob_x, prob_2 = 1/k1, 1/kx, 1/k2
     marzhi = prob_1 + prob_x + prob_2 
-    p1_real, px_real, p2_real = prob_1 / marzhi, prob_x / marzhi, prob_2 / marzhi
+    p1_real, px_real, p2_real = prob_1/marzhi, prob_x/marzhi, prob_2/marzhi
 
     fuqia_1 = merr_fuqine_reale(ekipi_1)
     fuqia_2 = merr_fuqine_reale(ekipi_2)
-    diferenca_fuqise = (fuqia_1 - fuqia_2) / 100.0
+    
+    # 🔥 APLIKIMI I KONTEKSTIT TË LIGËS 🔥
+    faktor_motivimi = llogarit_motivimin(emri_liges)
+    diferenca_fuqise = ((fuqia_1 - fuqia_2) / 100.0) * faktor_motivimi
 
     form_1 = parashiko_formacionin(fuqia_1, fuqia_2, is_home=True)
     form_2 = parashiko_formacionin(fuqia_2, fuqia_1, is_home=False)
     
-    t1_atk = TAKTIKAT[form_1]["atk"]
-    t1_def = TAKTIKAT[form_1]["def_fortitude"]
-    t2_atk = TAKTIKAT[form_2]["atk"]
-    t2_def = TAKTIKAT[form_2]["def_fortitude"]
+    t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
+    t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
 
-    # 1. Gjurmimi i prirjes historike për gafë (Ndarë mes 20% dhe 30%)
     random.seed(f"gafa-{ekipi_1}")
     prirja_historike_bllof = random.randint(20, 30) 
-
-    # 2. Shansi i ndeshjes aktuale për të qenë kurth
     random.seed(f"kurth-{id_ndeshja}")
     shansi_aktual_kurth = random.randint(1, 100)
 
     eshte_ndeshje_bllof = False
-    # Nëse ka një favorit të fortë por shansi i ditës kap prirjen historike të gafës
     if (k1 < 1.55 or k2 < 1.55) and (shansi_aktual_kurth <= prirja_historike_bllof):
         eshte_ndeshje_bllof = True
 
-    # 3. Ndërtimi i xG (Expected Goals)
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8))
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8))
 
     if eshte_ndeshje_bllof:
-        # Përmbysim logjikën e golave: favoriti bllokohet, autsajderi merr fuqi
         if k1 < 1.55:
-            xg_1 = xg_1_baze * 0.45 # Sulmi i favoritit Vritet me më shumë se gjysmën
-            xg_2 = xg_2_baze * 1.85 # Autsajderi shpërthen në kundërsulm
+            xg_1, xg_2 = xg_1_baze * 0.45, xg_2_baze * 1.85 
         else:
-            xg_1 = xg_1_baze * 1.85
-            xg_2 = xg_2_baze * 0.45
-        hint_id = random.choice([5, 6]) # Aktivizojmë sinjalin Faktori Risk / Zonë e Kuqe
+            xg_1, xg_2 = xg_1_baze * 1.85, xg_2_baze * 0.45
+        hint_id = random.choice([5, 6]) 
     else:
-        # Logjika normale e balancuar
         xg_1 = xg_1_baze * 1.15 * t1_atk * (1 / t2_def)
         xg_2 = xg_2_baze * 0.90 * t2_atk * (1 / (t1_def * 1.10))
-        
         if p1_real > 0.65 or p2_real > 0.65: hint_id = 4 
         elif xg_1 > 1.4 and xg_2 > 1.4: hint_id = 3 
         else: hint_id = 1
 
-    # 4. Shpërndarja Poisson
     def poisson(lmbda, k): return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
 
     rezultati_sakt = "0-0"
@@ -157,7 +161,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
         for g2 in range(6):
             prob_score = poisson(xg_1, g1) * poisson(xg_2, g2)
             
-            # Nëse është bllof, lejojmë që autsajderi të fitojë ose barazojë në parashikim
             if not eshte_ndeshje_bllof:
                 if p1_real > p2_real + 0.15 and g1 <= g2: continue
                 if p2_real > p1_real + 0.15 and g2 <= g1: continue
@@ -168,7 +171,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     
     koef_rez_sakt = min(40.0, (1 / max_prob) * 0.85) if max_prob > 0 else 10.0
     
-    # Nëse është bllof, ulim besueshmërinë e skedines që përdoruesi ta shohë rrezikun
     if eshte_ndeshje_bllof:
         besueshmeria = round(random.uniform(55.0, 64.5), 1)
     else:
@@ -244,18 +246,17 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                         ora_sakte = d_obj.strftime("%H:%M")
                     except: pass
 
-                # Thirrja e Algoritmit të ri me id_ndeshja brenda
-                hint_id, besueshmeria, rez_sakt, koef_rez_sakt = \
-                    analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, koef_1, koef_x, koef_2)
+                # 🔥 PASIMI I EMRIT TË LIGËS PËR TË LLOGARITUR KONTEKSTIN 🔥
+                hint_id, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(
+                    id_ndeshja, ekipi_1, ekipi_2, koef_1, koef_x, koef_2, emri_liges
+                )
 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_emri": emri_liges, "liga_id": liga_id, "sezoni": sezoni,
                     "ekipi_1_id": ekipi_1_id, "ekipi_2_id": ekipi_2_id,
                     "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}",
-                    "data": data_sakte, 
-                    "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte,
-                    "ora_sakte": ora_sakte,
-                    "statusi": statusi_kod, "minuta": minuta_loje, "rezultati": rezultati,
+                    "data": data_sakte, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte,
+                    "ora_sakte": ora_sakte, "statusi": statusi_kod, "minuta": minuta_loje, "rezultati": rezultati,
                     "koef_1": koef_1, "koef_x": koef_x, "koef_2": koef_2,
                     "hint_id": hint_id, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
                 })
@@ -291,7 +292,6 @@ def merr_detajet_ndeshjes(match_id: int):
         for ev in events:
             if ev['type'] in ['Goal', 'Card']:
                 lista_evente.append({"koha": f"{ev['time']['elapsed']}'", "ekipi": ev['team']['name'], "lojtari": ev['player']['name'] if ev['player']['name'] else "Lojtar", "lloj": ev['type'], "detaj": ev['detail']})
-        
         stats_formated = {}
         if statistics and len(statistics) >= 2:
             team1, team2 = statistics[0]['team']['name'], statistics[1]['team']['name']
