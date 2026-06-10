@@ -41,7 +41,7 @@ class LoginData(BaseModel):
 def regjistro_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
     
-    # 1. Kontrollojmë nëse emaili ekziston në Supabase
+    # 1. Pyesim Supabase nëse ky email ekziston tashmë
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_HEADERS)
     if res.status_code == 200 and len(res.json()) > 0:
         return {"sukses": False, "mesazhi": "ekziston"}
@@ -61,13 +61,12 @@ def regjistro_perdorues(data: LoginData):
         "blerjet": []
     }
     
-    # 2. E ruajmë në Databazën Reale Supabase
+    # 2. E RUAJMË NË DATABAZËN REALE TË SUPABASE
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
     
     if res_insert.status_code in [200, 201, 204]:
         return {"sukses": True, "perdoruesi": user_payload}
     else:
-        # KJO ËSHTË JETIKE: Kthen gabimin e vërtetë nga Supabase nëse mungon ndonjë kolonë
         return {"sukses": False, "mesazhi": f"Gabim Databaze: {res_insert.text}"}
 
 @app.post("/api/login")
@@ -87,9 +86,12 @@ def login_perdorues(data: LoginData):
 def perditeso_perdorues(user_data: dict):
     email = user_data.get("email", "").lower().strip()
     if email:
+        is_vip_status = user_data.get("isVip", False)
+        if "isvip" in user_data: is_vip_status = user_data["isvip"]
+
         update_payload = {
             "portofoli": user_data.get("portofoli", 0.0),
-            "isVip": user_data.get("isVip", False),
+            "isVip": is_vip_status,
             "blerjet": user_data.get("blerjet", [])
         }
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_payload)
