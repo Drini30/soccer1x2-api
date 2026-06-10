@@ -19,7 +19,7 @@ API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS SUPABASE 🔥
-SUPABASE_ANON_KEY = "VENDOS_KODIN_TËND_KËTU"
+SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y"
 SUPABASE_URL = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 
 SUPABASE_HEADERS = {
@@ -163,7 +163,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 gola_2 = n["goals"]["away"]
                 rezultati = f"{gola_1} - {gola_2}" if gola_1 is not None else "0 - 0"
                 
-                # 🔥 RREGULLIMI: Nëse Bet365 është bosh, gjenerojmë me AI 🔥
                 if id_ndeshja in bet365_odds:
                     koef_1 = str(bet365_odds[id_ndeshja]["1"])
                     koef_x = str(bet365_odds[id_ndeshja]["X"])
@@ -189,7 +188,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "id": id_ndeshja, "liga_emri": emri_liges, "liga_id": liga_id, "sezoni": sezoni,
                     "ekipi_1_id": ekipi_1_id, "ekipi_2_id": ekipi_2_id,
                     "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}",
-                    "data": data_sakte, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte,
+                    "data": data_sakte, 
+                    "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte,
+                    "ora_sakte": ora_sakte,
                     "statusi": statusi_kod, "minuta": minuta_loje, "rezultati": rezultati,
                     "koef_1": koef_1, "koef_x": koef_x, "koef_2": koef_2,
                     "hint_id": hint_id, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
@@ -233,107 +234,4 @@ def merr_detajet_ndeshjes(match_id: int):
             if statistics[0].get('statistics') and statistics[1].get('statistics'):
                 for i in range(len(statistics[0]['statistics'])):
                     if statistics[0]['statistics'][i]['type'] in ["Shots on Goal", "Ball Possession"]:
-                        stats_formated["statistikat"].append({"lloji": statistics[0]['statistics'][i]['type'], "vler_1": statistics[0]['statistics'][i]['value'] or 0, "vler_2": statistics[1]['statistics'][i]['value'] or 0})
-        return {"mesazhi": "Sukses", "evente": lista_evente, "statistika": stats_formated}
-    except: return {"mesazhi": "Gabim"}
-
-@app.get("/api/historia/{team_id}")
-def merr_historine(team_id: int):
-    url = "https://v3.football.api-sports.io/fixtures"
-    try:
-        response = requests.get(url, headers=HEADERS, params={"team": team_id, "last": 5})
-        rezultati_hist = []
-        for n in response.json().get("response", []):
-            ht = n.get("score", {}).get("halftime", {})
-            ft = n.get("score", {}).get("fulltime", {})
-            ht_str = f"{ht.get('home')}-{ht.get('away')}" if ht and ht.get('home') is not None else "0-0"
-            ft_str = f"{ft.get('home')}-{ft.get('away')}" if ft and ft.get('home') is not None else "0-0"
-            try: data_sakte = datetime.strptime(n["fixture"]["date"][:10], "%Y-%m-%d").strftime("%d/%m/%y")
-            except: data_sakte = "N/A"
-            rezultati_hist.append({"data": data_sakte, "ora": "FT", "ndeshja": f"{n['teams']['home']['name']} vs {n['teams']['away']['name']}", "ht": ht_str, "ft": ft_str})
-        return {"mesazhi": "Sukses", "historia": rezultati_hist}
-    except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e)}
-
-@app.get("/api/renditja/{league_id}/{season}")
-def merr_renditjen(league_id: int, season: int):
-    url = "https://v3.football.api-sports.io/standings"
-    try:
-        res = requests.get(url, headers=HEADERS, params={"league": league_id, "season": season}, timeout=8)
-        data = res.json()
-        renditja_list = []
-        if "response" in data and len(data["response"]) > 0:
-            standings = data["response"][0]["league"]["standings"][0]
-            for rank in standings:
-                renditja_list.append({
-                    "pozicioni": rank["rank"],
-                    "ekipi": rank["team"]["name"],
-                    "piket": rank["points"],
-                    "ndeshje": rank["all"]["played"],
-                    "gola": f"{rank['all']['goals']['for']}:{rank['all']['goals']['against']}",
-                    "forma": rank["form"]
-                })
-        return {"mesazhi": "Sukses", "renditja": renditja_list}
-    except Exception as e:
-        return {"mesazhi": "Gabim", "renditja": [], "detaje": str(e)}
-
-@app.get("/api/koeficientet/{match_id}")
-def merr_koeficientet_shtese(match_id: str):
-    try:
-        url = "https://v3.football.api-sports.io/odds"
-        res = requests.get(url, headers=HEADERS, params={"fixture": match_id, "bookmaker": 8}, timeout=8)
-        data = res.json()
-
-        if not data.get("response"):
-            random.seed(match_id)
-            return {
-                "mesazhi": "Simuluar",
-                "koeficientet": [
-                    {"tregu_id": "ht_result", "opsionet": [{"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}]},
-                    {"tregu_id": "double_chance", "opsionet": [{"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}]},
-                    {"tregu_id": "goals_25", "opsionet": [{"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}]},
-                    {"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}]},
-                    {"tregu_id": "correct_score", "opsionet": [{"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)}, {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}]}
-                ]
-            }
-
-        bets = data["response"][0]["bookmakers"][0]["bets"]
-        tregjet_rezultat = []
-        def get_bet(bet_id): return next((b for b in bets if b["id"] == bet_id), None)
-
-        bet_13 = get_bet(13)
-        if bet_13:
-            tregjet_rezultat.append({"tregu_id": "ht_result", "opsionet": [{"emer": v["value"].replace("Home","1").replace("Draw","X").replace("Away","2") + " (HT)", "koef": v["odd"]} for v in bet_13["values"]]})
-
-        bet_12 = get_bet(12)
-        if bet_12:
-            tregjet_rezultat.append({"tregu_id": "double_chance", "opsionet": [{"emer": v["value"].replace("Home/Draw","1X").replace("Home/Away","12").replace("Draw/Away","X2"), "koef": v["odd"]} for v in bet_12["values"]]})
-
-        bet_5 = get_bet(5)
-        if bet_5:
-            ops_gola = []
-            allowed_goals = ["0.5", "1.5", "2.5", "3.5", "4.5", "5.5"]
-            for v in bet_5["values"]:
-                for g in allowed_goals:
-                    if f"Over {g}" == v["value"]: ops_gola.append({"emer": f"Mbi {g}", "koef": v["odd"]})
-                    if f"Under {g}" == v["value"]: ops_gola.append({"emer": f"Nën {g}", "koef": v["odd"]})
-            if ops_gola: tregjet_rezultat.append({"tregu_id": "goals_35_65", "opsionet": ops_gola})
-
-        bet_8 = get_bet(8)
-        if bet_8:
-            tregjet_rezultat.append({"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)" if v["value"]=="Yes" else "Jo (NG)", "koef": v["odd"]} for v in bet_8["values"]]})
-
-        bet_10 = get_bet(10)
-        if bet_10:
-            ops_score = []
-            pop_scores = ["1:0", "2:0", "2:1", "3:0", "3:1", "3:2", "4:0", "4:1", "4:2", "0:0", "1:1", "2:2", "3:3", "0:1", "0:2", "1:2", "0:3", "1:3", "2:3", "0:4", "1:4"]
-            for v in bet_10["values"]:
-                if v["value"] in pop_scores:
-                    ops_score.append({"emer": v["value"].replace(":", "-"), "koef": v["odd"]})
-            if ops_score: tregjet_rezultat.append({"tregu_id": "correct_score", "opsionet": ops_score})
-
-        return {"mesazhi": "Sukses", "koeficientet": tregjet_rezultat}
-    except Exception as e:
-        return {"mesazhi": "Gabim", "detaje": str(e), "koeficientet": []}
-
-@app.get("/api/live")
-def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
+                        stats_formated["statistikat"].append({"
