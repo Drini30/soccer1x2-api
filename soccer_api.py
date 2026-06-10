@@ -29,12 +29,9 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation"
 }
 
-def ruaj_ne_sfond(paketa_per_db):
-    if not SUPABASE_ANON_KEY.startswith("VENDOS") and paketa_per_db:
-        try:
-            for pako in paketa_per_db[:15]:
-                requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=2)
-        except: pass 
+def ruaj_ne_db_zyrtare(pako):
+    try: requests.post(SUPABASE_URL, headers=SUPABASE_HEADERS, json=pako, timeout=5)
+    except: pass
 
 @app.get("/")
 def root(): return {"status": "online"}
@@ -55,11 +52,9 @@ GIGANTET = {
     "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92,
     "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86,
     "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80,
-    "Costa Rica": 65, "Albania": 70, "Bulgaria": 62, "San Marino": 45, "Andorra": 45,
     "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92,
     "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89,
-    "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85,
-    "Dortmund": 84, "Tottenham": 86, "Aston Villa": 83, "Chelsea": 84
+    "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85
 }
 
 TAKTIKAT = {
@@ -91,40 +86,72 @@ def llogarit_motivimin(emri_liges):
     elif any(x in liga for x in ["cup", "copa", "coppa", "kupa", "pokal", "shield"]):
         if "world" in liga or "champions" in liga: return 1.10 
         return 0.85 
-    elif any(x in liga for x in ["champions league", "premier league", "la liga", "serie a", "bundesliga", "world cup", "euro"]):
-        return 1.05 
+    elif any(x in liga for x in ["champions league", "premier league", "la liga", "serie a", "bundesliga"]): return 1.05 
     else: return 1.00 
 
-# 🔥 MOTORRI I RI I GJERNERIMIT TË TEKSTIT DINAMIK DHESHKURTË PËR SECILËN NDESHJE 🔥
+# 🔥 GJENERIMI I TEKSTIT NË 5 GJUHË 🔥
 def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof):
     try: g1, g2 = map(int, rez_sakt.split('-'))
     except: g1, g2 = 1, 0
     
     if eshte_bllof:
-        sq = "⚠️ <b>Faktori Risk (Kurth):</b> Historiku paralajmëron rrezik për Gafë nga favoriti. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë ose Shansi i Dyfishtë kundër favoritit."
-        en = "⚠️ <b>Risk Factor (Trap):</b> Historical data warns of a potential upset. <br><b style='color:#f2cc60;'>Suggestion:</b> Double Chance against the favorite."
+        return {
+            "sq": "⚠️ <b>Risk (Kurth):</b> Historiku paralajmëron rrezik për Gafë nga favoriti. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë ose Shansi i Dyfishtë kundër favoritit.",
+            "en": "⚠️ <b>Risk (Trap):</b> Historical data warns of a potential upset. <br><b style='color:#f2cc60;'>Suggestion:</b> Surprise or Double Chance against the favorite.",
+            "de": "⚠️ <b>Risiko (Falle):</b> Historische Daten warnen vor einer Überraschung. <br><b style='color:#f2cc60;'>Tipp:</b> Außenseiter oder Doppelte Chance.",
+            "fr": "⚠️ <b>Risque (Piège):</b> L'historique avertit d'une surprise potentielle. <br><b style='color:#f2cc60;'>Suggestion:</b> Surprise ou Double Chance contre le favori.",
+            "it": "⚠️ <b>Rischio (Trappola):</b> I dati storici avvertono di una possibile sorpresa. <br><b style='color:#f2cc60;'>Suggerimento:</b> Sorpresa o Doppia Chance contro il favorito."
+        }
     elif rez_sakt == "0-0":
-        sq = "Mbrojtje ultra-kompakte nga të dyja skuadrat. Luhet me kujdes maksimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> Nën 2.5 gola total."
-        en = "Ultra-compact defenses on both sides. Highly cautious game. <br><b style='color:#f2cc60;'>Suggestion:</b> Under 2.5 total goals."
+        return {
+            "sq": "Mbrojtje ultra-kompakte nga të dyja skuadrat. Luhet me kujdes maksimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> Nën 2.5 gola total.",
+            "en": "Ultra-compact defenses on both sides. Highly cautious game. <br><b style='color:#f2cc60;'>Suggestion:</b> Under 2.5 total goals.",
+            "de": "Ultrakompakte Abwehr auf beiden Seiten. Sehr vorsichtiges Spiel. <br><b style='color:#f2cc60;'>Tipp:</b> Unter 2.5 Tore.",
+            "fr": "Défenses ultra-compactes. Jeu très prudent. <br><b style='color:#f2cc60;'>Suggestion:</b> Moins de 2.5 buts.",
+            "it": "Difese ultra-compatte. Partita molto prudente. <br><b style='color:#f2cc60;'>Suggerimento:</b> Under 2.5 gol."
+        }
     elif g1 == g2:
-        sq = "Skuadra me forca dhe mekanizma të barabartë. Pritet lojë e hapur. <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja ekipet shënojnë (GG) ose Barazim."
-        en = "Evenly matched teams. Open transition play expected. <br><b style='color:#f2cc60;'>Suggestion:</b> Both Teams to Score (GG) or Draw."
+        return {
+            "sq": "Skuadra me forca të barabarta. Pritet lojë e hapur. <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja shënojnë (GG) ose Barazim.",
+            "en": "Evenly matched teams. Open transition play expected. <br><b style='color:#f2cc60;'>Suggestion:</b> Both Teams to Score (GG) or Draw.",
+            "de": "Ausgeglichene Teams. Offenes Spiel erwartet. <br><b style='color:#f2cc60;'>Tipp:</b> Beide treffen (GG) oder Unentschieden.",
+            "fr": "Forces égales. Jeu ouvert attendu. <br><b style='color:#f2cc60;'>Suggestion:</b> Les deux marquent (GG) ou Nul.",
+            "it": "Forze equilibrate. Partita aperta. <br><b style='color:#f2cc60;'>Suggerimento:</b> Entrambe segnano (GG) o Pareggio."
+        }
     elif g1 > g2:
         if (g1 + g2) >= 3:
-            sq = f"Dominim sulmues i <b>{ekipi_1}</b> në shtëpi. Pritet ritëm i lartë dhe gola. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola (xG i lartë)."
-            en = f"Offensive dominance by <b>{ekipi_1}</b>. High tempo and goals expected. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals."
+            return {
+                "sq": f"Dominim sulmues i <b>{ekipi_1}</b> në shtëpi. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.",
+                "en": f"Offensive dominance by <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.",
+                "de": f"Offensive Dominanz von <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Tipp:</b> {ekipi_1} gewinnt oder Über 2.5 Tore.",
+                "fr": f"Domination offensive de <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Suggestion:</b> Victoire de {ekipi_1} ou Plus de 2.5 buts.",
+                "it": f"Dominio offensivo di <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Suggerimento:</b> Vittoria {ekipi_1} o Over 2.5 gol."
+            }
         else:
-            sq = f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë. Pritet fitore taktike. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola."
-            en = f"<b>{ekipi_1}</b> controls the pitch with solid defense. Tactical win expected. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals."
+            return {
+                "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.",
+                "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.",
+                "de": f"<b>{ekipi_1}</b> kontrolliert das Spiel defensiv. <br><b style='color:#f2cc60;'>Tipp:</b> {ekipi_1} gewinnt oder Unter 3.5 Tore.",
+                "fr": f"<b>{ekipi_1}</b> contrôle avec une défense solide. <br><b style='color:#f2cc60;'>Suggestion:</b> Victoire de {ekipi_1} ou Moins de 3.5 buts.",
+                "it": f"<b>{ekipi_1}</b> controlla con una difesa solida. <br><b style='color:#f2cc60;'>Suggerimento:</b> Vittoria {ekipi_1} o Under 3.5 gol."
+            }
     else:
         if (g1 + g2) >= 3:
-            sq = f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë me kundërsulme të shpejta. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola."
-            en = f"<b>{ekipi_2}</b> excels away with dangerous fast counters. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals."
+            return {
+                "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.",
+                "en": f"<b>{ekipi_2}</b> excels away with dangerous counters. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.",
+                "de": f"<b>{ekipi_2}</b> glänzt auswärts mit Kontern. <br><b style='color:#f2cc60;'>Tipp:</b> {ekipi_2} gewinnt oder Über 2.5 Tore.",
+                "fr": f"<b>{ekipi_2}</b> excelle à l'extérieur. <br><b style='color:#f2cc60;'>Suggestion:</b> Victoire de {ekipi_2} ou Plus de 2.5 buts.",
+                "it": f"<b>{ekipi_2}</b> eccelle in trasferta. <br><b style='color:#f2cc60;'>Suggerimento:</b> Vittoria {ekipi_2} o Over 2.5 gol."
+            }
         else:
-            sq = f"Ndeshje e vështirë ku <b>{ekipi_2}</b> pritet të menaxhojë lojën me rrezik minimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> Shansi i Dyfishtë X2 ose Nën 2.5 gola."
-            en = f"Tight match where <b>{ekipi_2}</b> is expected to manage low-risk play. <br><b style='color:#f2cc60;'>Suggestion:</b> Double Chance X2 or Under 2.5 goals."
-            
-    return {"sq": sq, "en": en, "de": sq, "fr": en, "it": sq}
+            return {
+                "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.",
+                "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play. <br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.",
+                "de": f"Enges Spiel, das <b>{ekipi_2}</b> kontrolliert. <br><b style='color:#f2cc60;'>Tipp:</b> X2 oder Unter 2.5 Tore.",
+                "fr": f"Match serré géré par <b>{ekipi_2}</b>. <br><b style='color:#f2cc60;'>Suggestion:</b> X2 ou Moins de 2.5 buts.",
+                "it": f"Partita stretta gestita da <b>{ekipi_2}</b>. <br><b style='color:#f2cc60;'>Suggerimento:</b> X2 o Under 2.5 gol."
+            }
 
 def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_str, emri_liges, eshte_ndeshje_bllof):
     try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
@@ -172,13 +199,10 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
                 rezultati_sakt = f"{g1}-{g2}"
     
     koef_rez_sakt = min(40.0, (1 / max_prob) * 0.85) if max_prob > 0 else 10.0
-    
     if eshte_ndeshje_bllof: besueshmeria = round(random.uniform(45.0, 60.5), 1)
     else: besueshmeria = round(min(99.0, max(65.0, (max(p1_real, p2_real) * 100) + (max_prob * 100))), 1)
     
-    # Thërrasim gjeneruesin e tekstit të ri
     analiza_custom_dict = gjenero_analize_custom(ekipi_1, ekipi_2, rezultati_sakt, eshte_ndeshje_bllof)
-    
     return analiza_custom_dict, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
 
 @app.get("/api/skedina")
@@ -282,10 +306,14 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         
         if lista_e_te_gjithave:
             lista_e_te_gjithave[0]["is_premium"] = True
-            lista_e_te_gjithave[0]["ndeshja"] = "🌟 NDESHJA E DITËS: " + lista_e_te_gjithave[0]["ndeshja"]
+            lista_e_te_gjithave[0]["is_motd"] = True # Shënjues për Ndeshjen e Ditës
             lista_e_te_gjithave[0]["besueshmeria"] = 99.0 
+            # E dërgojmë direkt në Supabase për Machine Learning
+            ruaj_ne_db_zyrtare(lista_e_te_gjithave[0])
+
             for i in range(1, min(5, len(lista_e_te_gjithave))):
                 lista_e_te_gjithave[i]["is_premium"] = True
+                lista_e_te_gjithave[i]["is_motd"] = False
 
         ligat_grup = {}
         for ndeshja in lista_e_te_gjithave:
