@@ -95,6 +95,7 @@ def perditeso_perdorues(user_data: dict):
 
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
 
+# 🔥 NDRYSHIMI 2: Gradient Clipping (Mbrojtje e Algoritmit) 🔥
 @app.get("/api/verifiko_rezultatet")
 def verifiko_rezultatet():
     res = requests.get(f"{SUPABASE_URL_PREDS}?rezultati_real=is.null", headers=SUPABASE_HEADERS)
@@ -120,21 +121,28 @@ def verifiko_rezultatet():
                     
                     try:
                         p_g1, p_g2 = map(int, str(nd.get("rezultati_sakt", "0-0")).split('-'))
-                        gabim_1, gabim_2 = gola_1 - p_g1, gola_2 - p_g2
-                        ekipi1_emri, ekipi2_emri = nd.get("ekipi_1"), nd.get("ekipi_2")
+                        gabim_1 = gola_1 - p_g1
+                        gabim_2 = gola_2 - p_g2
+                        
+                        # 🛡️ Gradient Clipping: Asnjëherë më shumë se 2.0 pikë ndryshim për një ndeshje
+                        ndryshim_1 = max(-2.0, min(2.0, gabim_1 * 1.5))
+                        ndryshim_2 = max(-2.0, min(2.0, gabim_2 * 1.5))
+                        
+                        ekipi1_emri = nd.get("ekipi_1")
+                        ekipi2_emri = nd.get("ekipi_2")
                         
                         if ekipi1_emri:
-                            if ekipi1_emri in GIGANTET: GIGANTET[ekipi1_emri] += (gabim_1 * 1.5)
-                            else: GIGANTET[ekipi1_emri] = 70 + (gabim_1 * 1.5) 
+                            if ekipi1_emri in GIGANTET: GIGANTET[ekipi1_emri] += ndryshim_1
+                            else: GIGANTET[ekipi1_emri] = 70 + ndryshim_1 
                         if ekipi2_emri:
-                            if ekipi2_emri in GIGANTET: GIGANTET[ekipi2_emri] += (gabim_2 * 1.5)
-                            else: GIGANTET[ekipi2_emri] = 70 + (gabim_2 * 1.5)
+                            if ekipi2_emri in GIGANTET: GIGANTET[ekipi2_emri] += ndryshim_2
+                            else: GIGANTET[ekipi2_emri] = 70 + ndryshim_2
                     except: pass
                     
                     requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{match_id}", headers=SUPABASE_HEADERS, json={"rezultati_real": rez_real})
                     updatuara += 1
 
-    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje. Algoritmi përditësoi njohuritë."}
+    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje me Gradient Clipping. Algoritmi është i mbrojtur."}
 
 @app.get("/api/sinkronizo_renditjet")
 def sinkronizo_renditjet():
@@ -228,7 +236,6 @@ def merr_statistikat_nga_db(team_id):
     except: pass
     return None
 
-# 🔥 NDRYSHIMI 1: Llogaritja e Bllofit bazuar në Vlerë (Value Detection) 🔥
 def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges):
     try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
     except: k1, kx, k2 = 2.60, 3.10, 2.60 
@@ -276,7 +283,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8) + shtese_xg_1)
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8) + shtese_xg_2)
     
-    # 📌 LLOGARITJA E PROBABILITETIT TONË (AI) vs BOOKMAKER (BET365)
     def poisson(lmbda, k): return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
     
     ai_prob_1 = sum(poisson(xg_1_baze, g1) * poisson(xg_2_baze, g2) for g1 in range(1, 6) for g2 in range(g1))
@@ -285,17 +291,14 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     eshte_ndeshje_bllof = False
     ht_ft_sugjerim = ""
     
-    # KUSHTI PËR BLLOF: Nëse Bet365 e mbivlerëson favoritin me më shumë se 12% diferencë
     if p1_real > 0.50 and (p1_real - ai_prob_1) > 0.12:
         eshte_ndeshje_bllof = True
-        # Nëse vendasit mbrohen mirë, por AI thotë që fitojnë miqtë = mund të thehet në pjesën e dytë
         if t1_def > 1.00 and ai_prob_2 > 0.35: ht_ft_sugjerim = "1/2"
             
     elif p2_real > 0.50 and (p2_real - ai_prob_2) > 0.12:
         eshte_ndeshje_bllof = True
         if t2_def > 1.00 and ai_prob_1 > 0.35: ht_ft_sugjerim = "2/1"
 
-    # Nëse AI e konfirmon Bllofin, i rregullon xG për ta reflektuar
     if eshte_ndeshje_bllof and (k1 < 1.60 or k2 < 1.60):
         if k1 < 1.60: xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
         else: xg_1, xg_2 = xg_1_baze * 1.95, xg_2_baze * 0.40
@@ -384,8 +387,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 except: ora_sakte = "N/A"
 
                 if eshte_liga_vip:
-                    # Ne i kalojmë të dhënat, por këtë herë analizuesi (analizo_ndeshjen_premium) e gjen vetë nëse është Bllof, 
-                    # nuk ia imponojmë ne me 'index in indekset_bllof'
                     analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(
                         id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1, kx, k2, emri_liges
                     )
@@ -464,9 +465,49 @@ def merr_renditjen(league_id: int, season: int):
         return {"mesazhi": "Sukses", "renditja": renditja_list}
     except Exception as e: return {"mesazhi": "Gabim", "renditja": [], "detaje": str(e)}
 
+# 🔥 FUNKSIONI I KOEFICIENTËVE ËSHTË RIKTHYER I PLOTË 🔥
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
-    return {"mesazhi": "Simuluar", "koeficientet": []}
+    try:
+        url = "https://v3.football.api-sports.io/odds"
+        res = requests.get(url, headers=HEADERS, params={"fixture": match_id, "bookmaker": 8}, timeout=8)
+        data = res.json()
+        if not data.get("response"):
+            random.seed(match_id)
+            return {"mesazhi": "Simuluar", "koeficientet": [{"tregu_id": "ht_result", "opsionet": [{"emer": "1 (HT)", "koef": round(random.uniform(1.80, 4.50), 2)}, {"emer": "X (HT)", "koef": round(random.uniform(1.65, 2.40), 2)}, {"emer": "2 (HT)", "koef": round(random.uniform(2.10, 5.20), 2)}]}, {"tregu_id": "double_chance", "opsionet": [{"emer": "1X", "koef": round(random.uniform(1.10, 1.50), 2)}, {"emer": "12", "koef": round(random.uniform(1.20, 1.40), 2)}, {"emer": "X2", "koef": round(random.uniform(1.15, 1.80), 2)}]}, {"tregu_id": "goals_35_65", "opsionet": [{"emer": "Mbi 2.5", "koef": round(random.uniform(1.50, 2.20), 2)}, {"emer": "Nën 2.5", "koef": round(random.uniform(1.60, 2.10), 2)}]}, {"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)", "koef": round(random.uniform(1.60, 2.00), 2)}, {"emer": "Jo (NG)", "koef": round(random.uniform(1.70, 2.20), 2)}]}, {"tregu_id": "correct_score", "opsionet": [{"emer": "1-0", "koef": round(random.uniform(5.50, 11.00), 2)}, {"emer": "2-0", "koef": round(random.uniform(6.50, 14.00), 2)}, {"emer": "2-1", "koef": round(random.uniform(7.50, 13.50), 2)}, {"emer": "1-1", "koef": round(random.uniform(5.00, 8.50), 2)}]}]}
+        
+        bets = data["response"][0]["bookmakers"][0]["bets"]
+        tregjet_rezultat = []
+        def get_bet(bet_id): return next((b for b in bets if b["id"] == bet_id), None)
+        
+        bet_13 = get_bet(13)
+        if bet_13: tregjet_rezultat.append({"tregu_id": "ht_result", "opsionet": [{"emer": v["value"].replace("Home","1").replace("Draw","X").replace("Away","2") + " (HT)", "koef": v["odd"]} for v in bet_13["values"]]})
+        
+        bet_12 = get_bet(12)
+        if bet_12: tregjet_rezultat.append({"tregu_id": "double_chance", "opsionet": [{"emer": v["value"].replace("Home/Draw","1X").replace("Home/Away","12").replace("Draw/Away","X2"), "koef": v["odd"]} for v in bet_12["values"]]})
+        
+        bet_5 = get_bet(5)
+        if bet_5:
+            ops_gola = []
+            for v in bet_5["values"]:
+                for g in ["0.5", "1.5", "2.5", "3.5", "4.5", "5.5"]:
+                    if f"Over {g}" == v["value"]: ops_gola.append({"emer": f"Mbi {g}", "koef": v["odd"]})
+                    if f"Under {g}" == v["value"]: ops_gola.append({"emer": f"Nën {g}", "koef": v["odd"]})
+            if ops_gola: tregjet_rezultat.append({"tregu_id": "goals_35_65", "opsionet": ops_gola})
+            
+        bet_8 = get_bet(8)
+        if bet_8: tregjet_rezultat.append({"tregu_id": "btts", "opsionet": [{"emer": "Po (GG)" if v["value"]=="Yes" else "Jo (NG)", "koef": v["odd"]} for v in bet_8["values"]]})
+        
+        bet_10 = get_bet(10)
+        if bet_10:
+            ops_score = []
+            for v in bet_10["values"]:
+                if v["value"] in ["1:0", "2:0", "2:1", "3:0", "3:1", "3:2", "4:0", "4:1", "4:2", "0:0", "1:1", "2:2", "3:3", "0:1", "0:2", "1:2", "0:3", "1:3", "2:3", "0:4", "1:4"]:
+                    ops_score.append({"emer": v["value"].replace(":", "-"), "koef": v["odd"]})
+            if ops_score: tregjet_rezultat.append({"tregu_id": "correct_score", "opsionet": ops_score})
+            
+        return {"mesazhi": "Sukses", "koeficientet": tregjet_rezultat}
+    except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e), "koeficientet": []}
 
 @app.get("/api/live")
 def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
