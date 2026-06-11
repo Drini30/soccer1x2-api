@@ -67,7 +67,11 @@ def regjistro_perdorues(data: LoginData):
     emri = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
     mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
 
-    user_payload = { "email": email_clean, "password": data.password, "emri": emri, "mbiemri": mbiemri, "portofoli": 0.0, "isVip": False, "blerjet": [] }
+    # 🔥 Ruajmë logjikën e re në DB gjatë regjistrimit
+    user_payload = { 
+        "email": email_clean, "password": data.password, "emri": emri, "mbiemri": mbiemri, 
+        "portofoli": 0.0, "isVip": False, "vip_skadon_me": None, "auto_rinovim": False, "blerjet": [] 
+    }
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
     if res_insert.status_code in [200, 201, 204]: return {"sukses": True, "perdoruesi": user_payload}
     else: return {"sukses": False, "mesazhi": f"Gabim Databaze: {res_insert.text}"}
@@ -87,7 +91,16 @@ def perditeso_perdorues(user_data: dict):
     if email:
         is_vip_status = user_data.get("isVip", False)
         if "isvip" in user_data: is_vip_status = user_data["isvip"]
-        update_payload = { "portofoli": user_data.get("portofoli", 0.0), "isVip": is_vip_status, "blerjet": user_data.get("blerjet", []) }
+        
+        update_payload = { 
+            "portofoli": user_data.get("portofoli", 0.0), 
+            "isVip": is_vip_status, 
+            "blerjet": user_data.get("blerjet", []) 
+        }
+        # 🔥 Kapim ndryshimet e skadencës
+        if "vip_skadon_me" in user_data: update_payload["vip_skadon_me"] = user_data["vip_skadon_me"]
+        if "auto_rinovim" in user_data: update_payload["auto_rinovim"] = user_data["auto_rinovim"]
+        
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_payload)
     return {"sukses": True}
 
@@ -95,6 +108,26 @@ GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain"
 
 @app.get("/api/verifiko_rezultatet")
 def verifiko_rezultatet():
+    # 1. Pjesa e Menaxhimit te Abonimeve VIP
+    res_users = requests.get(f"{SUPABASE_URL_USERS}?isVip=eq.true", headers=SUPABASE_HEADERS)
+    if res_users.status_code == 200:
+        sot_date = datetime.utcnow().date()
+        for u in res_users.json():
+            skadenca_str = u.get("vip_skadon_me")
+            if skadenca_str:
+                try:
+                    skadenca = datetime.strptime(skadenca_str, "%Y-%m-%d").date()
+                    if sot_date > skadenca:
+                        if u.get("auto_rinovim"):
+                            # Rinovo automatikisht per 30 dite
+                            nova_skadenca = (sot_date + timedelta(days=30)).strftime("%Y-%m-%d")
+                            requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{u['email']}", headers=SUPABASE_HEADERS, json={"vip_skadon_me": nova_skadenca})
+                        else:
+                            # Hiq statusin VIP
+                            requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{u['email']}", headers=SUPABASE_HEADERS, json={"isVip": False, "vip_skadon_me": None, "auto_rinovim": False})
+                except: pass
+
+    # 2. Pjesa e Llogaritjes se Rezultateve (Gradient Clipping)
     res = requests.get(f"{SUPABASE_URL_PREDS}?rezultati_real=is.null", headers=SUPABASE_HEADERS)
     if res.status_code != 200: return {"mesazhi": "Gabim në leximin e Databazës."}
     
@@ -136,7 +169,7 @@ def verifiko_rezultatet():
                     requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{match_id}", headers=SUPABASE_HEADERS, json={"rezultati_real": rez_real})
                     updatuara += 1
 
-    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje me Gradient Clipping."}
+    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje dhe u verifikuan abonimet VIP."}
 
 @app.get("/api/sinkronizo_renditjet")
 def sinkronizo_renditjet():
@@ -424,25 +457,20 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         return {"mesazhi": "Sukses", "skedina_grupuar": lista_finale}
     except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
 
-# 🔥 BLLOKUESI KOHOR PËR SKEDINËN E FUNDJAVËS (VIP) 🔥
 VIP_CACHE = {"data_krijimit": None, "skedina": []}
 
 @app.get("/api/vip_weekend")
 def merr_vip_weekend():
     sot = datetime.utcnow()
-    dita_javes = sot.weekday() # 0 = E Hënë ... 4 = E Premte
+    dita_javes = sot.weekday()
     
-    # 1. Nga E Hëna në të Enjte: Refuzojmë gjenerimin
     if dita_javes < 4:
         return {"mesazhi": "Në pritje", "is_ready": False}
         
     data_sot_str = sot.strftime('%Y-%m-%d')
-    
-    # 2. RAM CACHE: Nëse skedina është krijuar tashmë sot, e rikthejmë direkt
     if VIP_CACHE["data_krijimit"] == data_sot_str and len(VIP_CACHE["skedina"]) > 0:
         return {"mesazhi": "Sukses", "is_ready": True, "skedina": VIP_CACHE["skedina"]}
         
-    # Gjejmë Të Shtunën dhe Të Dielën
     dite_deri_te_shtunen = 5 - dita_javes
     data_shtune = (sot + timedelta(days=dite_deri_te_shtunen)).strftime('%Y-%m-%d')
     data_diel = (sot + timedelta(days=dite_deri_te_shtunen + 1)).strftime('%Y-%m-%d')
