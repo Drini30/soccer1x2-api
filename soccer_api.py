@@ -6,7 +6,7 @@ import requests
 import random
 import math
 
-app = FastAPI(title="SOCCER 1X2 API", description="AI për Skedinën e Ditës Dhe Ndeshjet LIVE")
+app = FastAPI(title="SOCCER1X2 API", description="AI për Skedinën e Ditës Dhe Ndeshjet LIVE")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +30,9 @@ SUPABASE_HEADERS = {
     "Content-Type": "application/json",
     "Prefer": "return=representation"
 }
+
+# 🔥 ÇELËSI I RESEND API 🔥
+RESEND_API_KEY = "re_ScYXYKCJ_DJmjveCtT6wzeLUnDDh7cXVS"
 
 LIGAT_VIP = [
     "World Cup", "Euro Championship", "Champions League", "Europa League", "Europa Conference League",
@@ -67,7 +70,6 @@ def regjistro_perdorues(data: LoginData):
     emri = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
     mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
 
-    # 🔥 Ndryshimi: Tani portofoli nis direkt me 20.0 dollarë dhuratë! 🔥
     user_payload = { 
         "email": email_clean, "password": data.password, "emri": emri, "mbiemri": mbiemri, 
         "portofoli": 20.0, "isVip": False, "vip_skadon_me": None, "auto_rinovim": False, "blerjet": [] 
@@ -102,6 +104,89 @@ def perditeso_perdorues(user_data: dict):
         
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_payload)
     return {"sukses": True}
+
+
+# 🔥 FUNKSIONI I RI PËR TË DËRGUAR EMAILE (FATURA DHE NJOFTIME) 🔥
+class EmailRequest(BaseModel):
+    email_klientit: str
+    emri_klientit: str
+    tipi_blerjes: str # Mund të jetë 'VIP', 'TOPUP', ose 'PPM'
+    shuma: float
+    detaje: str = ""
+
+@app.post("/api/send_email")
+def dergo_email_fature(req: EmailRequest):
+    # Për sa kohë jemi pa domain, Resend dërgon vetëm te ty (mateosamanta2@gmail.com).
+    # Nëse klienti provon me email tjetër në faqe, Resend do ta bllokojë te serveri, por ne nuk nxjerrim error në UI.
+    
+    email_target = req.email_klientit if req.email_klientit.lower() == "mateosamanta2@gmail.com" else "mateosamanta2@gmail.com"
+    
+    titulli = "Fatura Juaj - Soccer1X2"
+    html_content = ""
+    
+    if req.tipi_blerjes == "VIP":
+        titulli = "Mirësevini në VIP! - Soccer1X2"
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; padding: 20px; text-align: center; border-radius: 8px; max-width: 500px; margin: auto; border: 1px solid #30363d;">
+            <h1 style="color: #00e5ff;">SOCCER1X2 VIP 💎</h1>
+            <p>Përshëndetje <b>{req.emri_klientit}</b>,</p>
+            <p>Abonimi juaj VIP u aktivizua me sukses!</p>
+            <div style="background-color: #161b22; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px dashed #30363d;">
+                <p style="margin: 5px 0;">Shuma e paguar: <b style="color: #00e5ff;">${req.shuma:.2f}</b></p>
+                <p style="margin: 5px 0; font-size: 12px; color: #8ba898;">Skedina e Fundjavës tani është e hapur për ju çdo të Premte.</p>
+            </div>
+            <p style="font-size: 12px; color: #8ba898;">Faleminderit që i besoni Algoritmit tonë!</p>
+        </div>
+        """
+    elif req.tipi_blerjes == "TOPUP":
+        titulli = "Kredite të Shtuara - Soccer1X2"
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; padding: 20px; text-align: center; border-radius: 8px; max-width: 500px; margin: auto; border: 1px solid #30363d;">
+            <h1 style="color: #d4af37;">KREDITE TË REJA 💰</h1>
+            <p>Përshëndetje <b>{req.emri_klientit}</b>,</p>
+            <p>Portofoli juaj u rimbush me sukses!</p>
+            <div style="background-color: #161b22; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px dashed #30363d;">
+                <p style="margin: 5px 0;">Shuma e shtuar: <b style="color: #d4af37;">+${req.shuma:.2f}</b></p>
+            </div>
+            <p style="font-size: 12px; color: #8ba898;">Mund t'i përdorni këto fonde për ndeshjet Pay-Per-Match.</p>
+        </div>
+        """
+    elif req.tipi_blerjes == "PPM":
+        titulli = "Blerja e Ndeshjes - Soccer1X2"
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; padding: 20px; text-align: center; border-radius: 8px; max-width: 500px; margin: auto; border: 1px solid #30363d;">
+            <h1 style="color: #3fb950;">PAGESË E SUKSESSHME ⚽</h1>
+            <p>Përshëndetje <b>{req.emri_klientit}</b>,</p>
+            <p>Ju keni blerë një ndeshje Premium.</p>
+            <div style="background-color: #161b22; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px dashed #30363d;">
+                <p style="margin: 5px 0;">Ndeshja: <b style="color: #fff;">{req.detaje}</b></p>
+                <p style="margin: 5px 0;">Çmimi: <b style="color: #58a6ff;">${req.shuma:.2f}</b></p>
+            </div>
+            <p style="font-size: 12px; color: #8ba898;">Kujtesë: Nëse ndeshja dështon, ky fond do t'ju kthehet 100% në portofol.</p>
+        </div>
+        """
+
+    resend_url = "https://api.resend.com/emails"
+    headers = {
+        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "from": "Soccer1X2 <onboarding@resend.dev>",
+        "to": [email_target],
+        "subject": titulli,
+        "html": html_content
+    }
+
+    try:
+        r = requests.post(resend_url, headers=headers, json=payload)
+        if r.status_code in [200, 201]:
+            return {"sukses": True, "mesazhi": "Emaili u dërgua!"}
+        else:
+            return {"sukses": False, "mesazhi": f"Gabim Resend: {r.text}"}
+    except Exception as e:
+        return {"sukses": False, "mesazhi": str(e)}
+
 
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
 
