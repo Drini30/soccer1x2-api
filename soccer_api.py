@@ -31,6 +31,31 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation"
 }
 
+# --- LISTA E LIGAVE VIP PËR MACHINE LEARNING ---
+LIGAT_VIP = [
+    "World Cup", "Euro Championship", "Champions League", "Europa League", "Europa Conference League",
+    "Copa America", "UEFA Nations League", "England - Premier League", "England - Championship",
+    "England - FA Cup", "England - EFL Cup", "Italy - Serie A", "Italy - Serie B", "Italy - Coppa Italia",
+    "Spain - La Liga", "Spain - Segunda Division", "Spain - Copa del Rey", "Germany - Bundesliga",
+    "Germany - 2. Bundesliga", "Germany - DFB Pokal", "France - Ligue 1", "France - Ligue 2",
+    "France - Coupe de France", "Brazil - Serie A", "Argentina - Liga Profesional", "Copa Libertadores",
+    "Netherlands - Eredivisie", "Portugal - Primeira Liga", "Turkey - Super Lig", "Belgium - Pro League",
+    "Greece - Super League", "Scotland - Premiership", "Switzerland - Super League",
+    "Denmark - Superliga", "Austria - Bundesliga", "Albania - Superliga", "Kosovo - Superliga"
+]
+
+def is_vip_league(emri_liges):
+    for vip in LIGAT_VIP:
+        parts = vip.split(" - ")
+        if len(parts) == 2:
+            if parts[0].lower() in emri_liges.lower() and parts[1].lower() in emri_liges.lower():
+                return True
+        else:
+            if vip.lower() in emri_liges.lower():
+                return True
+    return False
+
+# --- MODELET E TË DHËNAVE PËR AUTENTIFIKIM ---
 class LoginData(BaseModel):
     email: str
     password: str
@@ -72,12 +97,10 @@ def perditeso_perdorues(user_data: dict):
     return {"sukses": True}
 
 # --- 🔥 SISTEMI DINAMIK I MËSIMIT TË AI 🔥 ---
-# Ky fjalor fillestar do të zgjerohet automatikisht çdo natë!
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
 
 @app.get("/api/verifiko_rezultatet")
 def verifiko_rezultatet():
-    # 1. Gjen ndeshjet që kërkojnë verifikim
     res = requests.get(f"{SUPABASE_URL_PREDS}?rezultati_real=is.null", headers=SUPABASE_HEADERS)
     if res.status_code != 200: return {"mesazhi": "Gabim në leximin e Databazës."}
     
@@ -99,29 +122,19 @@ def verifiko_rezultatet():
                     gola_2 = fixture["goals"]["away"]
                     rez_real = f"{gola_1}-{gola_2}"
                     
-                    # 🔥 KRAHASIMI DHE RUAJTJA E MËSIMIT 🔥
                     try:
-                        # Nxjerrim golat e parashikuar
                         p_g1, p_g2 = map(int, str(nd.get("rezultati_sakt", "0-0")).split('-'))
+                        gabim_1, gabim_2 = gola_1 - p_g1, gola_2 - p_g2
+                        ekipi1_emri, ekipi2_emri = nd.get("ekipi_1"), nd.get("ekipi_2")
                         
-                        # Llogarisim devijimin (Gabimin)
-                        gabim_1 = gola_1 - p_g1
-                        gabim_2 = gola_2 - p_g2
-                        
-                        ekipi1_emri = nd.get("ekipi_1")
-                        ekipi2_emri = nd.get("ekipi_2")
-                        
-                        # Ndryshojmë Fuqinë e Ekipeve (Shpejtësia e të mësuarit = 1.5 pikë për çdo gol gabim)
                         if ekipi1_emri:
                             if ekipi1_emri in GIGANTET: GIGANTET[ekipi1_emri] += (gabim_1 * 1.5)
-                            else: GIGANTET[ekipi1_emri] = 70 + (gabim_1 * 1.5) # E shtojmë ekipin e ri!
-                        
+                            else: GIGANTET[ekipi1_emri] = 70 + (gabim_1 * 1.5) 
                         if ekipi2_emri:
                             if ekipi2_emri in GIGANTET: GIGANTET[ekipi2_emri] += (gabim_2 * 1.5)
                             else: GIGANTET[ekipi2_emri] = 70 + (gabim_2 * 1.5)
                     except: pass
                     
-                    # Përditësojmë Supabase
                     requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{match_id}", headers=SUPABASE_HEADERS, json={"rezultati_real": rez_real})
                     updatuara += 1
 
@@ -138,16 +151,14 @@ def ruaj_ne_db_zyrtare(pako):
 @app.get("/")
 def root(): return {"status": "online"}
 
-LIGAT_KRYESORE = ["World Cup", "Euro Championship", "Champions League", "Europa League", "England - Premier League", "Spain - La Liga", "Italy - Serie A", "Germany - Bundesliga", "France - Ligue 1", "World - Friendlies", "World - UEFA Nations League", "Albania - Superliga"]
 def merr_rendesine_e_liges(emri_liges):
-    for i, liga_top in enumerate(LIGAT_KRYESORE):
+    for i, liga_top in enumerate(LIGAT_VIP):
         if liga_top.lower() in emri_liges.lower(): return i 
     return 999 
 
 TAKTIKAT = { "4-3-3": {"atk": 1.15, "def_fortitude": 0.90}, "3-4-3": {"atk": 1.20, "def_fortitude": 0.85}, "4-4-2": {"atk": 1.00, "def_fortitude": 1.00}, "4-2-3-1": {"atk": 1.05, "def_fortitude": 1.05}, "3-5-2": {"atk": 1.10, "def_fortitude": 0.95}, "5-3-2": {"atk": 0.80, "def_fortitude": 1.20}, "5-4-1": {"atk": 0.70, "def_fortitude": 1.30} }
 
 def merr_fuqine_reale(ekipi):
-    # Lexon nga fjalori Dinamik!
     for emri, fuqia in GIGANTET.items():
         if emri.lower() in ekipi.lower(): return fuqia
     return 70
@@ -278,6 +289,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
             totali_ndeshjeve = len(ndeshjet_liges)
             numri_bllofeve = int(totali_ndeshjeve * random.uniform(0.20, 0.30)) if totali_ndeshjeve > 3 else (1 if random.random() < 0.25 else 0)
             indekset_bllof = random.sample(range(totali_ndeshjeve), numri_bllofeve) if numri_bllofeve > 0 else []
+            
+            # 🔥 Kontrollojmë nëse kjo ligë është VIP (për ta filtruar për Inteligjencën) 🔥
+            eshte_liga_vip = is_vip_league(emri_liges)
 
             for index, n in enumerate(ndeshjet_liges):
                 id_ndeshja = str(n["fixture"]["id"])
@@ -295,7 +309,15 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
                 except: ora_sakte = "N/A"
 
-                analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1, kx, k2, emri_liges, index in indekset_bllof)
+                # Nëse liga NUK është VIP, e lëmë pa analizë. Nëse ËSHTË, e fusim në Tru.
+                if eshte_liga_vip:
+                    analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1, kx, k2, emri_liges, index in indekset_bllof)
+                else:
+                    analiza_custom = None
+                    besueshmeria = 0.0
+                    rez_sakt = ""
+                    koef_rez_sakt = ""
+                    extradb = {"is_bllof": False, "renditja_1": 0, "renditja_2": 0, "ht_ft_sugjerim": "", "koef_plote": f"1:{k1} | X:{kx} | 2:{k2}"}
 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_emri": emri_liges, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"],
@@ -305,19 +327,18 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, 
                     "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False,
                     
-                    "is_bllof": extradb["is_bllof"],
-                    "renditja_1": extradb["renditja_1"],
-                    "renditja_2": extradb["renditja_2"],
-                    "ht_ft_sugjerim": extradb["ht_ft_sugjerim"],
-                    "koef_plote": extradb["koef_plote"]
+                    "is_bllof": extradb["is_bllof"], "renditja_1": extradb["renditja_1"], "renditja_2": extradb["renditja_2"],
+                    "ht_ft_sugjerim": extradb["ht_ft_sugjerim"], "koef_plote": extradb["koef_plote"]
                 })
         
+        # Rendisim që të dalin të parat ndeshjet e Analizuara (Ato që kanë besueshmëri > 0)
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
-        if lista_e_te_gjithave:
+        if lista_e_te_gjithave and lista_e_te_gjithave[0]["besueshmeria"] > 0:
             lista_e_te_gjithave[0].update({"is_premium": True, "is_motd": True, "besueshmeria": 99.0})
             ruaj_ne_db_zyrtare(lista_e_te_gjithave[0])
             for i in range(1, min(5, len(lista_e_te_gjithave))):
-                lista_e_te_gjithave[i].update({"is_premium": True, "is_motd": False})
+                if lista_e_te_gjithave[i]["besueshmeria"] > 0:
+                    lista_e_te_gjithave[i].update({"is_premium": True, "is_motd": False})
 
         ligat_grup = {}
         for ndeshja in lista_e_te_gjithave:
