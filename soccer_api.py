@@ -136,10 +136,8 @@ def verifiko_rezultatet():
 
     return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje. Algoritmi përditësoi njohuritë."}
 
-# 🔥 SKRIPTI I RI PËR TË MBLEDHUR RENDITJET NË DATABAZË 🔥
 @app.get("/api/sinkronizo_renditjet")
 def sinkronizo_renditjet():
-    # 1. Gjen ndeshjet e sotme VIP për të marrë ID-të e ligave
     data_target = datetime.utcnow().strftime('%Y-%m-%d')
     res_fixtures = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=10)
     
@@ -154,7 +152,6 @@ def sinkronizo_renditjet():
             ligat_per_tu_updatuar[liga_id] = sezoni
 
     ekipet_ruajtura = 0
-    # 2. Për çdo ligë VIP që luan sot, merr renditjen reale nga API-Sports
     for lid, sez in ligat_per_tu_updatuar.items():
         res_standings = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": lid, "season": sez}, timeout=10)
         if res_standings.status_code == 200:
@@ -171,8 +168,6 @@ def sinkronizo_renditjet():
                         "gf": rank["all"]["goals"]["for"],
                         "ga": rank["all"]["goals"]["against"]
                     }
-                    # E ruajmë/updatojmë në Supabase duke përdorur team_id (Upsert)
-                    # Së pari fshijmë të vjetrën nëse ka, pastaj shtojmë të renë
                     requests.delete(f"{SUPABASE_URL_STANDINGS}?team_id=eq.{team_payload['team_id']}", headers=SUPABASE_HEADERS)
                     requests.post(SUPABASE_URL_STANDINGS, headers=SUPABASE_HEADERS, json=team_payload)
                     ekipet_ruajtura += 1
@@ -225,7 +220,6 @@ def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""
     elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"Offensive dominance by <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
     else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play. <br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
 
-# 🔥 KËTU LEXOJMË NGA DATABAZA REALE E RENDITJES (NËSE EKZISTON)
 def merr_statistikat_nga_db(team_id):
     try:
         res = requests.get(f"{SUPABASE_URL_STANDINGS}?team_id=eq.{team_id}", headers=SUPABASE_HEADERS, timeout=2)
@@ -234,7 +228,8 @@ def merr_statistikat_nga_db(team_id):
     except: pass
     return None
 
-def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges, eshte_ndeshje_bllof):
+# 🔥 NDRYSHIMI 1: Llogaritja e Bllofit bazuar në Vlerë (Value Detection) 🔥
+def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges):
     try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
     except: k1, kx, k2 = 2.60, 3.10, 2.60 
 
@@ -242,14 +237,12 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     marzhi = prob_1 + prob_x + prob_2 
     p1_real, px_real, p2_real = prob_1/marzhi, prob_x/marzhi, prob_2/marzhi
 
-    # 1. BAZA E VJETËR (GIGANTET)
     fuqia_1, fuqia_2 = merr_fuqine_reale(ekipi_1), merr_fuqine_reale(ekipi_2)
     faktor_motivimi = llogarit_motivimin(emri_liges)
     
     renditja_sim_1 = max(1, int(20 - (fuqia_1/5) - (1/k1 * 5)))
     renditja_sim_2 = max(1, int(20 - (fuqia_2/5) - (1/k2 * 5)))
     
-    # 2. LOGJIKA E RE REALE NGA CACHE I SUPABASE
     stat_1 = merr_statistikat_nga_db(ekipi_1_id)
     stat_2 = merr_statistikat_nga_db(ekipi_2_id)
     
@@ -260,14 +253,12 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
         renditja_sim_1 = stat_1.get("rank", renditja_sim_1)
         renditja_sim_2 = stat_2.get("rank", renditja_sim_2)
         
-        # Përdorim Golat e Vërtetë për të rregulluar xG
         gf1, ga1 = stat_1.get("gf", 1), stat_1.get("ga", 1)
         gf2, ga2 = stat_2.get("gf", 1), stat_2.get("ga", 1)
         
-        shtese_xg_1 = (gf1 / max(1, ga2)) * 0.15 # Ekipi 1 shënon shumë, Ekipi 2 pëson shumë
+        shtese_xg_1 = (gf1 / max(1, ga2)) * 0.15 
         shtese_xg_2 = (gf2 / max(1, ga1)) * 0.15
 
-        # Format (Momentumi)
         forma1 = stat_1.get("form", "")
         forma2 = stat_2.get("form", "")
         if "W" in forma1: shtese_xg_1 += (forma1.count("W") * 0.05)
@@ -284,15 +275,27 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
 
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8) + shtese_xg_1)
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8) + shtese_xg_2)
-
+    
+    # 📌 LLOGARITJA E PROBABILITETIT TONË (AI) vs BOOKMAKER (BET365)
+    def poisson(lmbda, k): return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
+    
+    ai_prob_1 = sum(poisson(xg_1_baze, g1) * poisson(xg_2_baze, g2) for g1 in range(1, 6) for g2 in range(g1))
+    ai_prob_2 = sum(poisson(xg_1_baze, g1) * poisson(xg_2_baze, g2) for g2 in range(1, 6) for g1 in range(g2))
+    
+    eshte_ndeshje_bllof = False
     ht_ft_sugjerim = ""
-    # Përmbysjet bazohen edhe më shumë te statistikat reale (Nëse ka formë të keqe, rreziku rritet)
-    if eshte_ndeshje_bllof:
-        if k1 > 2.50 and k2 < 2.00:
-            if random.random() < 0.20: ht_ft_sugjerim = "1/2" 
-        elif k2 > 2.50 and k1 < 2.00:
-            if random.random() < 0.20: ht_ft_sugjerim = "2/1" 
+    
+    # KUSHTI PËR BLLOF: Nëse Bet365 e mbivlerëson favoritin me më shumë se 12% diferencë
+    if p1_real > 0.50 and (p1_real - ai_prob_1) > 0.12:
+        eshte_ndeshje_bllof = True
+        # Nëse vendasit mbrohen mirë, por AI thotë që fitojnë miqtë = mund të thehet në pjesën e dytë
+        if t1_def > 1.00 and ai_prob_2 > 0.35: ht_ft_sugjerim = "1/2"
+            
+    elif p2_real > 0.50 and (p2_real - ai_prob_2) > 0.12:
+        eshte_ndeshje_bllof = True
+        if t2_def > 1.00 and ai_prob_1 > 0.35: ht_ft_sugjerim = "2/1"
 
+    # Nëse AI e konfirmon Bllofin, i rregullon xG për ta reflektuar
     if eshte_ndeshje_bllof and (k1 < 1.60 or k2 < 1.60):
         if k1 < 1.60: xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
         else: xg_1, xg_2 = xg_1_baze * 1.95, xg_2_baze * 0.40
@@ -300,7 +303,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
         xg_1 = xg_1_baze * 1.15 * t1_atk * (1 / t2_def)
         xg_2 = xg_2_baze * 0.90 * t2_atk * (1 / (t1_def * 1.10))
 
-    def poisson(lmbda, k): return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
     rezultati_sakt = "0-0"
     max_prob = 0
 
@@ -361,10 +363,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
         lista_e_te_gjithave = []
         for emri_liges, ndeshjet_liges in ligat_raw.items():
-            totali_ndeshjeve = len(ndeshjet_liges)
-            numri_bllofeve = int(totali_ndeshjeve * random.uniform(0.20, 0.30)) if totali_ndeshjeve > 3 else (1 if random.random() < 0.25 else 0)
-            indekset_bllof = random.sample(range(totali_ndeshjeve), numri_bllofeve) if numri_bllofeve > 0 else []
-            
             eshte_liga_vip = is_vip_league(emri_liges)
 
             for index, n in enumerate(ndeshjet_liges):
@@ -386,9 +384,10 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 except: ora_sakte = "N/A"
 
                 if eshte_liga_vip:
-                    # ✅ Tani i kalojmë edhe ID-të e ekipeve që Algoritmi t'i kërkojë në Databazë!
+                    # Ne i kalojmë të dhënat, por këtë herë analizuesi (analizo_ndeshjen_premium) e gjen vetë nëse është Bllof, 
+                    # nuk ia imponojmë ne me 'index in indekset_bllof'
                     analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(
-                        id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1, kx, k2, emri_liges, index in indekset_bllof
+                        id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1, kx, k2, emri_liges
                     )
                 else:
                     analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt = None, 0.0, "", ""
@@ -468,3 +467,6 @@ def merr_renditjen(league_id: int, season: int):
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
     return {"mesazhi": "Simuluar", "koeficientet": []}
+
+@app.get("/api/live")
+def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
