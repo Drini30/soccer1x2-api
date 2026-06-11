@@ -20,7 +20,7 @@ API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS REALE SUPABASE 🔥
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
+SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y"
 SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
 
@@ -40,46 +40,26 @@ class LoginData(BaseModel):
 @app.post("/api/register")
 def regjistro_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
-    
-    # Kontrollojmë nëse emaili ekziston në Supabase
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_HEADERS)
-    if res.status_code == 200 and len(res.json()) > 0:
-        return {"sukses": False, "mesazhi": "ekziston"}
+    if res.status_code == 200 and len(res.json()) > 0: return {"sukses": False, "mesazhi": "ekziston"}
 
     emri_ndare = data.name.strip().split(" ", 1)
     emri = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
     mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
 
-    # Krijojmë profilin e plotë
-    user_payload = {
-        "email": email_clean, 
-        "password": data.password, 
-        "emri": emri,
-        "mbiemri": mbiemri, 
-        "portofoli": 0.0, 
-        "isVip": False, 
-        "blerjet": []
-    }
-    
-    # E ruajmë në Databazën Reale Supabase
+    user_payload = { "email": email_clean, "password": data.password, "emri": emri, "mbiemri": mbiemri, "portofoli": 0.0, "isVip": False, "blerjet": [] }
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
     
-    if res_insert.status_code in [200, 201, 204]: 
-        return {"sukses": True, "perdoruesi": user_payload}
-    else: 
-        return {"sukses": False, "mesazhi": f"Gabim Databaze: {res_insert.text}"}
+    if res_insert.status_code in [200, 201, 204]: return {"sukses": True, "perdoruesi": user_payload}
+    else: return {"sukses": False, "mesazhi": f"Gabim Databaze: {res_insert.text}"}
 
 @app.post("/api/login")
 def login_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
-    
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}&password=eq.{data.password}", headers=SUPABASE_HEADERS)
-    
     if res.status_code == 200:
         users = res.json()
-        if len(users) > 0: 
-            return {"sukses": True, "perdoruesi": users[0]}
-            
+        if len(users) > 0: return {"sukses": True, "perdoruesi": users[0]}
     return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
 
 @app.post("/api/update_user")
@@ -88,19 +68,12 @@ def perditeso_perdorues(user_data: dict):
     if email:
         is_vip_status = user_data.get("isVip", False)
         if "isvip" in user_data: is_vip_status = user_data["isvip"]
-        
-        update_payload = { 
-            "portofoli": user_data.get("portofoli", 0.0), 
-            "isVip": is_vip_status, 
-            "blerjet": user_data.get("blerjet", []) 
-        }
+        update_payload = { "portofoli": user_data.get("portofoli", 0.0), "isVip": is_vip_status, "blerjet": user_data.get("blerjet", []) }
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_payload)
     return {"sukses": True}
 
-# --- 🔥 FUNKSIONI I NATËS PËR MACHINE LEARNING 🔥 ---
 @app.get("/api/verifiko_rezultatet")
 def verifiko_rezultatet():
-    # 1. Gjen ndeshjet në Supabase që nuk e kanë marrë ende rezultatin real
     res = requests.get(f"{SUPABASE_URL_PREDS}?rezultati_real=is.null", headers=SUPABASE_HEADERS)
     if res.status_code != 200: return {"mesazhi": "Gabim në leximin e Databazës."}
     
@@ -111,33 +84,26 @@ def verifiko_rezultatet():
         match_id = nd.get("id")
         if not match_id: continue
         
-        # 2. Lidhja me API-Sports për të parë çfarë ndodhi vërtet
         api_res = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"id": match_id}, timeout=5)
         if api_res.status_code == 200:
             data = api_res.json()
             if data.get("response") and len(data["response"]) > 0:
                 fixture = data["response"][0]
                 statusi = fixture["fixture"]["status"]["short"]
-                
-                # Nëse ndeshja ka mbaruar
                 if statusi in ["FT", "AET", "PEN"]:
                     gola_1 = fixture["goals"]["home"]
                     gola_2 = fixture["goals"]["away"]
                     rez_real = f"{gola_1}-{gola_2}"
-                    
-                    # 3. Përditëso Supabase me të dhënat reale
                     requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{match_id}", headers=SUPABASE_HEADERS, json={"rezultati_real": rez_real})
                     updatuara += 1
 
-    return {"mesazhi": f"Skripti i Feedback-ut përfundoi. U verifikuan dhe u sinkronizuan {updatuara} ndeshje në Supabase."}
+    return {"mesazhi": f"U verifikuan dhe u sinkronizuan {updatuara} ndeshje në Supabase."}
 
 # ---------------------------------------------
 
 def ruaj_ne_db_zyrtare(pako):
-    # Heqim të dhënat komplekse para se ta ruajmë që të mos bllokohet Databaza
     pako_per_db = pako.copy()
     if "analiza_custom" in pako_per_db: del pako_per_db["analiza_custom"]
-    
     try: requests.post(SUPABASE_URL_PREDS, headers=SUPABASE_HEADERS, json=pako_per_db, timeout=5)
     except: pass
 
@@ -171,14 +137,18 @@ def llogarit_motivimin(emri_liges):
     elif any(x in liga for x in ["champions league", "premier league", "la liga", "serie a", "bundesliga"]): return 1.05 
     else: return 1.00 
 
-def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof):
+def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""):
     try: g1, g2 = map(int, rez_sakt.split('-'))
     except: g1, g2 = 1, 0
-    if eshte_bllof: return { "sq": "⚠️ <b>Risk (Kurth):</b> Historiku paralajmëron rrezik për Gafë nga favoriti. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë ose Shansi i Dyfishtë kundër favoritit.", "en": "⚠️ <b>Risk (Trap):</b> Historical data warns of a potential upset. <br><b style='color:#f2cc60;'>Suggestion:</b> Surprise or Double Chance against the favorite.", "de": "⚠️ <b>Risiko (Falle):</b> Historische Daten warnen vor einer Überraschung. <br><b style='color:#f2cc60;'>Tipp:</b> Außenseiter oder Doppelte Chance.", "fr": "⚠️ <b>Risque (Piège):</b> L'historique avertit d'une surprise potentielle. <br><b style='color:#f2cc60;'>Suggestion:</b> Surprise ou Double Chance contre le favori.", "it": "⚠️ <b>Rischio (Trappola):</b> I dati storici avvertono di una possibile sorpresa. <br><b style='color:#f2cc60;'>Suggerimento:</b> Sorpresa o Doppia Chance contro il favorito." }
-    elif rez_sakt == "0-0": return { "sq": "Mbrojtje ultra-kompakte nga të dyja skuadrat. Luhet me kujdes maksimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> Nën 2.5 gola total.", "en": "Ultra-compact defenses on both sides. Highly cautious game. <br><b style='color:#f2cc60;'>Suggestion:</b> Under 2.5 total goals."}
-    elif g1 == g2: return { "sq": "Skuadra me forca të barabarta. Pritet lojë e hapur. <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja shënojnë (GG) ose Barazim.", "en": "Evenly matched teams. Open transition play expected. <br><b style='color:#f2cc60;'>Suggestion:</b> Both Teams to Score (GG) or Draw."}
-    elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b> në shtëpi. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.", "en": f"Offensive dominance by <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals." } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals." }
-    else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.", "en": f"<b>{ekipi_2}</b> excels away with dangerous counters. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals." } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play. <br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals." }
+    
+    # Shtojmë Përmbysjen nëse ka
+    ht_ft_text = f"<br><b style='color:#ff4500;'>🔥 Ekskluzive:</b> Sugjerohet Përmbysje <b>{ht_ft_str}</b>!" if ht_ft_str else ""
+
+    if eshte_bllof: return { "sq": f"⚠️ <b>Risk (Kurth):</b> Historiku paralajmëron rrezik për Gafë nga favoriti. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë kundër favoritit.{ht_ft_text}", "en": f"⚠️ <b>Risk (Trap):</b> Historical data warns of a potential upset.{ht_ft_text}", "de": f"⚠️ <b>Risiko (Falle):</b> Historische Daten warnen vor einer Überraschung.{ht_ft_text}", "fr": f"⚠️ <b>Risque (Piège):</b> L'historique avertit d'une surprise potentielle.{ht_ft_text}", "it": f"⚠️ <b>Rischio (Trappola):</b> I dati storici avvertono di una possibile sorpresa.{ht_ft_text}" }
+    elif rez_sakt == "0-0": return { "sq": f"Mbrojtje ultra-kompakte nga të dyja skuadrat. <br><b style='color:#f2cc60;'>Sugjerim:</b> Nën 2.5 gola total.{ht_ft_text}", "en": f"Ultra-compact defenses. <br><b style='color:#f2cc60;'>Suggestion:</b> Under 2.5 goals.{ht_ft_text}"}
+    elif g1 == g2: return { "sq": f"Skuadra me forca të barabarta. <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja shënojnë (GG) ose Barazim.{ht_ft_text}", "en": f"Evenly matched teams. <br><b style='color:#f2cc60;'>Suggestion:</b> Both Teams to Score (GG) or Draw.{ht_ft_text}"}
+    elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"Offensive dominance by <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
+    else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play. <br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
 
 def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_str, emri_liges, eshte_ndeshje_bllof):
     try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
@@ -191,6 +161,10 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     fuqia_1, fuqia_2 = merr_fuqine_reale(ekipi_1), merr_fuqine_reale(ekipi_2)
     faktor_motivimi = llogarit_motivimin(emri_liges)
     diferenca_fuqise = ((fuqia_1 - fuqia_2) / 100.0) * faktor_motivimi
+    
+    # 🔥 Përllogaritja e Renditjes së Simuluar (Për Machine Learning)
+    renditja_sim_1 = max(1, int(20 - (fuqia_1/5) - (1/k1 * 5)))
+    renditja_sim_2 = max(1, int(20 - (fuqia_2/5) - (1/k2 * 5)))
 
     form_1 = parashiko_formacionin(fuqia_1, fuqia_2, is_home=True)
     form_2 = parashiko_formacionin(fuqia_2, fuqia_1, is_home=False)
@@ -199,6 +173,15 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
 
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8))
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8))
+
+    # 🔥 Logjika Përmbysje (HT/FT 1/2 ose 2/1)
+    ht_ft_sugjerim = ""
+    if eshte_ndeshje_bllof:
+        # Nëse është bllof dhe koficienti i favoritit vuan jashtë
+        if k1 > 2.50 and k2 < 2.00:
+            if random.random() < 0.15: ht_ft_sugjerim = "1/2" # Vendasit shënojnë në HT, por thyhen në FT
+        elif k2 > 2.50 and k1 < 2.00:
+            if random.random() < 0.15: ht_ft_sugjerim = "2/1" # Miqtë shënojnë në HT, thyhen në FT
 
     if eshte_ndeshje_bllof and (k1 < 1.60 or k2 < 1.60):
         if k1 < 1.60: xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
@@ -224,8 +207,18 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     koef_rez_sakt = min(40.0, (1 / max_prob) * 0.85) if max_prob > 0 else 10.0
     besueshmeria = round(random.uniform(45.0, 60.5), 1) if eshte_ndeshje_bllof else round(min(99.0, max(65.0, (max(p1_real, p2_real) * 100) + (max_prob * 100))), 1)
     
-    analiza_custom_dict = gjenero_analize_custom(ekipi_1, ekipi_2, rezultati_sakt, eshte_ndeshje_bllof)
-    return analiza_custom_dict, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}"
+    analiza_custom_dict = gjenero_analize_custom(ekipi_1, ekipi_2, rezultati_sakt, eshte_ndeshje_bllof, ht_ft_sugjerim)
+    
+    # Kthejmë vlerat shtesë për t'i ruajtur në DB
+    te_dhena_shtese_per_db = {
+        "is_bllof": eshte_ndeshje_bllof,
+        "renditja_1": renditja_sim_1,
+        "renditja_2": renditja_sim_2,
+        "ht_ft_sugjerim": ht_ft_sugjerim,
+        "koef_plote": f"1:{k1_str} | X:{kx_str} | 2:{k2_str}"
+    }
+
+    return analiza_custom_dict, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}", te_dhena_shtese_per_db
 
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
@@ -279,7 +272,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
                 except: ora_sakte = "N/A"
 
-                analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1, kx, k2, emri_liges, index in indekset_bllof)
+                analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1, kx, k2, emri_liges, index in indekset_bllof)
 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_emri": emri_liges, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"],
@@ -287,7 +280,14 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte,
                     "ora_sakte": ora_sakte, "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati,
                     "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, 
-                    "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False
+                    "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False,
+                    
+                    # Te dhenat e reja per tu ruajtur ne Supabase
+                    "is_bllof": extradb["is_bllof"],
+                    "renditja_1": extradb["renditja_1"],
+                    "renditja_2": extradb["renditja_2"],
+                    "ht_ft_sugjerim": extradb["ht_ft_sugjerim"],
+                    "koef_plote": extradb["koef_plote"]
                 })
         
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
