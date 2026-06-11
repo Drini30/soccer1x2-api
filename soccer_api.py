@@ -32,7 +32,6 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation"
 }
 
-# --- LISTA E LIGAVE VIP PËR MACHINE LEARNING ---
 LIGAT_VIP = [
     "World Cup", "Euro Championship", "Champions League", "Europa League", "Europa Conference League",
     "Copa America", "UEFA Nations League", "England - Premier League", "England - Championship",
@@ -95,7 +94,6 @@ def perditeso_perdorues(user_data: dict):
 
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
 
-# 🔥 NDRYSHIMI 2: Gradient Clipping (Mbrojtje e Algoritmit) 🔥
 @app.get("/api/verifiko_rezultatet")
 def verifiko_rezultatet():
     res = requests.get(f"{SUPABASE_URL_PREDS}?rezultati_real=is.null", headers=SUPABASE_HEADERS)
@@ -124,7 +122,6 @@ def verifiko_rezultatet():
                         gabim_1 = gola_1 - p_g1
                         gabim_2 = gola_2 - p_g2
                         
-                        # 🛡️ Gradient Clipping: Asnjëherë më shumë se 2.0 pikë ndryshim për një ndeshje
                         ndryshim_1 = max(-2.0, min(2.0, gabim_1 * 1.5))
                         ndryshim_2 = max(-2.0, min(2.0, gabim_2 * 1.5))
                         
@@ -142,22 +139,19 @@ def verifiko_rezultatet():
                     requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{match_id}", headers=SUPABASE_HEADERS, json={"rezultati_real": rez_real})
                     updatuara += 1
 
-    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje me Gradient Clipping. Algoritmi është i mbrojtur."}
+    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje me Gradient Clipping."}
 
 @app.get("/api/sinkronizo_renditjet")
 def sinkronizo_renditjet():
     data_target = datetime.utcnow().strftime('%Y-%m-%d')
     res_fixtures = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=10)
-    
     if res_fixtures.status_code != 200: return {"mesazhi": "Gabim lidhje me API-Sports."}
     
     ligat_per_tu_updatuar = {}
     for n in res_fixtures.json().get("response", []):
         emri_liges = f"{n['league']['country']} - {n['league']['name']}"
         if is_vip_league(emri_liges):
-            liga_id = n['league']['id']
-            sezoni = n['league']['season']
-            ligat_per_tu_updatuar[liga_id] = sezoni
+            ligat_per_tu_updatuar[n['league']['id']] = n['league']['season']
 
     ekipet_ruajtura = 0
     for lid, sez in ligat_per_tu_updatuar.items():
@@ -168,20 +162,15 @@ def sinkronizo_renditjet():
                 standings = data["response"][0]["league"]["standings"][0]
                 for rank in standings:
                     team_payload = {
-                        "team_id": rank["team"]["id"],
-                        "team_name": rank["team"]["name"],
-                        "rank": rank["rank"],
-                        "points": rank["points"],
-                        "form": rank["form"] or "",
-                        "gf": rank["all"]["goals"]["for"],
-                        "ga": rank["all"]["goals"]["against"]
+                        "team_id": rank["team"]["id"], "team_name": rank["team"]["name"], "rank": rank["rank"],
+                        "points": rank["points"], "form": rank["form"] or "",
+                        "gf": rank["all"]["goals"]["for"], "ga": rank["all"]["goals"]["against"]
                     }
                     requests.delete(f"{SUPABASE_URL_STANDINGS}?team_id=eq.{team_payload['team_id']}", headers=SUPABASE_HEADERS)
                     requests.post(SUPABASE_URL_STANDINGS, headers=SUPABASE_HEADERS, json=team_payload)
                     ekipet_ruajtura += 1
 
     return {"mesazhi": f"U sinkronizuan {ekipet_ruajtura} ekipe në Supabase Cache."}
-
 
 def ruaj_ne_db_zyrtare(pako):
     pako_per_db = pako.copy()
@@ -231,8 +220,7 @@ def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""
 def merr_statistikat_nga_db(team_id):
     try:
         res = requests.get(f"{SUPABASE_URL_STANDINGS}?team_id=eq.{team_id}", headers=SUPABASE_HEADERS, timeout=2)
-        if res.status_code == 200 and len(res.json()) > 0:
-            return res.json()[0]
+        if res.status_code == 200 and len(res.json()) > 0: return res.json()[0]
     except: pass
     return None
 
@@ -257,24 +245,45 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     shtese_xg_2 = 0.0
     
     if stat_1 and stat_2:
-        renditja_sim_1 = stat_1.get("rank", renditja_sim_1)
-        renditja_sim_2 = stat_2.get("rank", renditja_sim_2)
-        
+        renditja_sim_1, renditja_sim_2 = stat_1.get("rank", renditja_sim_1), stat_2.get("rank", renditja_sim_2)
         gf1, ga1 = stat_1.get("gf", 1), stat_1.get("ga", 1)
         gf2, ga2 = stat_2.get("gf", 1), stat_2.get("ga", 1)
         
         shtese_xg_1 = (gf1 / max(1, ga2)) * 0.15 
         shtese_xg_2 = (gf2 / max(1, ga1)) * 0.15
 
-        forma1 = stat_1.get("form", "")
-        forma2 = stat_2.get("form", "")
+        forma1, forma2 = stat_1.get("form", ""), stat_2.get("form", "")
         if "W" in forma1: shtese_xg_1 += (forma1.count("W") * 0.05)
         if "L" in forma2: shtese_xg_1 += (forma2.count("L") * 0.05)
         if "W" in forma2: shtese_xg_2 += (forma2.count("W") * 0.05)
         if "L" in forma1: shtese_xg_2 += (forma1.count("L") * 0.05)
 
-    diferenca_fuqise = ((fuqia_1 - fuqia_2) / 100.0) * faktor_motivimi
+    # 🔥 NDRYSHIMI 3: KONTROLLI I H2H (Kriptoniti) 🔥
+    try:
+        res_h2h = requests.get("https://v3.football.api-sports.io/fixtures/headtohead", headers=HEADERS, params={"h2h": f"{ekipi_1_id}-{ekipi_2_id}", "last": 3}, timeout=2)
+        if res_h2h.status_code == 200:
+            fitore_1, fitore_2 = 0, 0
+            for m in res_h2h.json().get("response", []):
+                winner_home = m.get("teams", {}).get("home", {}).get("winner")
+                winner_away = m.get("teams", {}).get("away", {}).get("winner")
+                home_id = m.get("teams", {}).get("home", {}).get("id")
+                if winner_home:
+                    if home_id == int(ekipi_1_id): fitore_1 += 1
+                    else: fitore_2 += 1
+                elif winner_away:
+                    if home_id == int(ekipi_1_id): fitore_2 += 1
+                    else: fitore_1 += 1
+            
+            # Nëse ekziston një "baba" historik, i japim xG boost
+            if fitore_2 > fitore_1:
+                shtese_xg_2 += 0.25
+                shtese_xg_1 -= 0.15
+            elif fitore_1 > fitore_2:
+                shtese_xg_1 += 0.25
+                shtese_xg_2 -= 0.15
+    except: pass
 
+    diferenca_fuqise = ((fuqia_1 - fuqia_2) / 100.0) * faktor_motivimi
     form_1 = parashiko_formacionin(fuqia_1, fuqia_2, is_home=True)
     form_2 = parashiko_formacionin(fuqia_2, fuqia_1, is_home=False)
     t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
@@ -325,13 +334,9 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     analiza_custom_dict = gjenero_analize_custom(ekipi_1, ekipi_2, rezultati_sakt, eshte_ndeshje_bllof, ht_ft_sugjerim)
     
     te_dhena_shtese_per_db = {
-        "is_bllof": eshte_ndeshje_bllof,
-        "renditja_1": renditja_sim_1,
-        "renditja_2": renditja_sim_2,
-        "ht_ft_sugjerim": ht_ft_sugjerim,
-        "koef_plote": f"1:{k1_str} | X:{kx_str} | 2:{k2_str}"
+        "is_bllof": eshte_ndeshje_bllof, "renditja_1": renditja_sim_1, "renditja_2": renditja_sim_2,
+        "ht_ft_sugjerim": ht_ft_sugjerim, "koef_plote": f"1:{k1_str} | X:{kx_str} | 2:{k2_str}"
     }
-
     return analiza_custom_dict, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}", te_dhena_shtese_per_db
 
 @app.get("/api/skedina")
@@ -465,7 +470,6 @@ def merr_renditjen(league_id: int, season: int):
         return {"mesazhi": "Sukses", "renditja": renditja_list}
     except Exception as e: return {"mesazhi": "Gabim", "renditja": [], "detaje": str(e)}
 
-# 🔥 FUNKSIONI I KOEFICIENTËVE ËSHTË RIKTHYER I PLOTË 🔥
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
     try:
