@@ -1,7 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import random
 import math
@@ -19,7 +19,6 @@ app.add_middleware(
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
-# 🔥 KONFIGURIMI I DATABAZËS REALE SUPABASE 🔥
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
 SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
@@ -119,14 +118,12 @@ def verifiko_rezultatet():
                     
                     try:
                         p_g1, p_g2 = map(int, str(nd.get("rezultati_sakt", "0-0")).split('-'))
-                        gabim_1 = gola_1 - p_g1
-                        gabim_2 = gola_2 - p_g2
+                        gabim_1, gabim_2 = gola_1 - p_g1, gola_2 - p_g2
                         
                         ndryshim_1 = max(-2.0, min(2.0, gabim_1 * 1.5))
                         ndryshim_2 = max(-2.0, min(2.0, gabim_2 * 1.5))
                         
-                        ekipi1_emri = nd.get("ekipi_1")
-                        ekipi2_emri = nd.get("ekipi_2")
+                        ekipi1_emri, ekipi2_emri = nd.get("ekipi_1"), nd.get("ekipi_2")
                         
                         if ekipi1_emri:
                             if ekipi1_emri in GIGANTET: GIGANTET[ekipi1_emri] += ndryshim_1
@@ -258,7 +255,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
         if "W" in forma2: shtese_xg_2 += (forma2.count("W") * 0.05)
         if "L" in forma1: shtese_xg_2 += (forma1.count("L") * 0.05)
 
-    # 🔥 NDRYSHIMI 3: KONTROLLI I H2H (Kriptoniti) 🔥
     try:
         res_h2h = requests.get("https://v3.football.api-sports.io/fixtures/headtohead", headers=HEADERS, params={"h2h": f"{ekipi_1_id}-{ekipi_2_id}", "last": 3}, timeout=2)
         if res_h2h.status_code == 200:
@@ -274,7 +270,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
                     if home_id == int(ekipi_1_id): fitore_2 += 1
                     else: fitore_1 += 1
             
-            # Nëse ekziston një "baba" historik, i japim xG boost
             if fitore_2 > fitore_1:
                 shtese_xg_2 += 0.25
                 shtese_xg_1 -= 0.15
@@ -428,6 +423,80 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         lista_finale = sorted([{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()], key=lambda x: merr_rendesine_e_liges(x["liga"]))
         return {"mesazhi": "Sukses", "skedina_grupuar": lista_finale}
     except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
+
+# 🔥 BLLOKUESI KOHOR PËR SKEDINËN E FUNDJAVËS (VIP) 🔥
+VIP_CACHE = {"data_krijimit": None, "skedina": []}
+
+@app.get("/api/vip_weekend")
+def merr_vip_weekend():
+    sot = datetime.utcnow()
+    dita_javes = sot.weekday() # 0 = E Hënë ... 4 = E Premte
+    
+    # 1. Nga E Hëna në të Enjte: Refuzojmë gjenerimin
+    if dita_javes < 4:
+        return {"mesazhi": "Në pritje", "is_ready": False}
+        
+    data_sot_str = sot.strftime('%Y-%m-%d')
+    
+    # 2. RAM CACHE: Nëse skedina është krijuar tashmë sot, e rikthejmë direkt
+    if VIP_CACHE["data_krijimit"] == data_sot_str and len(VIP_CACHE["skedina"]) > 0:
+        return {"mesazhi": "Sukses", "is_ready": True, "skedina": VIP_CACHE["skedina"]}
+        
+    # Gjejmë Të Shtunën dhe Të Dielën
+    dite_deri_te_shtunen = 5 - dita_javes
+    data_shtune = (sot + timedelta(days=dite_deri_te_shtunen)).strftime('%Y-%m-%d')
+    data_diel = (sot + timedelta(days=dite_deri_te_shtunen + 1)).strftime('%Y-%m-%d')
+    
+    ndeshjet_fundjaves = []
+    for data_target in [data_shtune, data_diel]:
+        try:
+            res_fix = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=10)
+            te_dhenat = res_fix.json()
+            
+            res_odds = requests.get("https://v3.football.api-sports.io/odds", headers=HEADERS, params={"date": data_target, "bookmaker": 8, "page": 1}, timeout=10).json()
+            bet365_odds = {}
+            if "response" in res_odds:
+                for item in res_odds["response"]:
+                    fix_id = str(item["fixture"]["id"])
+                    try:
+                        bets = item["bookmakers"][0]["bets"]
+                        mw = next((b for b in bets if b["id"] == 1 or b["name"] == "Match Winner"), None)
+                        if mw:
+                            v = mw["values"]
+                            bet365_odds[fix_id] = { "1": next((x["odd"] for x in v if x["value"] == "Home"), None), "X": next((x["odd"] for x in v if x["value"] == "Draw"), None), "2": next((x["odd"] for x in v if x["value"] == "Away"), None)}
+                    except: pass
+            
+            if "response" in te_dhenat:
+                for n in te_dhenat["response"]:
+                    emri_liges = f"{n['league']['country']} - {n['league']['name']}"
+                    if is_vip_league(emri_liges):
+                        id_ndeshja = str(n["fixture"]["id"])
+                        ekipi_1_id = n["teams"]["home"]["id"]
+                        ekipi_2_id = n["teams"]["away"]["id"]
+                        ekipi_1, ekipi_2 = n["teams"]["home"]["name"].replace("'", ""), n["teams"]["away"]["name"].replace("'", "")
+                        
+                        if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]:
+                            k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
+                            
+                            analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(
+                                id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1, kx, k2, emri_liges
+                            )
+                            
+                            if besueshmeria > 75.0:
+                                ndeshjet_fundjaves.append({
+                                    "id": id_ndeshja, "ndeshja": f"{ekipi_1} vs {ekipi_2}",
+                                    "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt,
+                                    "besueshmeria": besueshmeria, "data": data_target
+                                })
+        except: pass
+        
+    ndeshjet_fundjaves.sort(key=lambda x: x["besueshmeria"], reverse=True)
+    top_4 = ndeshjet_fundjaves[:4]
+    
+    VIP_CACHE["data_krijimit"] = data_sot_str
+    VIP_CACHE["skedina"] = top_4
+    
+    return {"mesazhi": "Sukses", "is_ready": True, "skedina": top_4}
 
 @app.get("/api/detajet/{match_id}")
 def merr_detajet_ndeshjes(match_id: int):
