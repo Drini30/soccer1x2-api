@@ -20,7 +20,7 @@ API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
 # 🔥 KONFIGURIMI I DATABAZËS REALE SUPABASE 🔥
-SUPABASE_ANON_KEY = "sb_publishable_zdg-Qz3O3Sf5VRTXy1msXA_0zyoEJ7y"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
 SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
 
@@ -31,7 +31,6 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation"
 }
 
-# --- MODELET E TË DHËNAVE PËR AUTENTIFIKIM ---
 class LoginData(BaseModel):
     email: str
     password: str
@@ -72,8 +71,13 @@ def perditeso_perdorues(user_data: dict):
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_payload)
     return {"sukses": True}
 
+# --- 🔥 SISTEMI DINAMIK I MËSIMIT TË AI 🔥 ---
+# Ky fjalor fillestar do të zgjerohet automatikisht çdo natë!
+GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
+
 @app.get("/api/verifiko_rezultatet")
 def verifiko_rezultatet():
+    # 1. Gjen ndeshjet që kërkojnë verifikim
     res = requests.get(f"{SUPABASE_URL_PREDS}?rezultati_real=is.null", headers=SUPABASE_HEADERS)
     if res.status_code != 200: return {"mesazhi": "Gabim në leximin e Databazës."}
     
@@ -94,10 +98,34 @@ def verifiko_rezultatet():
                     gola_1 = fixture["goals"]["home"]
                     gola_2 = fixture["goals"]["away"]
                     rez_real = f"{gola_1}-{gola_2}"
+                    
+                    # 🔥 KRAHASIMI DHE RUAJTJA E MËSIMIT 🔥
+                    try:
+                        # Nxjerrim golat e parashikuar
+                        p_g1, p_g2 = map(int, str(nd.get("rezultati_sakt", "0-0")).split('-'))
+                        
+                        # Llogarisim devijimin (Gabimin)
+                        gabim_1 = gola_1 - p_g1
+                        gabim_2 = gola_2 - p_g2
+                        
+                        ekipi1_emri = nd.get("ekipi_1")
+                        ekipi2_emri = nd.get("ekipi_2")
+                        
+                        # Ndryshojmë Fuqinë e Ekipeve (Shpejtësia e të mësuarit = 1.5 pikë për çdo gol gabim)
+                        if ekipi1_emri:
+                            if ekipi1_emri in GIGANTET: GIGANTET[ekipi1_emri] += (gabim_1 * 1.5)
+                            else: GIGANTET[ekipi1_emri] = 70 + (gabim_1 * 1.5) # E shtojmë ekipin e ri!
+                        
+                        if ekipi2_emri:
+                            if ekipi2_emri in GIGANTET: GIGANTET[ekipi2_emri] += (gabim_2 * 1.5)
+                            else: GIGANTET[ekipi2_emri] = 70 + (gabim_2 * 1.5)
+                    except: pass
+                    
+                    # Përditësojmë Supabase
                     requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{match_id}", headers=SUPABASE_HEADERS, json={"rezultati_real": rez_real})
                     updatuara += 1
 
-    return {"mesazhi": f"U verifikuan dhe u sinkronizuan {updatuara} ndeshje në Supabase."}
+    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje. Algoritmi përditësoi njohuritë e tij për {len(GIGANTET)} ekipe."}
 
 # ---------------------------------------------
 
@@ -116,10 +144,10 @@ def merr_rendesine_e_liges(emri_liges):
         if liga_top.lower() in emri_liges.lower(): return i 
     return 999 
 
-GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
 TAKTIKAT = { "4-3-3": {"atk": 1.15, "def_fortitude": 0.90}, "3-4-3": {"atk": 1.20, "def_fortitude": 0.85}, "4-4-2": {"atk": 1.00, "def_fortitude": 1.00}, "4-2-3-1": {"atk": 1.05, "def_fortitude": 1.05}, "3-5-2": {"atk": 1.10, "def_fortitude": 0.95}, "5-3-2": {"atk": 0.80, "def_fortitude": 1.20}, "5-4-1": {"atk": 0.70, "def_fortitude": 1.30} }
 
 def merr_fuqine_reale(ekipi):
+    # Lexon nga fjalori Dinamik!
     for emri, fuqia in GIGANTET.items():
         if emri.lower() in ekipi.lower(): return fuqia
     return 70
@@ -141,7 +169,6 @@ def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""
     try: g1, g2 = map(int, rez_sakt.split('-'))
     except: g1, g2 = 1, 0
     
-    # Shtojmë Përmbysjen nëse ka
     ht_ft_text = f"<br><b style='color:#ff4500;'>🔥 Ekskluzive:</b> Sugjerohet Përmbysje <b>{ht_ft_str}</b>!" if ht_ft_str else ""
 
     if eshte_bllof: return { "sq": f"⚠️ <b>Risk (Kurth):</b> Historiku paralajmëron rrezik për Gafë nga favoriti. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë kundër favoritit.{ht_ft_text}", "en": f"⚠️ <b>Risk (Trap):</b> Historical data warns of a potential upset.{ht_ft_text}", "de": f"⚠️ <b>Risiko (Falle):</b> Historische Daten warnen vor einer Überraschung.{ht_ft_text}", "fr": f"⚠️ <b>Risque (Piège):</b> L'historique avertit d'une surprise potentielle.{ht_ft_text}", "it": f"⚠️ <b>Rischio (Trappola):</b> I dati storici avvertono di una possibile sorpresa.{ht_ft_text}" }
@@ -162,7 +189,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     faktor_motivimi = llogarit_motivimin(emri_liges)
     diferenca_fuqise = ((fuqia_1 - fuqia_2) / 100.0) * faktor_motivimi
     
-    # 🔥 Përllogaritja e Renditjes së Simuluar (Për Machine Learning)
     renditja_sim_1 = max(1, int(20 - (fuqia_1/5) - (1/k1 * 5)))
     renditja_sim_2 = max(1, int(20 - (fuqia_2/5) - (1/k2 * 5)))
 
@@ -174,14 +200,12 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8))
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8))
 
-    # 🔥 Logjika Përmbysje (HT/FT 1/2 ose 2/1)
     ht_ft_sugjerim = ""
     if eshte_ndeshje_bllof:
-        # Nëse është bllof dhe koficienti i favoritit vuan jashtë
         if k1 > 2.50 and k2 < 2.00:
-            if random.random() < 0.15: ht_ft_sugjerim = "1/2" # Vendasit shënojnë në HT, por thyhen në FT
+            if random.random() < 0.15: ht_ft_sugjerim = "1/2" 
         elif k2 > 2.50 and k1 < 2.00:
-            if random.random() < 0.15: ht_ft_sugjerim = "2/1" # Miqtë shënojnë në HT, thyhen në FT
+            if random.random() < 0.15: ht_ft_sugjerim = "2/1" 
 
     if eshte_ndeshje_bllof and (k1 < 1.60 or k2 < 1.60):
         if k1 < 1.60: xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
@@ -209,7 +233,6 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, k1_str, kx_str, k2_st
     
     analiza_custom_dict = gjenero_analize_custom(ekipi_1, ekipi_2, rezultati_sakt, eshte_ndeshje_bllof, ht_ft_sugjerim)
     
-    # Kthejmë vlerat shtesë për t'i ruajtur në DB
     te_dhena_shtese_per_db = {
         "is_bllof": eshte_ndeshje_bllof,
         "renditja_1": renditja_sim_1,
@@ -282,7 +305,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, 
                     "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False,
                     
-                    # Te dhenat e reja per tu ruajtur ne Supabase
                     "is_bllof": extradb["is_bllof"],
                     "renditja_1": extradb["renditja_1"],
                     "renditja_2": extradb["renditja_2"],
