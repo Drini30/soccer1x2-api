@@ -67,10 +67,10 @@ def regjistro_perdorues(data: LoginData):
     emri = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
     mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
 
-    # 🔥 Ruajmë logjikën e re në DB gjatë regjistrimit
+    # 🔥 Ndryshimi: Tani portofoli nis direkt me 20.0 dollarë dhuratë! 🔥
     user_payload = { 
         "email": email_clean, "password": data.password, "emri": emri, "mbiemri": mbiemri, 
-        "portofoli": 0.0, "isVip": False, "vip_skadon_me": None, "auto_rinovim": False, "blerjet": [] 
+        "portofoli": 20.0, "isVip": False, "vip_skadon_me": None, "auto_rinovim": False, "blerjet": [] 
     }
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
     if res_insert.status_code in [200, 201, 204]: return {"sukses": True, "perdoruesi": user_payload}
@@ -97,7 +97,6 @@ def perditeso_perdorues(user_data: dict):
             "isVip": is_vip_status, 
             "blerjet": user_data.get("blerjet", []) 
         }
-        # 🔥 Kapim ndryshimet e skadencës
         if "vip_skadon_me" in user_data: update_payload["vip_skadon_me"] = user_data["vip_skadon_me"]
         if "auto_rinovim" in user_data: update_payload["auto_rinovim"] = user_data["auto_rinovim"]
         
@@ -108,7 +107,6 @@ GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain"
 
 @app.get("/api/verifiko_rezultatet")
 def verifiko_rezultatet():
-    # 1. Pjesa e Menaxhimit te Abonimeve VIP
     res_users = requests.get(f"{SUPABASE_URL_USERS}?isVip=eq.true", headers=SUPABASE_HEADERS)
     if res_users.status_code == 200:
         sot_date = datetime.utcnow().date()
@@ -119,15 +117,12 @@ def verifiko_rezultatet():
                     skadenca = datetime.strptime(skadenca_str, "%Y-%m-%d").date()
                     if sot_date > skadenca:
                         if u.get("auto_rinovim"):
-                            # Rinovo automatikisht per 30 dite
                             nova_skadenca = (sot_date + timedelta(days=30)).strftime("%Y-%m-%d")
                             requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{u['email']}", headers=SUPABASE_HEADERS, json={"vip_skadon_me": nova_skadenca})
                         else:
-                            # Hiq statusin VIP
                             requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{u['email']}", headers=SUPABASE_HEADERS, json={"isVip": False, "vip_skadon_me": None, "auto_rinovim": False})
                 except: pass
 
-    # 2. Pjesa e Llogaritjes se Rezultateve (Gradient Clipping)
     res = requests.get(f"{SUPABASE_URL_PREDS}?rezultati_real=is.null", headers=SUPABASE_HEADERS)
     if res.status_code != 200: return {"mesazhi": "Gabim në leximin e Databazës."}
     
