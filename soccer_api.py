@@ -6,7 +6,7 @@ import requests
 import random
 import math
 
-app = FastAPI(title="SOCCER1X2 API", description="AI për Skedinën e Ditës Dhe Ndeshjet LIVE")
+app = FastAPI(title="SOCCER1X2 PRO API", description="AI për Skedinën e Ditës Dhe Ndeshjet LIVE")
 
 app.add_middleware(
     CORSMiddleware,
@@ -105,20 +105,15 @@ def perditeso_perdorues(user_data: dict):
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_payload)
     return {"sukses": True}
 
-
-# 🔥 FUNKSIONI I RI PËR TË DËRGUAR EMAILE (FATURA DHE NJOFTIME) 🔥
 class EmailRequest(BaseModel):
     email_klientit: str
     emri_klientit: str
-    tipi_blerjes: str # Mund të jetë 'VIP', 'TOPUP', ose 'PPM'
+    tipi_blerjes: str
     shuma: float
     detaje: str = ""
 
 @app.post("/api/send_email")
 def dergo_email_fature(req: EmailRequest):
-    # Për sa kohë jemi pa domain, Resend dërgon vetëm te ty (mateosamanta2@gmail.com).
-    # Nëse klienti provon me email tjetër në faqe, Resend do ta bllokojë te serveri, por ne nuk nxjerrim error në UI.
-    
     email_target = req.email_klientit if req.email_klientit.lower() == "mateosamanta2@gmail.com" else "mateosamanta2@gmail.com"
     
     titulli = "Fatura Juaj - Soccer1X2"
@@ -187,8 +182,13 @@ def dergo_email_fature(req: EmailRequest):
     except Exception as e:
         return {"sukses": False, "mesazhi": str(e)}
 
-
+# ==========================================
+# 🔥 SISTEMI HIBRID I VETË-MËSIMIT TË AI 🔥
+# ==========================================
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
+
+# Fjalori i Skenarëve Ku Algoritmi Gabon. Shembull: "FavoritJashte_MbrojtjeForte": -1.5
+PENALITETET_E_SKENAREVE = {}
 
 @app.get("/api/verifiko_rezultatet")
 def verifiko_rezultatet():
@@ -224,6 +224,7 @@ def verifiko_rezultatet():
             if data.get("response") and len(data["response"]) > 0:
                 fixture = data["response"][0]
                 statusi = fixture["fixture"]["status"]["short"]
+                
                 if statusi in ["FT", "AET", "PEN"]:
                     gola_1 = fixture["goals"]["home"]
                     gola_2 = fixture["goals"]["away"]
@@ -231,25 +232,58 @@ def verifiko_rezultatet():
                     
                     try:
                         p_g1, p_g2 = map(int, str(nd.get("rezultati_sakt", "0-0")).split('-'))
-                        gabim_1, gabim_2 = gola_1 - p_g1, gola_2 - p_g2
-                        
-                        ndryshim_1 = max(-2.0, min(2.0, gabim_1 * 1.5))
-                        ndryshim_2 = max(-2.0, min(2.0, gabim_2 * 1.5))
-                        
                         ekipi1_emri, ekipi2_emri = nd.get("ekipi_1"), nd.get("ekipi_2")
                         
-                        if ekipi1_emri:
-                            if ekipi1_emri in GIGANTET: GIGANTET[ekipi1_emri] += ndryshim_1
-                            else: GIGANTET[ekipi1_emri] = 70 + ndryshim_1 
-                        if ekipi2_emri:
-                            if ekipi2_emri in GIGANTET: GIGANTET[ekipi2_emri] += ndryshim_2
-                            else: GIGANTET[ekipi2_emri] = 70 + ndryshim_2
+                        # Kontrollojmë nëse Algoritmi ka gabuar rëndë
+                        gabimi_matematikor = abs((gola_1 - gola_2) - (p_g1 - p_g2))
+                        
+                        if gabimi_matematikor >= 2:
+                            # 1. MIKRO-PENALIZIMI LOKAL (I butë: -0.5 ose +0.5)
+                            ndryshim_ekipi1 = 0.0
+                            ndryshim_ekipi2 = 0.0
+                            
+                            # Nëse favoriti pritej të fitonte por zhgënjeu
+                            if p_g1 > p_g2 and gola_1 <= gola_2:
+                                ndryshim_ekipi1 = -0.5
+                                ndryshim_ekipi2 = +0.5
+                            # Nëse favoriti (Ekipi 2) pritej të fitonte por zhgënjeu
+                            elif p_g2 > p_g1 and gola_2 <= gola_1:
+                                ndryshim_ekipi1 = +0.5
+                                ndryshim_ekipi2 = -0.5
+                                
+                            # Aplikojmë Mikro-Ndërhyrjen
+                            if ekipi1_emri:
+                                if ekipi1_emri in GIGANTET: GIGANTET[ekipi1_emri] += ndryshim_ekipi1
+                                else: GIGANTET[ekipi1_emri] = 70 + ndryshim_ekipi1 
+                            if ekipi2_emri:
+                                if ekipi2_emri in GIGANTET: GIGANTET[ekipi2_emri] += ndryshim_ekipi2
+                                else: GIGANTET[ekipi2_emri] = 70 + ndryshim_ekipi2
+                                
+                            # 2. RREGULLIMI I SKENARIT GLOBAL (Përgjithësimi Përmes Veçorive)
+                            # Marrim koeficientin e plotë për të nxjerrë profilin (psh. "1:1.40 | X:3.50 | 2:8.00")
+                            koef_str = nd.get("koef_plote", "")
+                            if koef_str:
+                                # Ky është një simulim i nxjerrjes së skenarit (Feature Extraction)
+                                if "2:1." in koef_str or "2: 1." in koef_str: # Favoriti luan Jashtë (Koef < 2.0)
+                                    skenari = "FavoritJashte_Vs_Underdog"
+                                    # Penalizojmë thellë këtë Skenar (Jo Spanjën, por TË GJITHA skenarët e tillë)
+                                    if skenari in PENALITETET_E_SKENAREVE:
+                                        PENALITETET_E_SKENAREVE[skenari] += 0.5
+                                    else:
+                                        PENALITETET_E_SKENAREVE[skenari] = 1.0
+                                elif "1:1." in koef_str or "1: 1." in koef_str: # Favoriti luan Brenda
+                                    skenari = "FavoritBrenda_Vs_Underdog"
+                                    if skenari in PENALITETET_E_SKENAREVE:
+                                        PENALITETET_E_SKENAREVE[skenari] += 0.5
+                                    else:
+                                        PENALITETET_E_SKENAREVE[skenari] = 1.0
+
                     except: pass
                     
                     requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{match_id}", headers=SUPABASE_HEADERS, json={"rezultati_real": rez_real})
                     updatuara += 1
 
-    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje dhe u verifikuan abonimet VIP."}
+    return {"mesazhi": f"U sinkronizuan {updatuara} ndeshje, u aplikuan Rregullat Hibride të AI dhe u verifikuan abonimet."}
 
 @app.get("/api/sinkronizo_renditjet")
 def sinkronizo_renditjet():
@@ -391,9 +425,20 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
                 shtese_xg_2 -= 0.15
     except: pass
 
-    diferenca_fuqise = ((fuqia_1 - fuqia_2) / 100.0) * faktor_motivimi
-    form_1 = parashiko_formacionin(fuqia_1, fuqia_2, is_home=True)
-    form_2 = parashiko_formacionin(fuqia_2, fuqia_1, is_home=False)
+    # APLIKIMI I RREGULLIMIT NGA PENALITETET E SKENAREVE (Aftësia e Vetë-Mësimit)
+    penalitet_skenari_1 = 0.0
+    penalitet_skenari_2 = 0.0
+    if k1 < 2.0 and "FavoritBrenda_Vs_Underdog" in PENALITETET_E_SKENAREVE:
+        penalitet_skenari_1 = PENALITETET_E_SKENAREVE["FavoritBrenda_Vs_Underdog"]
+    elif k2 < 2.0 and "FavoritJashte_Vs_Underdog" in PENALITETET_E_SKENAREVE:
+        penalitet_skenari_2 = PENALITETET_E_SKENAREVE["FavoritJashte_Vs_Underdog"]
+
+    fuqia_1_reale = fuqia_1 - penalitet_skenari_1
+    fuqia_2_reale = fuqia_2 - penalitet_skenari_2
+
+    diferenca_fuqise = ((fuqia_1_reale - fuqia_2_reale) / 100.0) * faktor_motivimi
+    form_1 = parashiko_formacionin(fuqia_1_reale, fuqia_2_reale, is_home=True)
+    form_2 = parashiko_formacionin(fuqia_2_reale, fuqia_1_reale, is_home=False)
     t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
     t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
 
