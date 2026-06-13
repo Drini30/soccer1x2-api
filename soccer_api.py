@@ -93,7 +93,7 @@ def perditeso_perdorues(user_data: dict):
     if email:
         is_vip_status = user_data.get("isVip", False)
         if "isvip" in user_data: is_vip_status = user_data["isvip"]
-        
+         
         update_payload = { 
             "portofoli": user_data.get("portofoli", 0.0), 
             "isVip": is_vip_status, 
@@ -187,7 +187,7 @@ def dergo_email_fature(req: EmailRequest):
 # ==========================================
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
 
-# Fjalori i Skenarëve Ku Algoritmi Gabon. Shembull: "FavoritJashte_MbrojtjeForte": -1.5
+# Fjalori i Skenarëve Ku Algoritmi Gabon.
 PENALITETET_E_SKENAREVE = {}
 
 @app.get("/api/verifiko_rezultatet")
@@ -260,13 +260,10 @@ def verifiko_rezultatet():
                                 else: GIGANTET[ekipi2_emri] = 70 + ndryshim_ekipi2
                                 
                             # 2. RREGULLIMI I SKENARIT GLOBAL (Përgjithësimi Përmes Veçorive)
-                            # Marrim koeficientin e plotë për të nxjerrë profilin (psh. "1:1.40 | X:3.50 | 2:8.00")
                             koef_str = nd.get("koef_plote", "")
                             if koef_str:
-                                # Ky është një simulim i nxjerrjes së skenarit (Feature Extraction)
                                 if "2:1." in koef_str or "2: 1." in koef_str: # Favoriti luan Jashtë (Koef < 2.0)
                                     skenari = "FavoritJashte_Vs_Underdog"
-                                    # Penalizojmë thellë këtë Skenar (Jo Spanjën, por TË GJITHA skenarët e tillë)
                                     if skenari in PENALITETET_E_SKENAREVE:
                                         PENALITETET_E_SKENAREVE[skenari] += 0.5
                                     else:
@@ -358,8 +355,8 @@ def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""
     if eshte_bllof: return { "sq": f"⚠️ <b>Risk (Kurth):</b> Historiku paralajmëron rrezik për Gafë nga favoriti. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë kundër favoritit.{ht_ft_text}", "en": f"⚠️ <b>Risk (Trap):</b> Historical data warns of a potential upset.{ht_ft_text}" }
     elif rez_sakt == "0-0": return { "sq": f"Mbrojtje ultra-kompakte nga të dyja skuadrat. <br><b style='color:#f2cc60;'>Sugjerim:</b> Nën 2.5 gola total.{ht_ft_text}", "en": f"Ultra-compact defenses. <br><b style='color:#f2cc60;'>Suggestion:</b> Under 2.5 goals.{ht_ft_text}"}
     elif g1 == g2: return { "sq": f"Skuadra me forca të barabarta. <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja shënojnë (GG) ose Barazim.{ht_ft_text}", "en": f"Evenly matched teams. <br><b style='color:#f2cc60;'>Suggestion:</b> Both Teams to Score (GG) or Draw.{ht_ft_text}"}
-    elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"Offensive dominance by <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
-    else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away. <br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal. <br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play. <br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
+    elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"Offensive dominance by <b>{ekipi_1}</b>.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
+    else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal.<br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play.<br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
 
 def merr_statistikat_nga_db(team_id):
     try:
@@ -425,7 +422,7 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
                 shtese_xg_2 -= 0.15
     except: pass
 
-    # APLIKIMI I RREGULLIMIT NGA PENALITETET E SKENAREVE (Aftësia e Vetë-Mësimit)
+    # APLIKIMI I RREGULLIMIT NGA PENALITETET E SKENAREVE
     penalitet_skenari_1 = 0.0
     penalitet_skenari_2 = 0.0
     if k1 < 2.0 and "FavoritBrenda_Vs_Underdog" in PENALITETET_E_SKENAREVE:
@@ -467,6 +464,38 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     else:
         xg_1 = xg_1_baze * 1.15 * t1_atk * (1 / t2_def)
         xg_2 = xg_2_baze * 0.90 * t2_atk * (1 / (t1_def * 1.10))
+
+    # ========================================================
+    # 🔥 LLOGARITJA E TEMPERATURËS DINAMIKE (Multi-Factor) 🔥
+    # ========================================================
+    
+    # 1. Diferenca e Forcës (Kthehet në vlerë rreth 0.0 - 3.0 bazuar te koeficientët)
+    diff_forca = abs(p1_real - p2_real) * 4.0 
+    
+    # 2. Kaosi i Ligës
+    kaosi_liges = 25.0
+    liga_lower = emri_liges.lower()
+    if any(x in liga_lower for x in ["championship", "segunda", "ligue 2", "serie b"]): kaosi_liges = 40.0
+    elif any(x in liga_lower for x in ["premier", "champions", "world cup"]): kaosi_liges = 20.0
+    
+    # 3. Bonusi i Derbit (Nëse ekipet kanë diferencë force ≤ 3 pikë)
+    eshte_derbi = True if abs(fuqia_1_reale - fuqia_2_reale) <= 3.0 else False
+    bonusi_derbit = 0.15 if eshte_derbi else 0.0
+    
+    # 4. Ekuacioni i Temperaturës
+    temperatura = 0.40 - (diff_forca * 0.10) + ((kaosi_liges - 20) * 0.01) + bonusi_derbit
+    temperatura = max(0.15, min(0.90, temperatura)) # Bllokojmë që mos të dalë jashtë limitit
+    
+    # 5. Shkallëzimi i xG (Scaling)
+    # T=0.40 nuk ndryshon asgjë. T<0.40 zmadhon diferencat. T>0.40 i afron ekipet (shumë barazime).
+    faktori_temp = 0.40 / temperatura
+    mesatarja_xg = (xg_1 + xg_2) / 2.0
+    xg_1 = max(0.05, mesatarja_xg + ((xg_1 - mesatarja_xg) * faktori_temp))
+    xg_2 = max(0.05, mesatarja_xg + ((xg_2 - mesatarja_xg) * faktori_temp))
+    
+    # ========================================================
+    # 🔥 FUNDI I TEMPERATURËS DINAMIKE 🔥
+    # ========================================================
 
     rezultati_sakt = "0-0"
     max_prob = 0
