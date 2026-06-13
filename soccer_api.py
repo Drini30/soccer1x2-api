@@ -717,9 +717,23 @@ def merr_renditjen(league_id: int, season: int):
     try:
         res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": league_id, "season": season}, timeout=8)
         data = res.json()
-        renditja_list = [{"pozicioni": r["rank"], "ekipi": r["team"]["name"], "piket": r["points"], "ndeshje": r["all"]["played"], "gola": f"{r['all']['goals']['for']}:{r['all']['goals']['against']}", "forma": r["form"]} for r in data.get("response", [{}])[0].get("league", {}).get("standings", [[]])[0]] if data.get("response") else []
+        renditja_list = []
+        if data.get("response"):
+            # Marrja e të gjitha grupeve (1 grup për Liga, disa për Kupa)
+            grupet = data["response"][0]["league"]["standings"]
+            for grup in grupet:
+                for r in grup:
+                    renditja_list.append({
+                        "pozicioni": r["rank"], 
+                        "ekipi": r["team"]["name"], 
+                        "piket": r["points"], 
+                        "ndeshje": r["all"]["played"], 
+                        "gola": f"{r['all']['goals']['for']}:{r['all']['goals']['against']}", 
+                        "forma": r["form"]
+                    })
         return {"mesazhi": "Sukses", "renditja": renditja_list}
-    except Exception as e: return {"mesazhi": "Gabim", "renditja": [], "detaje": str(e)}
+    except Exception as e: 
+        return {"mesazhi": "Gabim", "renditja": [], "detaje": str(e)}
 
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
