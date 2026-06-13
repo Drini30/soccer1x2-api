@@ -505,16 +505,30 @@ async def lemonsqueezy_webhook(request: Request):
         
         # Reagon VETËM kur pagesa mbyllet me sukses
         if meta.get("event_name") == "order_created":
-            custom_data = payload.get("data", {}).get("attributes", {}).get("custom_data", {})
+            attributes = payload.get("data", {}).get("attributes", {})
+            custom_data = attributes.get("custom_data") or {}
             
-            email = custom_data.get("user_email")
-            blerja_type = custom_data.get("type") # 'ppm', 'vip', 'topup'
-            
+            # 1. Gjejmë Email-in me forcë (Nga custom_data ose fusha zyrtare e faturës)
+            email = custom_data.get("user_email") or attributes.get("user_email")
             if not email: return {"status": "injoruar", "arsyeja": "Nuk ka email klienti"}
-                
-            # Gjejmë klientin në Supabase
+            
+            # 2. Gjejmë çfarë bleu (Nga custom_data ose nga emri i produktit)
+            blerja_type = custom_data.get("type")
+            first_item = attributes.get("first_order_item", {})
+            product_name = first_item.get("product_name", "").lower()
+            
+            if not blerja_type:
+                if "vip" in product_name or "subscription" in product_name:
+                    blerja_type = "vip"
+                elif "rimbushje" in product_name or "topup" in product_name:
+                    blerja_type = "topup"
+                else:
+                    blerja_type = "ppm"
+
+            # 3. Gjejmë klientin në Supabase
             user_res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS)
-            if user_res.status_code != 200 or len(user_res.json()) == 0: return {"status": "gabim", "arsyeja": "Klienti nuk u gjet"}
+            if user_res.status_code != 200 or len(user_res.json()) == 0: 
+                return {"status": "gabim", "arsyeja": f"Klienti me email {email} nuk u gjet në DB"}
                 
             user = user_res.json()[0]
             update_data = {}
@@ -525,28 +539,27 @@ async def lemonsqueezy_webhook(request: Request):
                 update_data["vip_skadon_me"] = data_skadences.isoformat()
             
             elif blerja_type == "topup":
-                shuma = float(custom_data.get("amount", 0))
+                # Marrim shumën, nëse s'kemi custom_data e marrim nga totali i faturës
+                shuma = float(custom_data.get("amount", attributes.get("total", 0) / 100.0))
                 update_data["portofoli"] = float(user.get("portofoli", 0.0)) + shuma
                 
             elif blerja_type == "ppm":
                 blerja_e_re = {
-                    "id": str(custom_data.get("match_id")),
-                    "ndeshja": custom_data.get("ndeshja"),
-                    "rezultati": custom_data.get("rezultati"),
-                    "koef": str(custom_data.get("koef")),
-                    "cmimi": float(custom_data.get("cmimi", 0))
+                    "id": str(custom_data.get("match_id", "N/A")),
+                    "ndeshja": custom_data.get("ndeshja", product_name),
+                    "rezultati": custom_data.get("rezultati", "N/A"),
+                    "koef": str(custom_data.get("koef", "N/A")),
+                    "cmimi": float(custom_data.get("cmimi", attributes.get("total", 0) / 100.0))
                 }
                 lista_blerjeve = user.get("blerjet", [])
-                
-                # Kontrollojmë mos ta shtojmë 2 herë gabimisht
                 if not any(b["id"] == blerja_e_re["id"] for b in lista_blerjeve):
                     lista_blerjeve.append(blerja_e_re)
                     update_data["blerjet"] = lista_blerjeve
                 
-            # Bëjmë ruajtjen e ndeshjes te profili i klientit në Supabase!
+            # 4. Ruajmë gjithçka në Supabase
             if update_data:
                 requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_data)
                 
-        return {"status": "sukses"}
+        return {"status": "sukses", "email_perdorur": email, "lloj_blerje": blerja_type}
     except Exception as e:
         return {"status": "gabim_kodi", "detaje": str(e)}
