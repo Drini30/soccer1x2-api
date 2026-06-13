@@ -1,4 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -99,6 +99,14 @@ def perditeso_perdorues(user_data: dict):
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_payload)
     return {"sukses": True}
 
+@app.get("/api/users")
+def merr_perdorues_nga_db(email: str):
+    try:
+        res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}", headers=SUPABASE_HEADERS)
+        if res.status_code == 200: return res.json()
+        return []
+    except: return []
+
 @app.post("/api/send_email")
 def dergo_email_fature(req: dict):
     return {"sukses": True, "mesazhi": "Bypassed for optimization"}
@@ -111,7 +119,9 @@ def verifiko_rezultatet(): return {"mesazhi": "U sinkronizuan rezultatet."}
 @app.get("/api/sinkronizo_renditjet")
 def sinkronizo_renditjet(): return {"mesazhi": "Cron bypass for local."}
 
-# Llogaritja e ADN-së për një ligë të vetme
+# ==========================================
+# TRURI 3-VJEÇAR: LLOGARITJA DHE RUAJTJA DNA
+# ==========================================
 def llogarit_dhe_ruaj_dna(league_id: int):
     sezonet = [2025, 2024, 2023]
     te_dhenat_historike = {}
@@ -153,7 +163,6 @@ def llogarit_dhe_ruaj_dna(league_id: int):
         requests.delete(f"{SUPABASE_URL_DNA}?team_id=eq.{t_id}", headers=SUPABASE_HEADERS)
         requests.post(SUPABASE_URL_DNA, headers=SUPABASE_HEADERS, json=payload)
 
-# Endpointi i vjetër për përditësim të menaxhueshëm direkt nga browseri
 @app.get("/api/update_dna/{league_id}")
 def update_league_dna(league_id: int):
     try:
@@ -161,12 +170,11 @@ def update_league_dna(league_id: int):
         return {"sukses": True, "mesazhi": f"U përditësua ligë ID {league_id}"}
     except Exception as e: return {"sukses": False, "gabim": str(e)}
 
-# 🔥 FUNKSIONI I RI: "BUTONI I KUQ" GLOBAL NË PRAPASKENË 🔥
 def task_global_dna_update():
     for l_id in LIGAT_VIP_MAP.keys():
         try:
             llogarit_dhe_ruaj_dna(l_id)
-            time.sleep(3) # Pushim 3 sekonda që mos bllokohet API nga Renderi
+            time.sleep(3) 
         except: pass
 
 @app.get("/api/update_all_vip_dna")
@@ -485,3 +493,60 @@ def merr_koeficientet_shtese(match_id: str):
 
 @app.get("/api/live")
 def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
+
+# ==========================================
+# WEBHOOK-U I SIGURT PËR PAGESAT LEMONSQUEEZY
+# ==========================================
+@app.post("/api/lemonsqueezy/webhook")
+async def lemonsqueezy_webhook(request: Request):
+    try:
+        payload = await request.json()
+        meta = payload.get("meta", {})
+        
+        # Reagon VETËM kur pagesa mbyllet me sukses
+        if meta.get("event_name") == "order_created":
+            custom_data = payload.get("data", {}).get("attributes", {}).get("custom_data", {})
+            
+            email = custom_data.get("user_email")
+            blerja_type = custom_data.get("type") # 'ppm', 'vip', 'topup'
+            
+            if not email: return {"status": "injoruar", "arsyeja": "Nuk ka email klienti"}
+                
+            # Gjejmë klientin në Supabase
+            user_res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS)
+            if user_res.status_code != 200 or len(user_res.json()) == 0: return {"status": "gabim", "arsyeja": "Klienti nuk u gjet"}
+                
+            user = user_res.json()[0]
+            update_data = {}
+            
+            if blerja_type == "vip":
+                data_skadences = datetime.utcnow() + timedelta(days=30)
+                update_data["isVip"] = True
+                update_data["vip_skadon_me"] = data_skadences.isoformat()
+            
+            elif blerja_type == "topup":
+                shuma = float(custom_data.get("amount", 0))
+                update_data["portofoli"] = float(user.get("portofoli", 0.0)) + shuma
+                
+            elif blerja_type == "ppm":
+                blerja_e_re = {
+                    "id": str(custom_data.get("match_id")),
+                    "ndeshja": custom_data.get("ndeshja"),
+                    "rezultati": custom_data.get("rezultati"),
+                    "koef": str(custom_data.get("koef")),
+                    "cmimi": float(custom_data.get("cmimi", 0))
+                }
+                lista_blerjeve = user.get("blerjet", [])
+                
+                # Kontrollojmë mos ta shtojmë 2 herë gabimisht
+                if not any(b["id"] == blerja_e_re["id"] for b in lista_blerjeve):
+                    lista_blerjeve.append(blerja_e_re)
+                    update_data["blerjet"] = lista_blerjeve
+                
+            # Bëjmë ruajtjen e ndeshjes te profili i klientit në Supabase!
+            if update_data:
+                requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_data)
+                
+        return {"status": "sukses"}
+    except Exception as e:
+        return {"status": "gabim_kodi", "detaje": str(e)}
