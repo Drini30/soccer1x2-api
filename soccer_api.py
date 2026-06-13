@@ -23,6 +23,7 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
 SUPABASE_URL_STANDINGS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/standings_cache"
+SUPABASE_URL_DNA = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/team_dna_cache"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -116,6 +117,89 @@ def verifiko_rezultatet():
 def sinkronizo_renditjet():
     return {"mesazhi": "Cron bypass for local."}
 
+# ======================================================================
+# 🔥 SKRIPTI PËR MBUSHJEN E TABELËS SË ADN-së (team_dna_cache) 🔥
+# ======================================================================
+@app.get("/api/update_dna/{league_id}")
+def update_league_dna(league_id: int):
+    # Vitin aktual e marrim 2025 (ose 2026 kur të fillojë), plus 2 vitet e kaluara
+    sezonet = [2025, 2024, 2023]
+    te_dhenat_historike = {}
+
+    try:
+        for sezon in sezonet:
+            res = requests.get(
+                "https://v3.football.api-sports.io/standings", 
+                headers=HEADERS, 
+                params={"league": league_id, "season": sezon}, 
+                timeout=10
+            )
+            data = res.json()
+            
+            if data.get("response") and len(data["response"]) > 0:
+                standings = data["response"][0]["league"]["standings"][0]
+                for st in standings:
+                    t_id = st["team"]["id"]
+                    t_name = st["team"]["name"]
+                    piket = st["points"]
+                    ndeshje = st["all"]["played"]
+                    barazime = st["all"]["draw"]
+                    
+                    if t_id not in te_dhenat_historike:
+                        te_dhenat_historike[t_id] = {
+                            "name": t_name, "seasons_played": 0, "total_points": 0,
+                            "total_games": 0, "total_draws": 0, "positions": []
+                        }
+                    
+                    te_dhenat_historike[t_id]["seasons_played"] += 1
+                    te_dhenat_historike[t_id]["total_points"] += piket
+                    te_dhenat_historike[t_id]["total_games"] += ndeshje
+                    te_dhenat_historike[t_id]["total_draws"] += barazime
+                    te_dhenat_historike[t_id]["positions"].append(st["rank"])
+
+        ekipet_per_db = []
+        for t_id, stats in te_dhenat_historike.items():
+            if stats["total_games"] == 0: continue
+            
+            # 1. Pesha e Vërtetë (0-100)
+            mesatarja_pikeve = stats["total_points"] / stats["total_games"]
+            historical_power = min(99.0, max(50.0, (mesatarja_pikeve / 3.0) * 100 + 30))
+            
+            # 2. Uria për Barazim
+            perqindja_barazimeve = stats["total_draws"] / stats["total_games"]
+            draw_affinity = round(perqindja_barazimeve / 0.25, 2) # Normale është rreth 25% (1.0)
+            
+            # 3. Indeksi i Stabilitetit
+            if stats["seasons_played"] > 1:
+                diff = max(stats["positions"]) - min(stats["positions"])
+                consistency_score = max(30.0, 100.0 - (diff * 4))
+            else:
+                consistency_score = 65.0 
+
+            # 4. Sindroma Robin Hood (Volatility Index) 
+            volatility_index = round(100.0 - consistency_score, 1)
+
+            payload = {
+                "team_id": t_id, "team_name": stats["name"], "historical_power": round(historical_power, 1),
+                "draw_affinity": draw_affinity, "consistency_score": round(consistency_score, 1),
+                "volatility_index": volatility_index, "last_updated": datetime.utcnow().isoformat()
+            }
+            
+            requests.delete(f"{SUPABASE_URL_DNA}?team_id=eq.{t_id}", headers=SUPABASE_HEADERS)
+            requests.post(SUPABASE_URL_DNA, headers=SUPABASE_HEADERS, json=payload)
+            ekipet_per_db.append(payload)
+
+        return {"sukses": True, "mesazhi": f"U përditësua ADN-ja për {len(ekipet_per_db)} ekipe."}
+    except Exception as e: return {"sukses": False, "gabim": str(e)}
+
+def merr_dna_nga_db(team_id):
+    try:
+        res = requests.get(f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}", headers=SUPABASE_HEADERS, timeout=2)
+        if res.status_code == 200 and len(res.json()) > 0:
+            return res.json()[0]
+    except: pass
+    return None
+
 def ruaj_ne_db_zyrtare(pako):
     pako_per_db = pako.copy()
     if "analiza_custom" in pako_per_db: del pako_per_db["analiza_custom"]
@@ -161,27 +245,19 @@ def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""
     elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"Offensive dominance by <b>{ekipi_1}</b>.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
     else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal.<br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play.<br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
 
-# ======================================================================
-# 🔥 MATRICA E RE E PRESIONIT (FQINJËT & FAZA E KAMPIONATIT) 🔥
-# ======================================================================
 def llogarit_presionin_e_tabeles(team_id, standings_data):
     try:
         if not standings_data or len(standings_data) < 4:
-            return 1.0 # Nuk ka të dhëna mjaftueshëm (psh format kupe)
-
+            return 1.0 
         for i, st in enumerate(standings_data):
             if st["team"]["id"] == int(team_id):
                 piket = st["points"]
                 luajtura = st["all"]["played"]
                 if luajtura == 0: return 1.0
                 
-                # Faza 0.0 (Fillim) -> 1.0 (Fund)
                 faza = min(1.0, luajtura / 38.0) 
+                if faza < 0.4: return 1.0 
                 
-                if faza < 0.4: 
-                    return 1.0 # Pjesa e parë e kampionatit: Të gjithë luajnë qetë
-                
-                # Llogaritja e diferencës me fqinjët
                 piket_lart = standings_data[i-1]["points"] if i > 0 else piket
                 piket_poshte = standings_data[i+1]["points"] if i < len(standings_data)-1 else piket
                 
@@ -190,26 +266,15 @@ def llogarit_presionin_e_tabeles(team_id, standings_data):
                 
                 presioni = 1.0
                 total_teams = len(standings_data)
+                is_title_race = i < 5 
+                is_survival = i > total_teams - 6 
                 
-                is_title_race = i < 5 # Top 5
-                is_survival = i > total_teams - 6 # Fundi tabelës (Betejë për mbijetesë)
-                
-                # 1. Shtytja e Mbijetesës (Paniku vlen më shumë se gjithçka)
-                if is_survival and diff_poshte <= 4:
-                    presioni += (0.25 * faza) # +25% Motivim maksimal
-                
-                # 2. Shtytja e Majës (Europa / Titulli)
-                elif is_title_race and diff_lart <= 3:
-                    presioni += (0.15 * faza) # +15% Motivim
-                
-                # 3. Sindroma e "Pushimeve" (As bie, as ngjitet, fund kampionati)
+                if is_survival and diff_poshte <= 4: presioni += (0.25 * faza) 
+                elif is_title_race and diff_lart <= 3: presioni += (0.15 * faza) 
                 elif not is_title_race and not is_survival and faza > 0.75:
-                    if diff_lart > 8 and diff_poshte > 8:
-                        presioni -= 0.15 # Demotivim (Rrezik Bllfofi i Lartë)
-                
+                    if diff_lart > 8 and diff_poshte > 8: presioni -= 0.15 
                 return presioni
-    except Exception as e:
-        pass
+    except: pass
     return 1.0
 
 def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges, standings_data=[]):
@@ -220,10 +285,17 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     marzhi = prob_1 + prob_x + prob_2 
     p1_real, px_real, p2_real = prob_1/marzhi, prob_x/marzhi, prob_2/marzhi
 
-    fuqia_1, fuqia_2 = merr_fuqine_reale(ekipi_1), merr_fuqine_reale(ekipi_2)
+    # 🔥 MARRJA E TË DHËNAVE TË ADN-SË NGA DATABAZA 🔥
+    dna_1 = merr_dna_nga_db(ekipi_1_id)
+    dna_2 = merr_dna_nga_db(ekipi_2_id)
+
+    if dna_1: fuqia_1 = dna_1.get("historical_power", merr_fuqine_reale(ekipi_1))
+    else: fuqia_1 = merr_fuqine_reale(ekipi_1)
+
+    if dna_2: fuqia_2 = dna_2.get("historical_power", merr_fuqine_reale(ekipi_2))
+    else: fuqia_2 = merr_fuqine_reale(ekipi_2)
+
     faktor_motivimi = llogarit_motivimin(emri_liges)
-    
-    # Integrimi i Matrics së Presionit
     presioni_ekipi_1 = llogarit_presionin_e_tabeles(ekipi_1_id, standings_data)
     presioni_ekipi_2 = llogarit_presionin_e_tabeles(ekipi_2_id, standings_data)
 
@@ -236,10 +308,18 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
     t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
 
-    # Baza xG e ndikuar nga Presioni i Renditjes
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8)) * presioni_ekipi_1
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8)) * presioni_ekipi_2
     
+    # 🔥 APLIKIMI I URISË PËR BARAZIM (DNA) 🔥
+    mes_affinity = 1.0
+    if dna_1 and dna_2: mes_affinity = (dna_1.get("draw_affinity", 1.0) + dna_2.get("draw_affinity", 1.0)) / 2.0
+    if mes_affinity > 1.1:
+        # Afojmë gjasat e shënimit për të forcuar probabilitetin e X-it
+        avg_xg = (xg_1_baze + xg_2_baze) / 2.0
+        xg_1_baze = avg_xg + (xg_1_baze - avg_xg) / mes_affinity
+        xg_2_baze = avg_xg + (xg_2_baze - avg_xg) / mes_affinity
+
     def poisson(lmbda, k): return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
     
     ai_prob_1 = sum(poisson(xg_1_baze, g1) * poisson(xg_2_baze, g2) for g1 in range(1, 6) for g2 in range(g1))
@@ -248,13 +328,20 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     eshte_ndeshje_bllof = False
     ht_ft_sugjerim = ""
     
+    # 🔥 APLIKIMI I VOLATILITETIT (Sindroma Robin Hood) 🔥
+    volatility_1 = dna_1.get("volatility_index", 15.0) if dna_1 else 15.0
+    volatility_2 = dna_2.get("volatility_index", 15.0) if dna_2 else 15.0
+
     if p1_real > 0.50 and (p1_real - ai_prob_1) > 0.12:
         eshte_ndeshje_bllof = True
         if t1_def > 1.00 and ai_prob_2 > 0.35: ht_ft_sugjerim = "1/2"
-            
     elif p2_real > 0.50 and (p2_real - ai_prob_2) > 0.12:
         eshte_ndeshje_bllof = True
         if t2_def > 1.00 and ai_prob_1 > 0.35: ht_ft_sugjerim = "2/1"
+        
+    # Nëse ekipi është favorit por është historikisht i paqëndrueshëm (Bllof i fshehtë)
+    if p1_real > 0.55 and volatility_1 > 40.0: eshte_ndeshje_bllof = True
+    if p2_real > 0.55 and volatility_2 > 40.0: eshte_ndeshje_bllof = True
 
     if eshte_ndeshje_bllof and (k1 < 1.60 or k2 < 1.60):
         if k1 < 1.60: xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
@@ -339,7 +426,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         for emri_liges, ndeshjet_liges in ligat_raw.items():
             eshte_liga_vip = is_vip_league(emri_liges)
 
-            # 🔥 OPTIMIZIMI: Tërheqim Renditjen e Ligës VETËM 1 herë për të gjithë ligën, jo për çdo ndeshje!
             standings_for_league = []
             if eshte_liga_vip and len(ndeshjet_liges) > 0:
                 league_id_fetch = ndeshjet_liges[0]["league"]["id"]
@@ -349,7 +435,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     if s_res.status_code == 200:
                         s_data = s_res.json()
                         if s_data.get("response") and len(s_data["response"]) > 0:
-                            # Marrim vetëm grupin e parë të tabelës
                             standings_for_league = s_data["response"][0]["league"]["standings"][0]
                 except: pass
 
