@@ -713,7 +713,7 @@ def merr_historine(team_id: int):
     except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e)}
 
 @app.get("/api/renditja/{league_id}/{season}")
-def merr_renditjen(league_id: int, season: int):
+def merr_renditjen(league_id: int, season: int, team: str = None):
     try:
         res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": league_id, "season": season}, timeout=8)
         data = res.json()
@@ -721,6 +721,22 @@ def merr_renditjen(league_id: int, season: int):
         if data.get("response"):
             # Marrja e të gjitha grupeve (1 grup për Liga, disa për Kupa)
             grupet = data["response"][0]["league"]["standings"]
+            
+            # Filtri Magjik: Nëse faqja na jep emrin e ekipit, gjej vetëm grupin e atij ekipi
+            if team:
+                grup_specifik = None
+                for grup in grupet:
+                    for r in grup:
+                        if team.lower() in r["team"]["name"].lower():
+                            grup_specifik = grup
+                            break
+                    if grup_specifik: break
+                
+                # Nëse u gjet, fshi të gjitha grupet e tjera dhe mbaj vetëm këtë!
+                if grup_specifik:
+                    grupet = [grup_specifik]
+
+            # Formatizojmë listën vetëm për grupin e mbetur
             for grup in grupet:
                 for r in grup:
                     renditja_list.append({
