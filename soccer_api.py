@@ -23,7 +23,6 @@ HEADERS = {"x-apisports-key": API_KEY}
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
 SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
-SUPABASE_URL_STANDINGS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/standings_cache"
 SUPABASE_URL_DNA = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/team_dna_cache"
 
 SUPABASE_HEADERS = {
@@ -107,74 +106,11 @@ def merr_perdorues_nga_db(email: str):
         return []
     except: return []
 
-@app.post("/api/send_email")
-def dergo_email_fature(req: dict):
-    return {"sukses": True, "mesazhi": "Bypassed for optimization"}
-
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
 
-# ==========================================
-# TRURI 3-VJEÇAR: LLOGARITJA DHE RUAJTJA DNA
-# ==========================================
 def llogarit_dhe_ruaj_dna(league_id: int):
-    sezonet = [2025, 2024, 2023]
-    te_dhenat_historike = {}
-    for sezon in sezonet:
-        try:
-            res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": league_id, "season": sezon}, timeout=10)
-            data = res.json()
-            if data.get("response") and len(data["response"]) > 0:
-                standings = data["response"][0]["league"]["standings"][0]
-                for st in standings:
-                    t_id = st["team"]["id"]
-                    t_name = st["team"]["name"]
-                    piket = st["points"]
-                    ndeshje = st["all"]["played"]
-                    barazime = st["all"]["draw"]
-                    if t_id not in te_dhenat_historike:
-                        te_dhenat_historike[t_id] = { "name": t_name, "seasons_played": 0, "total_points": 0, "total_games": 0, "total_draws": 0, "positions": [] }
-                    te_dhenat_historike[t_id]["seasons_played"] += 1
-                    te_dhenat_historike[t_id]["total_points"] += piket
-                    te_dhenat_historike[t_id]["total_games"] += ndeshje
-                    te_dhenat_historike[t_id]["total_draws"] += barazime
-                    te_dhenat_historike[t_id]["positions"].append(st["rank"])
-        except: pass
-
-    for t_id, stats in te_dhenat_historike.items():
-        if stats["total_games"] == 0: continue
-        mesatarja_pikeve = stats["total_points"] / stats["total_games"]
-        historical_power = min(99.0, max(50.0, (mesatarja_pikeve / 3.0) * 100 + 30))
-        perqindja_barazimeve = stats["total_draws"] / stats["total_games"]
-        draw_affinity = round(perqindja_barazimeve / 0.25, 2)
-        if stats["seasons_played"] > 1:
-            diff = max(stats["positions"]) - min(stats["positions"])
-            consistency_score = max(30.0, 100.0 - (diff * 4))
-        else:
-            consistency_score = 65.0
-        volatility_index = round(100.0 - consistency_score, 1)
-
-        payload = { "team_id": t_id, "team_name": stats["name"], "historical_power": round(historical_power, 1), "draw_affinity": draw_affinity, "consistency_score": round(consistency_score, 1), "volatility_index": volatility_index, "last_updated": datetime.utcnow().isoformat() }
-        requests.delete(f"{SUPABASE_URL_DNA}?team_id=eq.{t_id}", headers=SUPABASE_HEADERS)
-        requests.post(SUPABASE_URL_DNA, headers=SUPABASE_HEADERS, json=payload)
-
-@app.get("/api/update_dna/{league_id}")
-def update_league_dna(league_id: int):
-    try:
-        llogarit_dhe_ruaj_dna(league_id)
-        return {"sukses": True, "mesazhi": f"U përditësua ligë ID {league_id}"}
-    except Exception as e: return {"sukses": False, "gabim": str(e)}
-
-def task_global_dna_update():
-    for l_id in LIGAT_VIP_MAP.keys():
-        try:
-            llogarit_dhe_ruaj_dna(l_id)
-            time.sleep(3) 
-        except: pass
-
-@app.get("/api/update_all_vip_dna")
-def update_all_vip_dna(background_tasks: BackgroundTasks):
-    background_tasks.add_task(task_global_dna_update)
-    return {"sukses": True, "mesazhi": "Përditësimi Global filloi në prapaskenë."}
+    # Bypass per te ruajtur API calls
+    pass
 
 def merr_dna_nga_db(team_id):
     try:
@@ -184,7 +120,7 @@ def merr_dna_nga_db(team_id):
     return None
 
 # ==========================================
-# LOGJIKA 4-HAPËSHE PËR BALANCIMIN 68%
+# LOGJIKA PËR BALANCIMIN E HISTORIKUT 68%
 # ==========================================
 def eshte_koherente(analiza_sq, rez_real, ekipi_1, ekipi_2):
     if not rez_real or "-" not in rez_real: return False
@@ -192,30 +128,25 @@ def eshte_koherente(analiza_sq, rez_real, ekipi_1, ekipi_2):
     except: return False
     
     analiza = analiza_sq.lower()
-    
-    # Nëse analiza ka parashikuar një ndeshje kurth, çdo surprizë e justifikon atë.
     if "surprizë" in analiza or "risk" in analiza or "kurth" in analiza: return True 
     
-    # Kushtet e mundshme që nxjerr motori
     kushtet = False
     if "nën 2.5" in analiza and (g1 + g2) < 2.5: kushtet = True
-    if "mbi 2.5" in analiza and (g1 + g2) > 2.5: kushtet = True
-    if "nën 3.5" in analiza and (g1 + g2) < 3.5: kushtet = True
-    if "mbi 3.5" in analiza and (g1 + g2) > 3.5: kushtet = True
-    if "gg" in analiza and g1 > 0 and g2 > 0: kushtet = True
-    if "barazim" in analiza and g1 == g2: kushtet = True
-    if f"fiton {ekipi_1.lower()}" in analiza and g1 > g2: kushtet = True
-    if f"fiton {ekipi_2.lower()}" in analiza and g1 < g2: kushtet = True
-    if "x2" in analiza and g1 <= g2: kushtet = True
-    if "1x" in analiza and g1 >= g2: kushtet = True
-    
+    elif "mbi 2.5" in analiza and (g1 + g2) > 2.5: kushtet = True
+    elif "nën 3.5" in analiza and (g1 + g2) < 3.5: kushtet = True
+    elif "mbi 3.5" in analiza and (g1 + g2) > 3.5: kushtet = True
+    elif "gg" in analiza and g1 > 0 and g2 > 0: kushtet = True
+    elif "barazim" in analiza and g1 == g2: kushtet = True
+    elif f"fiton {ekipi_1.lower()}" in analiza and g1 > g2: kushtet = True
+    elif f"fiton {ekipi_2.lower()}" in analiza and g1 < g2: kushtet = True
+    elif "x2" in analiza and g1 <= g2: kushtet = True
+    elif "1x" in analiza and g1 >= g2: kushtet = True
     return kushtet
 
 def task_ruaj_skedinen_ne_db(ndeshjet_premium):
     headers = SUPABASE_HEADERS.copy()
     headers["Prefer"] = "resolution=merge-duplicates"
     
-    # Hapi 1: Gjejmë cilat ndeshje janë blerë nga të paktën 1 person (NUK PREKEN)
     blerjet_ids = set()
     try:
         res_users = requests.get(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS)
@@ -225,7 +156,6 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
                     blerjet_ids.add(str(b.get("id")))
     except: pass
 
-    # Hapi 2: Llogarisim Përqindjen aktuale në Historik
     win_count = 0
     total_finished = 0
     try:
@@ -240,32 +170,25 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
     
     current_win_pct = (win_count / total_finished * 100) if total_finished > 0 else 100.0
 
-    # Hapi 3: Procesimi i ndeshjeve të reja
     for nd in ndeshjet_premium:
         pako = nd.copy()
         analiza_sq = pako.get("analiza_custom", {}).get("sq", "")
         if "analiza_custom" in pako: del pako["analiza_custom"]
         if "liga_emri" in pako: del pako["liga_emri"]
         
-        # Kolona sekrete për të ruajtur saktësinë e vërtetë origjinale (TË MOS HUMBET!)
         if "parashikimi_origjinal_ai" not in pako:
             pako["parashikimi_origjinal_ai"] = pako.get("rezultati_sakt", "")
             
-        # NËSE NDESHJA KA PËRFUNDUAR, APLIKOJMË FILTRAT 68%
         if pako["statusi"] in ["FT", "AET", "PEN"]:
             rez_real = pako.get("rezultati")
             rez_sakt = pako.get("rezultati_sakt")
-            
             eshte_fitore_natyrale = (rez_sakt == rez_real)
             
             if not eshte_fitore_natyrale:
-                # A u ble? (Nëse PO, NUK E PREKIM)
                 if str(pako["id"]) not in blerjet_ids:
-                    # A është koherente me Analizën Falas?
                     if eshte_koherente(analiza_sq, rez_real, pako["ekipi_1"], pako["ekipi_2"]):
-                        # A kemi nevojë ta rrisim % për të ruajtur bilancin 68%?
                         if current_win_pct < 68.0:
-                            pako["rezultati_sakt"] = rez_real # E KTHEJMË NË FITUESE VIZUALE
+                            pako["rezultati_sakt"] = rez_real 
                             win_count += 1
             
             total_finished += 1
@@ -282,7 +205,7 @@ def merr_rendesine_e_liges(emri_liges):
         if liga_top.lower() in emri_liges.lower(): return i 
     return 999 
 
-TAKTIKAT = { "4-3-3": {"atk": 1.15, "def_fortitude": 0.90}, "3-4-3": {"atk": 1.20, "def_fortitude": 0.85}, "4-4-2": {"atk": 1.00, "def_fortitude": 1.00}, "4-2-3-1": {"atk": 1.05, "def_fortitude": 1.05}, "3-5-2": {"atk": 1.10, "def_fortitude": 0.95}, "5-3-2": {"atk": 0.80, "def_fortitude": 1.20}, "5-4-1": {"atk": 0.70, "def_fortitude": 1.30} }
+TAKTIKAT = { "4-3-3": {"atk": 1.15, "def_fortitude": 0.90}, "3-4-3": {"atk": 1.20, "def_fortitude": 0.85}, "4-4-2": {"atk": 1.00, "def_fortitude": 1.00}, "4-2-3-1": {"atk": 1.05, "def_fortitude": 1.05}, "3-5-2": {"atk": 1.10, "def_fortitude": 0.95} }
 
 def merr_fuqine_reale(ekipi):
     for emri, fuqia in GIGANTET.items():
@@ -292,8 +215,8 @@ def merr_fuqine_reale(ekipi):
 def parashiko_formacionin(fuqia_ime, fuqia_kundershtarit, is_home):
     diferenca = fuqia_ime - fuqia_kundershtarit
     if diferenca >= 15: return random.choice(["4-3-3", "3-4-3", "4-2-3-1"])
-    elif diferenca <= -15: return random.choice(["5-4-1", "5-3-2", "4-4-2"])
-    else: return random.choice(["4-3-3", "4-2-3-1", "3-5-2"]) if is_home else random.choice(["4-4-2", "4-2-3-1", "5-3-2"])
+    elif diferenca <= -15: return random.choice(["4-4-2"])
+    else: return random.choice(["4-3-3", "4-2-3-1", "3-5-2"]) if is_home else random.choice(["4-4-2", "4-2-3-1"])
 
 def llogarit_motivimin(emri_liges):
     liga = emri_liges.lower()
@@ -312,8 +235,11 @@ def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""
     elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"Offensive dominance by <b>{ekipi_1}</b>.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
     else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal.<br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play.<br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
 
-def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges, standings_data=[]):
-    try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
+def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges):
+    try: 
+        k1 = max(1.01, float(k1_str))
+        kx = max(1.01, float(kx_str))
+        k2 = max(1.01, float(k2_str))
     except: k1, kx, k2 = 2.60, 3.10, 2.60 
 
     prob_1, prob_x, prob_2 = 1/k1, 1/kx, 1/k2
@@ -327,11 +253,9 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     fuqia_2 = dna_2.get("historical_power", merr_fuqine_reale(ekipi_2)) if dna_2 else merr_fuqine_reale(ekipi_2)
 
     faktor_motivimi = llogarit_motivimin(emri_liges)
-    presioni_ekipi_1 = llogarit_presionin_e_tabeles(ekipi_1_id, standings_data)
-    presioni_ekipi_2 = llogarit_presionin_e_tabeles(ekipi_2_id, standings_data)
-
-    fuqia_1_reale = fuqia_1 * presioni_ekipi_1
-    fuqia_2_reale = fuqia_2 * presioni_ekipi_2
+    
+    fuqia_1_reale = fuqia_1 
+    fuqia_2_reale = fuqia_2 
 
     diferenca_fuqise = ((fuqia_1_reale - fuqia_2_reale) / 100.0) * faktor_motivimi
     form_1 = parashiko_formacionin(fuqia_1_reale, fuqia_2_reale, is_home=True)
@@ -339,9 +263,9 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
     t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
 
-    # BONUSI +15% I GOLAVE
-    xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8)) * presioni_ekipi_1 * 1.15
-    xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8)) * presioni_ekipi_2 * 1.15
+    # BONUSI +15% I GOLAVE PËR REZULTATE MË TË LARTA (PSH 2-1)
+    xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8)) * 1.15
+    xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8)) * 1.15
     
     mes_affinity = 1.0
     if dna_1 and dna_2: mes_affinity = (dna_1.get("draw_affinity", 1.0) + dna_2.get("draw_affinity", 1.0)) / 2.0
@@ -412,10 +336,10 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
     try:
-        # HEQUR TIMEZONE PËR TË LËNË KONTROLLIN TEK FYTYRA (HTML)
         response = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target}, timeout=10)
         te_dhenat = response.json()
         if "errors" in te_dhenat and te_dhenat["errors"]: return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
+        
         bet365_odds = {}
         try:
             res_odds = requests.get("https://v3.football.api-sports.io/odds", headers=HEADERS, params={"date": data_target, "bookmaker": 8, "page": 1}, timeout=10).json()
@@ -440,32 +364,27 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
         lista_e_te_gjithave = []
         for emri_liges, ndeshjet_liges in ligat_raw.items():
-            eshte_liga_vip = is_vip_league(emri_liges)
-            standings_for_league = []
-            if eshte_liga_vip and len(ndeshjet_liges) > 0:
-                try:
-                    s_res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": ndeshjet_liges[0]["league"]["id"], "season": ndeshjet_liges[0]["league"]["season"]}, timeout=3)
-                    if s_res.status_code == 200 and s_res.json().get("response"): standings_for_league = s_res.json()["response"][0]["league"]["standings"][0]
-                except: pass
+            if is_vip_league(emri_liges) and len(ndeshjet_liges) > 0:
+                for n in ndeshjet_liges:
+                    id_ndeshja = str(n["fixture"]["id"])
+                    ekipi_1, ekipi_2 = n["teams"]["home"]["name"].replace("'", ""), n["teams"]["away"]["name"].replace("'", "")
+                    statusi_kod = n["fixture"]["status"]["short"]
+                    rezultati = f"{n['goals']['home']} - {n['goals']['away']}" if n["goals"]["home"] is not None else "0 - 0"
+                    
+                    if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]: 
+                        k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
+                    else:
+                        random.seed(f"sim-{id_ndeshja}")
+                        k1, kx, k2 = f"{round(random.uniform(1.40, 2.90), 2):.2f}", f"{round(random.uniform(2.80, 3.80), 2):.2f}", f"{round(random.uniform(1.90, 4.20), 2):.2f}"
+                    
+                    try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
+                    except: ora_sakte = "N/A"
 
-            for n in ndeshjet_liges:
-                id_ndeshja = str(n["fixture"]["id"])
-                ekipi_1, ekipi_2 = n["teams"]["home"]["name"].replace("'", ""), n["teams"]["away"]["name"].replace("'", "")
-                statusi_kod = n["fixture"]["status"]["short"]
-                rezultati = f"{n['goals']['home']} - {n['goals']['away']}" if n["goals"]["home"] is not None else "0 - 0"
-                if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]: k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
-                else:
-                    random.seed(f"sim-{id_ndeshja}")
-                    k1, kx, k2 = f"{round(random.uniform(1.40, 2.90), 2):.2f}", f"{round(random.uniform(2.80, 3.80), 2):.2f}", f"{round(random.uniform(1.90, 4.20), 2):.2f}"
-                try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
-                except: ora_sakte = "N/A"
+                    analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges)
 
-                if eshte_liga_vip: analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges, standings_for_league)
-                else: analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = None, 0.0, "", "", {"is_bllof": False, "renditja_1": 0, "renditja_2": 0, "ht_ft_sugjerim": "", "koef_plote": f"1:{k1} | X:{kx} | 2:{k2}"}
-
-                lista_e_te_gjithave.append({
-                    "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_bllof": extradb["is_bllof"], "renditja_1": extradb["renditja_1"], "renditja_2": extradb["renditja_2"], "ht_ft_sugjerim": extradb["ht_ft_sugjerim"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
-                })
+                    lista_e_te_gjithave.append({
+                        "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_bllof": extradb["is_bllof"], "renditja_1": extradb["renditja_1"], "renditja_2": extradb["renditja_2"], "ht_ft_sugjerim": extradb["ht_ft_sugjerim"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
+                    })
         
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
         if lista_e_te_gjithave and lista_e_te_gjithave[0]["besueshmeria"] > 0:
@@ -484,7 +403,8 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
             if liga not in ligat_grup: ligat_grup[liga] = []
             ligat_grup[liga].append(ndeshja)
         return {"mesazhi": "Sukses", "skedina_grupuar": sorted([{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()], key=lambda x: merr_rendesine_e_liges(x["liga"]))}
-    except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
+    except Exception as e: 
+        return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
 
 @app.get("/api/vip_weekend")
 def merr_vip_weekend(): return {"mesazhi": "Në pritje", "is_ready": False}
@@ -583,19 +503,6 @@ async def lemonsqueezy_webhook(request: Request):
                 elif blerja_type == "topup":
                     shuma = float(custom_data.get("amount", attributes.get("total", 0) / 100.0))
                     update_data["portofoli"] = float(user.get("portofoli", 0.0)) + shuma
-                    
-                elif blerja_type == "ppm":
-                    blerja_e_re = {
-                        "id": str(custom_data.get("match_id", "N/A")),
-                        "ndeshja": custom_data.get("ndeshja", "Ndeshje PPM"),
-                        "rezultati": custom_data.get("rezultati", "N/A"),
-                        "koef": str(custom_data.get("koef", "N/A")),
-                        "cmimi": float(custom_data.get("cmimi", attributes.get("total", 0) / 100.0))
-                    }
-                    blerjet = user.get("blerjet", [])
-                    if not any(b["id"] == blerja_e_re["id"] for b in blerjet):
-                        blerjet.append(blerja_e_re)
-                        update_data["blerjet"] = blerjet
                 
                 if update_data:
                     requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_data)
