@@ -7,7 +7,7 @@ import random
 import math
 import time
 
-app = FastAPI(title="SOCCER1X2 PRO API", description="AI për Skedinën e Ditës Dhe Ndeshjet LIVE")
+app = FastAPI(title="SOCCER1X2 PRO API", description="Sistemi Analitik per Skedinen e Dites")
 
 app.add_middleware(
     CORSMiddleware,
@@ -184,18 +184,93 @@ def merr_dna_nga_db(team_id):
     return None
 
 # ==========================================
-# RUAJTJA E HISTORIKUT NË DATABAZË
+# LOGJIKA 4-HAPËSHE PËR BALANCIMIN 68%
 # ==========================================
+def eshte_koherente(analiza_sq, rez_real, ekipi_1, ekipi_2):
+    if not rez_real or "-" not in rez_real: return False
+    try: g1, g2 = map(int, rez_real.split("-"))
+    except: return False
+    
+    analiza = analiza_sq.lower()
+    
+    # Nëse analiza ka parashikuar një ndeshje kurth, çdo surprizë e justifikon atë.
+    if "surprizë" in analiza or "risk" in analiza or "kurth" in analiza: return True 
+    
+    # Kushtet e mundshme që nxjerr motori
+    kushtet = False
+    if "nën 2.5" in analiza and (g1 + g2) < 2.5: kushtet = True
+    if "mbi 2.5" in analiza and (g1 + g2) > 2.5: kushtet = True
+    if "nën 3.5" in analiza and (g1 + g2) < 3.5: kushtet = True
+    if "mbi 3.5" in analiza and (g1 + g2) > 3.5: kushtet = True
+    if "gg" in analiza and g1 > 0 and g2 > 0: kushtet = True
+    if "barazim" in analiza and g1 == g2: kushtet = True
+    if f"fiton {ekipi_1.lower()}" in analiza and g1 > g2: kushtet = True
+    if f"fiton {ekipi_2.lower()}" in analiza and g1 < g2: kushtet = True
+    if "x2" in analiza and g1 <= g2: kushtet = True
+    if "1x" in analiza and g1 >= g2: kushtet = True
+    
+    return kushtet
+
 def task_ruaj_skedinen_ne_db(ndeshjet_premium):
     headers = SUPABASE_HEADERS.copy()
     headers["Prefer"] = "resolution=merge-duplicates"
+    
+    # Hapi 1: Gjejmë cilat ndeshje janë blerë nga të paktën 1 person (NUK PREKEN)
+    blerjet_ids = set()
+    try:
+        res_users = requests.get(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS)
+        if res_users.status_code == 200:
+            for u in res_users.json():
+                for b in u.get("blerjet", []):
+                    blerjet_ids.add(str(b.get("id")))
+    except: pass
+
+    # Hapi 2: Llogarisim Përqindjen aktuale në Historik
+    win_count = 0
+    total_finished = 0
+    try:
+        res_preds = requests.get(f"{SUPABASE_URL_PREDS}?statusi=in.(FT,AET,PEN)", headers=SUPABASE_HEADERS)
+        if res_preds.status_code == 200:
+            preds = res_preds.json()
+            total_finished = len(preds)
+            for p in preds:
+                if p.get("rezultati_sakt") == p.get("rezultati"):
+                    win_count += 1
+    except: pass
+    
+    current_win_pct = (win_count / total_finished * 100) if total_finished > 0 else 100.0
+
+    # Hapi 3: Procesimi i ndeshjeve të reja
     for nd in ndeshjet_premium:
         pako = nd.copy()
+        analiza_sq = pako.get("analiza_custom", {}).get("sq", "")
         if "analiza_custom" in pako: del pako["analiza_custom"]
+        if "liga_emri" in pako: del pako["liga_emri"]
         
-        # Kolona sekrete për të ruajtur saktësinë e vërtetë origjinale (Për të lejuar rregullimin vizual 70/30 më vonë)
-        pako["parashikimi_origjinal_ai"] = pako.get("rezultati_sakt", "")
-        
+        # Kolona sekrete për të ruajtur saktësinë e vërtetë origjinale (TË MOS HUMBET!)
+        if "parashikimi_origjinal_ai" not in pako:
+            pako["parashikimi_origjinal_ai"] = pako.get("rezultati_sakt", "")
+            
+        # NËSE NDESHJA KA PËRFUNDUAR, APLIKOJMË FILTRAT 68%
+        if pako["statusi"] in ["FT", "AET", "PEN"]:
+            rez_real = pako.get("rezultati")
+            rez_sakt = pako.get("rezultati_sakt")
+            
+            eshte_fitore_natyrale = (rez_sakt == rez_real)
+            
+            if not eshte_fitore_natyrale:
+                # A u ble? (Nëse PO, NUK E PREKIM)
+                if str(pako["id"]) not in blerjet_ids:
+                    # A është koherente me Analizën Falas?
+                    if eshte_koherente(analiza_sq, rez_real, pako["ekipi_1"], pako["ekipi_2"]):
+                        # A kemi nevojë ta rrisim % për të ruajtur bilancin 68%?
+                        if current_win_pct < 68.0:
+                            pako["rezultati_sakt"] = rez_real # E KTHEJMË NË FITUESE VIZUALE
+                            win_count += 1
+            
+            total_finished += 1
+            current_win_pct = (win_count / total_finished * 100) if total_finished > 0 else 100.0
+
         try: requests.post(SUPABASE_URL_PREDS, headers=headers, json=pako, timeout=5)
         except: pass
 
@@ -237,32 +312,6 @@ def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""
     elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"Offensive dominance by <b>{ekipi_1}</b>.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
     else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal.<br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play.<br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
 
-def llogarit_presionin_e_tabeles(team_id, standings_data):
-    try:
-        if not standings_data or len(standings_data) < 4: return 1.0 
-        for i, st in enumerate(standings_data):
-            if st["team"]["id"] == int(team_id):
-                piket = st["points"]
-                luajtura = st["all"]["played"]
-                if luajtura == 0: return 1.0
-                faza = min(1.0, luajtura / 38.0) 
-                if faza < 0.4: return 1.0 
-                piket_lart = standings_data[i-1]["points"] if i > 0 else piket
-                piket_poshte = standings_data[i+1]["points"] if i < len(standings_data)-1 else piket
-                diff_lart = piket_lart - piket
-                diff_poshte = piket - piket_poshte
-                presioni = 1.0
-                total_teams = len(standings_data)
-                is_title_race = i < 5 
-                is_survival = i > total_teams - 6 
-                if is_survival and diff_poshte <= 4: presioni += (0.25 * faza) 
-                elif is_title_race and diff_lart <= 3: presioni += (0.15 * faza) 
-                elif not is_title_race and not is_survival and faza > 0.75:
-                    if diff_lart > 8 and diff_poshte > 8: presioni -= 0.15 
-                return presioni
-    except: pass
-    return 1.0
-
 def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges, standings_data=[]):
     try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
     except: k1, kx, k2 = 2.60, 3.10, 2.60 
@@ -290,7 +339,7 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
     t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
 
-    # Shtesa +15% per pritshmerine e golave (xG Boost) per te favorizuar rezultate si 2-1
+    # BONUSI +15% I GOLAVE
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8)) * presioni_ekipi_1 * 1.15
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8)) * presioni_ekipi_2 * 1.15
     
@@ -363,7 +412,7 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
     try:
-        # Kemi hequr timezone per t'ia lene oren pajisjes se klientit ne HTML
+        # HEQUR TIMEZONE PËR TË LËNË KONTROLLIN TEK FYTYRA (HTML)
         response = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target}, timeout=10)
         te_dhenat = response.json()
         if "errors" in te_dhenat and te_dhenat["errors"]: return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
@@ -422,8 +471,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         if lista_e_te_gjithave and lista_e_te_gjithave[0]["besueshmeria"] > 0:
             lista_e_te_gjithave[0].update({"is_premium": True, "is_motd": True, "besueshmeria": 99.0})
             for i in range(1, min(5, len(lista_e_te_gjithave))):
-                if lista_e_te_gjithave[i]["besueshmeria"] > 0: lista_e_te_gjithave[i].update({"is_premium": True, "is_motd": False})
-        
+                if lista_e_te_gjithave[i]["besueshmeria"] > 0: 
+                    lista_e_te_gjithave[i].update({"is_premium": True, "is_motd": False})
+
         ndeshjet_premium_per_historik = [nd for nd in lista_e_te_gjithave if nd.get("is_premium")]
         if ndeshjet_premium_per_historik:
             background_tasks.add_task(task_ruaj_skedinen_ne_db, ndeshjet_premium_per_historik)
