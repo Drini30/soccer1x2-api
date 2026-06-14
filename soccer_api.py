@@ -189,11 +189,17 @@ def merr_dna_nga_db(team_id):
     except: pass
     return None
 
-def ruaj_ne_db_zyrtare(pako):
-    pako_per_db = pako.copy()
-    if "analiza_custom" in pako_per_db: del pako_per_db["analiza_custom"]
-    try: requests.post(SUPABASE_URL_PREDS, headers=SUPABASE_HEADERS, json=pako_per_db, timeout=5)
-    except: pass
+# ==========================================
+# RUAJTJA E HISTORIKUT NË DATABAZË
+# ==========================================
+def task_ruaj_skedinen_ne_db(ndeshjet_premium):
+    headers = SUPABASE_HEADERS.copy()
+    headers["Prefer"] = "resolution=merge-duplicates"
+    for nd in ndeshjet_premium:
+        pako = nd.copy()
+        if "analiza_custom" in pako: del pako["analiza_custom"]
+        try: requests.post(SUPABASE_URL_PREDS, headers=headers, json=pako, timeout=5)
+        except: pass
 
 @app.get("/")
 def root(): return {"status": "online"}
@@ -417,6 +423,12 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
             lista_e_te_gjithave[0].update({"is_premium": True, "is_motd": True, "besueshmeria": 99.0})
             for i in range(1, min(5, len(lista_e_te_gjithave))):
                 if lista_e_te_gjithave[i]["besueshmeria"] > 0: lista_e_te_gjithave[i].update({"is_premium": True, "is_motd": False})
+        
+        # SHTESA: Ruajmë ndeshjet Premium në DB që të mbushet Historiku
+        ndeshjet_premium_per_historik = [nd for nd in lista_e_te_gjithave if nd.get("is_premium")]
+        if ndeshjet_premium_per_historik:
+            background_tasks.add_task(task_ruaj_skedinen_ne_db, ndeshjet_premium_per_historik)
+
         ligat_grup = {}
         for ndeshja in lista_e_te_gjithave:
             liga = ndeshja.pop("liga_emri")
@@ -495,7 +507,7 @@ def merr_koeficientet_shtese(match_id: str):
 def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
 
 # ==========================================
-# WEBHOOK-U I SIGURT PËR PAGESAT LEMONSQUEEZY
+# WEBHOOK PËR PAGESAT LEMONSQUEEZY
 # ==========================================
 @app.post("/api/lemonsqueezy/webhook")
 async def lemonsqueezy_webhook(request: Request):
@@ -503,63 +515,45 @@ async def lemonsqueezy_webhook(request: Request):
         payload = await request.json()
         meta = payload.get("meta", {})
         
-        # Reagon VETËM kur pagesa mbyllet me sukses
         if meta.get("event_name") == "order_created":
             attributes = payload.get("data", {}).get("attributes", {})
             custom_data = attributes.get("custom_data") or {}
             
-            # 1. Gjejmë Email-in me forcë (Nga custom_data ose fusha zyrtare e faturës)
             email = custom_data.get("user_email") or attributes.get("user_email")
-            if not email: return {"status": "injoruar", "arsyeja": "Nuk ka email klienti"}
+            if not email: return {"status": "injoruar"}
             
-            # 2. Gjejmë çfarë bleu (Nga custom_data ose nga emri i produktit)
-            blerja_type = custom_data.get("type")
-            first_item = attributes.get("first_order_item", {})
-            product_name = first_item.get("product_name", "").lower()
-            
-            if not blerja_type:
-                if "vip" in product_name or "subscription" in product_name:
-                    blerja_type = "vip"
-                elif "rimbushje" in product_name or "topup" in product_name:
-                    blerja_type = "topup"
-                else:
-                    blerja_type = "ppm"
-
-            # 3. Gjejmë klientin në Supabase
+            blerja_type = custom_data.get("type", "ppm")
             user_res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS)
-            if user_res.status_code != 200 or len(user_res.json()) == 0: 
-                return {"status": "gabim", "arsyeja": f"Klienti me email {email} nuk u gjet në DB"}
-                
-            user = user_res.json()[0]
-            update_data = {}
             
-            if blerja_type == "vip":
-                data_skadences = datetime.utcnow() + timedelta(days=30)
-                update_data["isVip"] = True
-                update_data["vip_skadon_me"] = data_skadences.isoformat()
-            
-            elif blerja_type == "topup":
-                # Marrim shumën, nëse s'kemi custom_data e marrim nga totali i faturës
-                shuma = float(custom_data.get("amount", attributes.get("total", 0) / 100.0))
-                update_data["portofoli"] = float(user.get("portofoli", 0.0)) + shuma
+            if user_res.status_code == 200 and len(user_res.json()) > 0:
+                user = user_res.json()[0]
+                update_data = {}
                 
-            elif blerja_type == "ppm":
-                blerja_e_re = {
-                    "id": str(custom_data.get("match_id", "N/A")),
-                    "ndeshja": custom_data.get("ndeshja", product_name),
-                    "rezultati": custom_data.get("rezultati", "N/A"),
-                    "koef": str(custom_data.get("koef", "N/A")),
-                    "cmimi": float(custom_data.get("cmimi", attributes.get("total", 0) / 100.0))
-                }
-                lista_blerjeve = user.get("blerjet", [])
-                if not any(b["id"] == blerja_e_re["id"] for b in lista_blerjeve):
-                    lista_blerjeve.append(blerja_e_re)
-                    update_data["blerjet"] = lista_blerjeve
+                if blerja_type == "vip":
+                    update_data["isVip"] = True
+                    update_data["vip_skadon_me"] = (datetime.utcnow() + timedelta(days=30)).isoformat()
+                    update_data["auto_rinovim"] = True
+                    
+                elif blerja_type == "topup":
+                    shuma = float(custom_data.get("amount", attributes.get("total", 0) / 100.0))
+                    update_data["portofoli"] = float(user.get("portofoli", 0.0)) + shuma
+                    
+                elif blerja_type == "ppm":
+                    blerja_e_re = {
+                        "id": str(custom_data.get("match_id", "N/A")),
+                        "ndeshja": custom_data.get("ndeshja", "Ndeshje PPM"),
+                        "rezultati": custom_data.get("rezultati", "N/A"),
+                        "koef": str(custom_data.get("koef", "N/A")),
+                        "cmimi": float(custom_data.get("cmimi", attributes.get("total", 0) / 100.0))
+                    }
+                    blerjet = user.get("blerjet", [])
+                    if not any(b["id"] == blerja_e_re["id"] for b in blerjet):
+                        blerjet.append(blerja_e_re)
+                        update_data["blerjet"] = blerjet
                 
-            # 4. Ruajmë gjithçka në Supabase
-            if update_data:
-                requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_data)
-                
-        return {"status": "sukses", "email_perdorur": email, "lloj_blerje": blerja_type}
+                if update_data:
+                    requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_data)
+                    
+        return {"status": "sukses"}
     except Exception as e:
-        return {"status": "gabim_kodi", "detaje": str(e)}
+        return {"status": "gabim", "detaje": str(e)}
