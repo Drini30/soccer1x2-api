@@ -113,12 +113,6 @@ def dergo_email_fature(req: dict):
 
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
 
-@app.get("/api/verifiko_rezultatet")
-def verifiko_rezultatet(): return {"mesazhi": "U sinkronizuan rezultatet."}
-
-@app.get("/api/sinkronizo_renditjet")
-def sinkronizo_renditjet(): return {"mesazhi": "Cron bypass for local."}
-
 # ==========================================
 # TRURI 3-VJEÇAR: LLOGARITJA DHE RUAJTJA DNA
 # ==========================================
@@ -180,7 +174,7 @@ def task_global_dna_update():
 @app.get("/api/update_all_vip_dna")
 def update_all_vip_dna(background_tasks: BackgroundTasks):
     background_tasks.add_task(task_global_dna_update)
-    return {"sukses": True, "mesazhi": "Përditësimi Global i trurit të të gjitha ligave VIP filloi në prapaskenë! Ky proces zgjat rreth 3-5 minuta."}
+    return {"sukses": True, "mesazhi": "Përditësimi Global filloi në prapaskenë."}
 
 def merr_dna_nga_db(team_id):
     try:
@@ -198,6 +192,10 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
     for nd in ndeshjet_premium:
         pako = nd.copy()
         if "analiza_custom" in pako: del pako["analiza_custom"]
+        
+        # Kolona sekrete për të ruajtur saktësinë e vërtetë origjinale (Për të lejuar rregullimin vizual 70/30 më vonë)
+        pako["parashikimi_origjinal_ai"] = pako.get("rezultati_sakt", "")
+        
         try: requests.post(SUPABASE_URL_PREDS, headers=headers, json=pako, timeout=5)
         except: pass
 
@@ -292,8 +290,9 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
     t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
 
-    xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8)) * presioni_ekipi_1
-    xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8)) * presioni_ekipi_2
+    # Shtesa +15% per pritshmerine e golave (xG Boost) per te favorizuar rezultate si 2-1
+    xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8)) * presioni_ekipi_1 * 1.15
+    xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8)) * presioni_ekipi_2 * 1.15
     
     mes_affinity = 1.0
     if dna_1 and dna_2: mes_affinity = (dna_1.get("draw_affinity", 1.0) + dna_2.get("draw_affinity", 1.0)) / 2.0
@@ -364,7 +363,8 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
     try:
-        response = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=10)
+        # Kemi hequr timezone per t'ia lene oren pajisjes se klientit ne HTML
+        response = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target}, timeout=10)
         te_dhenat = response.json()
         if "errors" in te_dhenat and te_dhenat["errors"]: return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
         bet365_odds = {}
@@ -415,7 +415,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 else: analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = None, 0.0, "", "", {"is_bllof": False, "renditja_1": 0, "renditja_2": 0, "ht_ft_sugjerim": "", "koef_plote": f"1:{k1} | X:{kx} | 2:{k2}"}
 
                 lista_e_te_gjithave.append({
-                    "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_bllof": extradb["is_bllof"], "renditja_1": extradb["renditja_1"], "renditja_2": extradb["renditja_2"], "ht_ft_sugjerim": extradb["ht_ft_sugjerim"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
+                    "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_bllof": extradb["is_bllof"], "renditja_1": extradb["renditja_1"], "renditja_2": extradb["renditja_2"], "ht_ft_sugjerim": extradb["ht_ft_sugjerim"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
                 })
         
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
@@ -424,7 +424,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
             for i in range(1, min(5, len(lista_e_te_gjithave))):
                 if lista_e_te_gjithave[i]["besueshmeria"] > 0: lista_e_te_gjithave[i].update({"is_premium": True, "is_motd": False})
         
-        # SHTESA: Ruajmë ndeshjet Premium në DB që të mbushet Historiku
         ndeshjet_premium_per_historik = [nd for nd in lista_e_te_gjithave if nd.get("is_premium")]
         if ndeshjet_premium_per_historik:
             background_tasks.add_task(task_ruaj_skedinen_ne_db, ndeshjet_premium_per_historik)
@@ -506,9 +505,6 @@ def merr_koeficientet_shtese(match_id: str):
 @app.get("/api/live")
 def merr_ndeshjet_live(): return {"mesazhi": "Sukses", "ndeshjet": []}
 
-# ==========================================
-# WEBHOOK PËR PAGESAT LEMONSQUEEZY
-# ==========================================
 @app.post("/api/lemonsqueezy/webhook")
 async def lemonsqueezy_webhook(request: Request):
     try:
