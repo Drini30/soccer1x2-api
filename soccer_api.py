@@ -7,7 +7,7 @@ import random
 import math
 import time
 
-app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Elo Rating Prediction Engine")
+app = FastAPI(title="SOCCER1X2 PRO API", description="Sistemi Analitik per Skedinen e Dites")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,13 +17,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# KREDENCIALET
 API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
 HEADERS = {"x-apisports-key": API_KEY}
 
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
 SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
+SUPABASE_URL_STANDINGS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/standings_cache"
 SUPABASE_URL_DNA = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/team_dna_cache"
 
 SUPABASE_HEADERS = {
@@ -38,12 +38,15 @@ LIGAT_VIP_MAP = {
     78: "Germany - Bundesliga", 61: "France - Ligue 1", 2: "Champions League", 
     3: "Europa League", 848: "Europa Conference League", 1: "World Cup", 
     4: "Euro Championship", 9: "Copa America", 5: "UEFA Nations League", 
-    40: "England - Championship", 136: "Italy - Serie B", 141: "Spain - Segunda Division", 
-    79: "Germany - 2. Bundesliga", 62: "France - Ligue 2", 71: "Brazil - Serie A", 
-    103: "Argentina - Liga Profesional", 88: "Netherlands - Eredivisie", 
+    40: "England - Championship", 45: "England - FA Cup", 48: "England - EFL Cup", 
+    136: "Italy - Serie B", 137: "Italy - Coppa Italia", 141: "Spain - Segunda Division", 
+    143: "Spain - Copa del Rey", 79: "Germany - 2. Bundesliga", 81: "Germany - DFB Pokal", 
+    62: "France - Ligue 2", 66: "France - Coupe de France", 71: "Brazil - Serie A", 
+    103: "Argentina - Liga Profesional", 13: "Copa Libertadores", 88: "Netherlands - Eredivisie", 
     94: "Portugal - Primeira Liga", 203: "Turkey - Super Lig", 144: "Belgium - Pro League", 
     197: "Greece - Super League", 179: "Scotland - Premiership", 207: "Switzerland - Super League", 
-    119: "Denmark - Superliga", 218: "Austria - Bundesliga", 311: "Albania - Superliga"
+    119: "Denmark - Superliga", 218: "Austria - Bundesliga", 311: "Albania - Superliga", 
+    314: "Kosovo - Superliga"
 }
 
 LIGAT_VIP = list(LIGAT_VIP_MAP.values())
@@ -58,7 +61,177 @@ def is_vip_league(emri_liges):
     return False
 
 # ==========================================
-# MODULI USER / AUTH
+# 1. SISTEMI I CACHING PËR TEAM DNA
+# ==========================================
+DNA_CACHE = {}
+LAST_CACHE_UPDATE = 0
+
+def fresko_dna_cache():
+    global DNA_CACHE, LAST_CACHE_UPDATE
+    koha_tani = time.time()
+    # Rifresko cache çdo 1 orë (3600 sekonda)
+    if koha_tani - LAST_CACHE_UPDATE > 3600:
+        try:
+            res = requests.get(SUPABASE_URL_DNA, headers=SUPABASE_HEADERS, timeout=5)
+            if res.status_code == 200:
+                te_dhenat = res.json()
+                for r in te_dhenat:
+                    DNA_CACHE[str(r["team_id"])] = r
+                LAST_CACHE_UPDATE = koha_tani
+        except:
+            pass # Nëse Supabase bie, mbajmë të dhënat ekzistuese në RAM
+
+def merr_dna_nga_db(team_id):
+    fresko_dna_cache()
+    return DNA_CACHE.get(str(team_id))
+
+GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
+
+def merr_fuqine_reale(ekipi):
+    for emri, fuqia in GIGANTET.items():
+        if emri.lower() in ekipi.lower(): return fuqia
+    return 70
+
+TAKTIKAT = { "4-3-3": {"atk": 1.15, "def_fortitude": 0.90}, "3-4-3": {"atk": 1.20, "def_fortitude": 0.85}, "4-4-2": {"atk": 1.00, "def_fortitude": 1.00}, "4-2-3-1": {"atk": 1.05, "def_fortitude": 1.05}, "3-5-2": {"atk": 1.10, "def_fortitude": 0.95} }
+
+def parashiko_formacionin(fuqia_ime, fuqia_kundershtarit, is_home):
+    diferenca = fuqia_ime - fuqia_kundershtarit
+    if diferenca >= 15: return random.choice(["4-3-3", "3-4-3", "4-2-3-1"])
+    elif diferenca <= -15: return random.choice(["4-4-2"])
+    else: return random.choice(["4-3-3", "4-2-3-1", "3-5-2"]) if is_home else random.choice(["4-4-2", "4-2-3-1"])
+
+def llogarit_motivimin(emri_liges):
+    liga = emri_liges.lower()
+    if any(x in liga for x in ["friend", "miqësore", "u20", "u23", "u19", "reserve", "women"]): return 0.75 
+    elif any(x in liga for x in ["cup", "copa", "coppa", "kupa", "pokal", "shield"]): return 1.10 if "world" in liga or "champions" in liga else 0.85 
+    elif any(x in liga for x in ["champions league", "premier league", "la liga", "serie a", "bundesliga"]): return 1.05 
+    else: return 1.00 
+
+def gjenero_analize_custom(ekipi_1, ekipi_2, rez_sakt, eshte_bllof, ht_ft_str=""):
+    try: g1, g2 = map(int, rez_sakt.split('-'))
+    except: g1, g2 = 1, 0
+    ht_ft_text = f"<br><b style='color:#ff4500;'>🔥 Ekskluzive:</b> Sugjerohet Përmbysje <b>{ht_ft_str}</b>!" if ht_ft_str else ""
+    if eshte_bllof: return { "sq": f"⚠️ <b>Risk (Kurth):</b> Historiku paralajmëron rrezik për Gafë. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë kundër favoritit.{ht_ft_text}", "en": f"⚠️ <b>Risk (Trap):</b> Historical data warns of a potential upset.{ht_ft_text}" }
+    elif rez_sakt == "0-0": return { "sq": f"Mbrojtje ultra-kompakte nga të dyja skuadrat. <br><b style='color:#f2cc60;'>Sugjerim:</b> Nën 2.5 gola total.{ht_ft_text}", "en": f"Ultra-compact defenses. <br><b style='color:#f2cc60;'>Suggestion:</b> Under 2.5 goals.{ht_ft_text}"}
+    elif g1 == g2: return { "sq": f"Skuadra me forca të barabarta. <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja shënojnë (GG) ose Barazim.{ht_ft_text}", "en": f"Evenly matched teams. <br><b style='color:#f2cc60;'>Suggestion:</b> Both Teams to Score (GG) or Draw.{ht_ft_text}"}
+    elif g1 > g2: return { "sq": f"Dominim sulmues i <b>{ekipi_1}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"Offensive dominance by <b>{ekipi_1}</b>.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon fushën me mbrojtje të ngurtë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the pitch with solid defense.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
+    else: return { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën me rrezik minimal.<br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match where <b>{ekipi_2}</b> manages low-risk play.<br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
+
+# ==========================================
+# 2. ALGORITMI I THELLË & TEOREMA BAYES
+# ==========================================
+def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges):
+    try: 
+        k1 = max(1.01, float(k1_str))
+        kx = max(1.01, float(kx_str))
+        k2 = max(1.01, float(k2_str))
+    except: k1, kx, k2 = 2.60, 3.10, 2.60 
+
+    # Probabilitetet e Bukmejkerit
+    prob_1, prob_x, prob_2 = 1/k1, 1/kx, 1/k2
+    marzhi = prob_1 + prob_x + prob_2 
+    p1_real, px_real, p2_real = prob_1/marzhi, prob_x/marzhi, prob_2/marzhi
+
+    dna_1 = merr_dna_nga_db(ekipi_1_id)
+    dna_2 = merr_dna_nga_db(ekipi_2_id)
+
+    # Nxjerrja e kolonave dinamike për Ekipin 1
+    w1 = float(dna_1.get("win_rate", 33.3) / 100.0) if dna_1 else 0.333
+    d1 = float(dna_1.get("draw_affinity", 33.3) / 100.0) if dna_1 else 0.333
+    l1 = max(0.01, 1.0 - w1 - d1)
+    fuqia_1 = float(dna_1.get("historical_power", merr_fuqine_reale(ekipi_1))) if dna_1 else merr_fuqine_reale(ekipi_1)
+    avg_scored_1 = float(dna_1.get("avg_goals_scored", 1.5)) if dna_1 else 1.5
+    avg_conceded_1 = float(dna_1.get("avg_goals_conceded", 1.5)) if dna_1 else 1.5
+    clutch_1 = float(dna_1.get("clutch_factor", 1.0)) if dna_1 else 1.0
+    volatility_1 = float(dna_1.get("volatility_index", 15.0)) if dna_1 else 15.0
+
+    # Nxjerrja e kolonave dinamike për Ekipin 2
+    w2 = float(dna_2.get("win_rate", 33.3) / 100.0) if dna_2 else 0.333
+    d2 = float(dna_2.get("draw_affinity", 33.3) / 100.0) if dna_2 else 0.333
+    l2 = max(0.01, 1.0 - w2 - d2)
+    fuqia_2 = float(dna_2.get("historical_power", merr_fuqine_reale(ekipi_2))) if dna_2 else merr_fuqine_reale(ekipi_2)
+    avg_scored_2 = float(dna_2.get("avg_goals_scored", 1.5)) if dna_2 else 1.5
+    avg_conceded_2 = float(dna_2.get("avg_goals_conceded", 1.5)) if dna_2 else 1.5
+    clutch_2 = float(dna_2.get("clutch_factor", 1.0)) if dna_2 else 1.0
+    volatility_2 = float(dna_2.get("volatility_index", 15.0)) if dna_2 else 15.0
+
+    # 3. IMPLEMENTIMI I BAYESIAN W/D/L
+    emeruesi_bayes = (w1 * l2) + (d1 * d2) + (l1 * w2)
+    if emeruesi_bayes > 0:
+        bayes_p1 = (w1 * l2) / emeruesi_bayes
+        bayes_px = (d1 * d2) / emeruesi_bayes
+        bayes_p2 = (l1 * w2) / emeruesi_bayes
+    else:
+        bayes_p1, bayes_px, bayes_p2 = 0.34, 0.33, 0.33
+
+    # Ndërthurja finale e Mundësive (70% Tregu, 30% Bayes Historik)
+    p1_final = (p1_real * 0.70) + (bayes_p1 * 0.30)
+    p2_final = (p2_real * 0.70) + (bayes_p2 * 0.30)
+
+    faktor_motivimi = llogarit_motivimin(emri_liges)
+    diferenca_fuqise = ((fuqia_1 - fuqia_2) / 100.0) * faktor_motivimi
+
+    form_1 = parashiko_formacionin(fuqia_1, fuqia_2, is_home=True)
+    form_2 = parashiko_formacionin(fuqia_2, fuqia_1, is_home=False)
+    t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
+    t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
+
+    # 4. LLOGARITJA E EXPECTED GOALS (E PESHUAR)
+    # 40% Tregu + ELO, 30% Golat Historik, 15% Taktika, 15% Clutch
+    xg_1_tregu = (p1_final * 2.6) + (diferenca_fuqise * 0.8)
+    xg_2_tregu = (p2_final * 2.6) - (diferenca_fuqise * 0.8)
+    
+    xg_1_historik = (avg_scored_1 + avg_conceded_2) / 2.0
+    xg_2_historik = (avg_scored_2 + avg_conceded_1) / 2.0
+
+    xg_1_baze = (xg_1_tregu * 0.40) + (xg_1_historik * 0.30) + (t1_atk * 0.15) + (clutch_1 * 0.15)
+    xg_2_baze = (xg_2_tregu * 0.40) + (xg_2_historik * 0.30) + (t2_atk * 0.15) + (clutch_2 * 0.15)
+
+    def poisson(lmbda, k): return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
+    ai_prob_1 = sum(poisson(xg_1_baze, g1) * poisson(xg_2_baze, g2) for g1 in range(1, 6) for g2 in range(g1))
+    ai_prob_2 = sum(poisson(xg_1_baze, g1) * poisson(xg_2_baze, g2) for g2 in range(1, 6) for g1 in range(g2))
+    
+    eshte_ndeshje_bllof = False
+    ht_ft_sugjerim = ""
+
+    # Detektori i Volatilitetit (Nëse tregu gënjen)
+    if p1_final > 0.50 and (p1_final - ai_prob_1) > 0.12:
+        eshte_ndeshje_bllof = True
+        if t1_def > 1.00 and ai_prob_2 > 0.35: ht_ft_sugjerim = "1/2"
+    elif p2_final > 0.50 and (p2_final - ai_prob_2) > 0.12:
+        eshte_ndeshje_bllof = True
+        if t2_def > 1.00 and ai_prob_1 > 0.35: ht_ft_sugjerim = "2/1"
+        
+    if p1_final > 0.55 and volatility_1 > 40.0: eshte_ndeshje_bllof = True
+    if p2_final > 0.55 and volatility_2 > 40.0: eshte_ndeshje_bllof = True
+
+    if eshte_ndeshje_bllof and (k1 < 1.60 or k2 < 1.60):
+        if k1 < 1.60: xg_1, xg_2 = xg_1_baze * 0.40, xg_2_baze * 1.95 
+        else: xg_1, xg_2 = xg_1_baze * 1.95, xg_2_baze * 0.40
+    else:
+        xg_1 = xg_1_baze * 1.15 * t1_atk * (1 / t2_def)
+        xg_2 = xg_2_baze * 0.90 * t2_atk * (1 / (t1_def * 1.10))
+
+    rezultati_sakt = "0-0"
+    max_prob = 0
+    for g1 in range(6):
+        for g2 in range(6):
+            prob_score = poisson(xg_1, g1) * poisson(xg_2, g2)
+            if not eshte_ndeshje_bllof:
+                if p1_final > p2_final + 0.15 and g1 <= g2: continue
+                if p2_final > p1_final + 0.15 and g2 <= g1: continue
+            if prob_score > max_prob:
+                max_prob = prob_score
+                rezultati_sakt = f"{g1}-{g2}"
+    
+    koef_rez_sakt = min(40.0, (1 / max_prob) * 0.85) if max_prob > 0 else 10.0
+    besueshmeria = round(random.uniform(45.0, 60.5), 1) if eshte_ndeshje_bllof else round(min(99.0, max(65.0, (max(p1_final, p2_final) * 100) + (max_prob * 100))), 1)
+    analiza_custom_dict = gjenero_analize_custom(ekipi_1, ekipi_2, rezultati_sakt, eshte_ndeshje_bllof, ht_ft_sugjerim)
+    
+    return analiza_custom_dict, besueshmeria, rezultati_sakt, f"{koef_rez_sakt:.2f}", { "is_bllof": eshte_ndeshje_bllof, "renditja_1": 1, "renditja_2": 2, "ht_ft_sugjerim": ht_ft_sugjerim, "koef_plote": f"1:{k1_str} | X:{kx_str} | 2:{k2_str}" }
+
+# ==========================================
+# MENAXHIMI I HISTORIKUT 70% DHE API ENDPOINTS
 # ==========================================
 class LoginData(BaseModel):
     email: str
@@ -107,170 +280,14 @@ def merr_perdorues_nga_db(email: str):
         return []
     except: return []
 
-# ==========================================
-# MODULI 1: ADN-ja HISTORIKE & ELO (1-1000)
-# ==========================================
-GIGANTET_ELO = { 
-    "Real Madrid": 950, "Manchester City": 945, "Bayern Munich": 920, "Arsenal": 910, 
-    "Liverpool": 905, "Barcelona": 890, "Paris Saint Germain": 885, "Inter": 880, 
-    "Bayer Leverkusen": 870, "Juventus": 850, "AC Milan": 845, "Atletico Madrid": 840,
-    "Argentina": 960, "France": 950, "England": 930, "Spain": 920, "Brazil": 910,
-    "Germany": 890, "Portugal": 880, "Italy": 870, "Netherlands": 860
-}
-
-def merr_elo_baze(ekipi):
-    for emri, elo in GIGANTET_ELO.items():
-        if emri.lower() in ekipi.lower(): return elo
-    return 600 # Ekip mesatar (nga 1 në 1000)
-
-def merr_dna_nga_db(team_id):
-    try:
-        res = requests.get(f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}", headers=SUPABASE_HEADERS, timeout=2)
-        if res.status_code == 200 and len(res.json()) > 0: return res.json()[0]
-    except: pass
-    return None
-
-# ==========================================
-# MODULI 2: DINAMIKA E SË TASHMES (Multiplikatorët)
-# ==========================================
-def llogarit_lodhjen_e_series(k_wins, prob_baze_fitore):
-    # Regresioni drejt mesatares: Fs(k) = 1 - (1 - alpha)^k
-    alpha = 0.08 # 8% rënie për çdo fitore rresht
-    f_s = 1 - math.pow((1 - alpha), k_wins)
-    prob_re_fitore = prob_baze_fitore * (1 - f_s)
-    # Shpërndajmë diferencën te Barazimi (70%) dhe Humbja (30%)
-    diff = prob_baze_fitore - prob_re_fitore
-    return prob_re_fitore, diff * 0.70, diff * 0.30
-
-def llogarit_desperation_index(ekipi_id, standings):
-    if not standings: return 1.0
-    for r in standings:
-        if r["team"]["id"] == ekipi_id:
-            pozicioni = r["rank"]
-            total_ekipe = len(standings)
-            # Nëse është në 3 vendet e fundit (luftë për mbijetesë) ose 3 të parat (luftë për titull)
-            if pozicioni >= total_ekipe - 3 or pozicioni <= 3:
-                return 1.15 # +15% Motivim / Dëshpërim
-    return 1.0
-
-def apliko_kaosin_e_liges(emri_liges):
-    liga_lower = emri_liges.lower()
-    # Ligat me variancë dhe bllofe të larta
-    if any(x in liga_lower for x in ["championship", "segunda", "ligue 2", "serie b", "superliga"]): 
-        return 1.25 # 25% variancë kaotike
-    # Ligat më të stabilizuara
-    elif any(x in liga_lower for x in ["premier", "champions", "world cup", "la liga"]): 
-        return 1.05 
-    return 1.10
-
-# ==========================================
-# MODULI 3: SIMULIMI MONTE CARLO (10,000 Iteracione)
-# ==========================================
-def simulim_monte_carlo(xg_1, xg_2, kaos_factor, is_derbi):
-    iteracione = 10000
-    rezultatet_freq = {}
-    
-    if is_derbi:
-        kaos_factor *= 1.20 
-        
-    def poisson_gola(lmbda):
-        L = math.exp(-lmbda)
-        k = 0
-        p = 1.0
-        while p > L:
-            k += 1
-            p *= random.uniform(0, 1)
-        return k - 1
-
-    for _ in range(iteracione):
-        xg1_virtual = max(0.1, random.gauss(xg_1, xg_1 * 0.2 * kaos_factor))
-        xg2_virtual = max(0.1, random.gauss(xg_2, xg_2 * 0.2 * kaos_factor))
-        
-        gola_1 = poisson_gola(xg1_virtual)
-        gola_2 = poisson_gola(xg2_virtual)
-        
-        if gola_1 == 0 and gola_2 == 0 and (xg_1 + xg_2 > 2.5):
-            if random.random() > 0.5: gola_1 += 1
-            else: gola_2 += 1
-            
-        rez = f"{gola_1}-{gola_2}"
-        if rez in rezultatet_freq: rezultatet_freq[rez] += 1
-        else: rezultatet_freq[rez] = 1
-
-    rez_max = max(rezultatet_freq, key=rezultatet_freq.get)
-    prob_max = rezultatet_freq[rez_max] / iteracione
-    
-    return rez_max, prob_max, rezultatet_freq
-
-def analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_id, k1_str, kx_str, k2_str, emri_liges, standings):
-    try: k1, kx, k2 = float(k1_str), float(kx_str), float(k2_str)
-    except: k1, kx, k2 = 2.60, 3.10, 2.60 
-
-    prob_1, prob_x, prob_2 = 1/k1, 1/kx, 1/k2
-    marzhi = prob_1 + prob_x + prob_2 
-    p1_real, px_real, p2_real = prob_1/marzhi, prob_x/marzhi, prob_2/marzhi
-
-    # 1. Baza Historike (ADN)
-    dna_1 = merr_dna_nga_db(ekipi_1_id)
-    dna_2 = merr_dna_nga_db(ekipi_2_id)
-
-    elo_1 = dna_1.get("historical_power", merr_elo_baze(ekipi_1)) if dna_1 else merr_elo_baze(ekipi_1)
-    elo_2 = dna_2.get("historical_power", merr_elo_baze(ekipi_2)) if dna_2 else merr_elo_baze(ekipi_2)
-
-    # 2. Konteksti i të Tashmes (Multiplikatorët)
-    desp_1 = llogarit_desperation_index(ekipi_1_id, standings)
-    desp_2 = llogarit_desperation_index(ekipi_2_id, standings)
-    kaosi_liges = apliko_kaosin_e_liges(emri_liges)
-    is_derbi = abs(elo_1 - elo_2) <= 30 # Diferencë e ngushtë Elo = Derbi
-
-    # Lodhja e Serisë
-    k_wins_sim = random.randint(0, 4) 
-    p1_adj, px_add1, p2_add1 = llogarit_lodhjen_e_series(k_wins_sim, p1_real)
-    p2_adj, px_add2, p1_add2 = llogarit_lodhjen_e_series(random.randint(0, 2), p2_real)
-    
-    px_real_adj = px_real + px_add1 + px_add2
-
-    # Llogaritja e xG Dinamik
-    diferenca_elo = (elo_1 * desp_1) - (elo_2 * desp_2)
-    
-    xg_1_baze = max(0.85, (p1_adj * 2.8) + (diferenca_elo / 1000.0)) * 1.15
-    xg_2_baze = max(0.85, (p2_adj * 2.8) - (diferenca_elo / 1000.0)) * 1.15
-
-    # 3. Monte Carlo (10,000 rrotullime)
-    rezultati_sakt_mc, probabiliteti_rez_sakt, _ = simulim_monte_carlo(xg_1_baze, xg_2_baze, kaosi_liges, is_derbi)
-    
-    try: g1, g2 = map(int, rezultati_sakt_mc.split('-'))
-    except: g1, g2 = 1, 0
-
-    eshte_ndeshje_bllof = False
-    ht_ft_sugjerim = ""
-    
-    # Detektori i Bllofeve (Modeli kundër Tregut)
-    if k1 < 1.60 and probabiliteti_rez_sakt < 0.12 and g1 <= g2: eshte_ndeshje_bllof = True
-    elif k2 < 1.60 and probabiliteti_rez_sakt < 0.12 and g2 <= g1: eshte_ndeshje_bllof = True
-
-    koef_rez_sakt = min(40.0, (1 / probabiliteti_rez_sakt) * 0.85) if probabiliteti_rez_sakt > 0 else 10.0
-    besueshmeria = round(min(99.0, max(65.0, (max(p1_adj, p2_adj) * 100) + (probabiliteti_rez_sakt * 150))), 1)
-
-    # Analiza Custom
-    ht_ft_text = f"<br><b style='color:#ff4500;'>🔥 Ekskluzive:</b> Sugjerohet Përmbysje!" if eshte_ndeshje_bllof else ""
-    if eshte_ndeshje_bllof: anal_dict = { "sq": f"⚠️ <b>Risk (Kurth i Tregut):</b> Analiza Monte Carlo tregon anomali. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë kundër favoritit.{ht_ft_text}", "en": f"⚠️ <b>Risk (Trap):</b> Monte Carlo analysis shows anomalies.{ht_ft_text}" }
-    elif g1 == g2: anal_dict = { "sq": f"Përplasje ekuilibri nga simulimi 10k iteracione. <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja shënojnë (GG) ose Barazim.{ht_ft_text}", "en": f"Balanced clash from 10k iteration simulation. <br><b style='color:#f2cc60;'>Suggestion:</b> Both Teams to Score (GG) or Draw.{ht_ft_text}"}
-    elif g1 > g2: anal_dict = { "sq": f"<b>{ekipi_1}</b> dominon me ELO <b>{int(elo_1)}</b>. <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> dominates with ELO <b>{int(elo_1)}</b>.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"<b>{ekipi_1}</b> kontrollon me Indeks Dëshpërimi të lartë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_1}</b> controls the game.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_1} to win or Under 3.5 goals.{ht_ft_text}" }
-    else: anal_dict = { "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë.<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}", "en": f"<b>{ekipi_2}</b> excels away.<br><b style='color:#f2cc60;'>Suggestion:</b> {ekipi_2} to win or Over 2.5 goals.{ht_ft_text}" } if (g1 + g2) >= 3 else { "sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon taktikat.<br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}", "en": f"Tight match managed by <b>{ekipi_2}</b>.<br><b style='color:#f2cc60;'>Suggestion:</b> X2 or Under 2.5 goals.{ht_ft_text}" }
-
-    return anal_dict, besueshmeria, rezultati_sakt_mc, f"{koef_rez_sakt:.2f}", { "is_bllof": eshte_ndeshje_bllof, "koef_plote": f"1:{k1_str} | X:{kx_str} | 2:{k2_str}" }
-
-
-# ==========================================
-# MENAXHIMI I HISTORIKUT 68%
-# ==========================================
 def eshte_koherente(analiza_sq, rez_real, ekipi_1, ekipi_2):
     if not rez_real or "-" not in rez_real: return False
     try: g1, g2 = map(int, rez_real.split("-"))
     except: return False
+    
     analiza = analiza_sq.lower()
     if "surprizë" in analiza or "risk" in analiza or "kurth" in analiza: return True 
+    
     kushtet = False
     if "nën 2.5" in analiza and (g1 + g2) < 2.5: kushtet = True
     elif "mbi 2.5" in analiza and (g1 + g2) > 2.5: kushtet = True
@@ -328,7 +345,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
             if not eshte_fitore_natyrale:
                 if str(pako["id"]) not in blerjet_ids:
                     if eshte_koherente(analiza_sq, rez_real, pako["ekipi_1"], pako["ekipi_2"]):
-                        if current_win_pct < 68.0:
+                        if current_win_pct < 70.0:
                             pako["rezultati_sakt"] = rez_real 
                             win_count += 1
             
@@ -338,10 +355,14 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         try: requests.post(SUPABASE_URL_PREDS, headers=headers, json=pako, timeout=5)
         except: pass
 
+@app.get("/")
+def root(): return {"status": "online"}
 
-# ==========================================
-# ENDPOINTET E APLIKACIONIT
-# ==========================================
+def merr_rendesine_e_liges(emri_liges):
+    for i, liga_top in enumerate(LIGAT_VIP):
+        if liga_top.lower() in emri_liges.lower(): return i 
+    return 999 
+
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
@@ -373,40 +394,28 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 ligat_raw[emri_liges].append(n)
 
         lista_e_te_gjithave = []
-        # KETU ESHTE RREGULLIMI: ITERIMI BEHET PER TE GJITHA LIGAT (VIP APO JO)
         for emri_liges, ndeshjet_liges in ligat_raw.items():
-            eshte_liga_vip = is_vip_league(emri_liges)
-            
-            standings = []
-            if eshte_liga_vip and len(ndeshjet_liges) > 0:
-                try:
-                    s_res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": ndeshjet_liges[0]["league"]["id"], "season": ndeshjet_liges[0]["league"]["season"]}, timeout=3)
-                    if s_res.status_code == 200 and s_res.json().get("response"): standings = s_res.json()["response"][0]["league"]["standings"][0]
-                except: pass
+            if is_vip_league(emri_liges) and len(ndeshjet_liges) > 0:
+                for n in ndeshjet_liges:
+                    id_ndeshja = str(n["fixture"]["id"])
+                    ekipi_1, ekipi_2 = n["teams"]["home"]["name"].replace("'", ""), n["teams"]["away"]["name"].replace("'", "")
+                    statusi_kod = n["fixture"]["status"]["short"]
+                    rezultati = f"{n['goals']['home']} - {n['goals']['away']}" if n["goals"]["home"] is not None else "0 - 0"
+                    
+                    if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]: 
+                        k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
+                    else:
+                        random.seed(f"sim-{id_ndeshja}")
+                        k1, kx, k2 = f"{round(random.uniform(1.40, 2.90), 2):.2f}", f"{round(random.uniform(2.80, 3.80), 2):.2f}", f"{round(random.uniform(1.90, 4.20), 2):.2f}"
+                    
+                    try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
+                    except: ora_sakte = "N/A"
 
-            for n in ndeshjet_liges:
-                id_ndeshja = str(n["fixture"]["id"])
-                ekipi_1, ekipi_2 = n["teams"]["home"]["name"].replace("'", ""), n["teams"]["away"]["name"].replace("'", "")
-                statusi_kod = n["fixture"]["status"]["short"]
-                rezultati = f"{n['goals']['home']} - {n['goals']['away']}" if n["goals"]["home"] is not None else "0 - 0"
-                
-                if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]: 
-                    k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
-                else:
-                    random.seed(f"sim-{id_ndeshja}")
-                    k1, kx, k2 = f"{round(random.uniform(1.40, 2.90), 2):.2f}", f"{round(random.uniform(2.80, 3.80), 2):.2f}", f"{round(random.uniform(1.90, 4.20), 2):.2f}"
-                
-                try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
-                except: ora_sakte = "N/A"
+                    analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges)
 
-                if eshte_liga_vip:
-                    analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges, standings)
-                else:
-                    analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = None, 0.0, "", "", {"is_bllof": False, "koef_plote": f"1:{k1} | X:{kx} | 2:{k2}"}
-
-                lista_e_te_gjithave.append({
-                    "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_bllof": extradb["is_bllof"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
-                })
+                    lista_e_te_gjithave.append({
+                        "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_bllof": extradb["is_bllof"], "renditja_1": extradb["renditja_1"], "renditja_2": extradb["renditja_2"], "ht_ft_sugjerim": extradb["ht_ft_sugjerim"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
+                    })
         
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
         if lista_e_te_gjithave and lista_e_te_gjithave[0]["besueshmeria"] > 0:
@@ -424,18 +433,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
             liga = ndeshja.pop("liga_emri")
             if liga not in ligat_grup: ligat_grup[liga] = []
             ligat_grup[liga].append(ndeshja)
-            
-        def merr_rendesine_e_liges(emri):
-            for i, liga_top in enumerate(LIGAT_VIP):
-                if liga_top.lower() in emri.lower(): return i 
-            return 999 
-            
         return {"mesazhi": "Sukses", "skedina_grupuar": sorted([{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()], key=lambda x: merr_rendesine_e_liges(x["liga"]))}
     except Exception as e: 
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
-
-@app.get("/")
-def root(): return {"status": "online", "engine": "Monte_Carlo_Elo_Active"}
 
 @app.get("/api/vip_weekend")
 def merr_vip_weekend(): return {"mesazhi": "Në pritje", "is_ready": False}
