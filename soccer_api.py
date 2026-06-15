@@ -23,6 +23,7 @@ HEADERS = {"x-apisports-key": API_KEY}
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
 SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
 SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
+SUPABASE_URL_STANDINGS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/standings_cache"
 SUPABASE_URL_DNA = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/team_dna_cache"
 
 SUPABASE_HEADERS = {
@@ -107,10 +108,6 @@ def merr_perdorues_nga_db(email: str):
     except: return []
 
 GIGANTET = { "Argentina": 95, "France": 94, "England": 93, "Brazil": 92, "Spain": 92, "Germany": 90, "Portugal": 89, "Italy": 88, "Netherlands": 88, "Croatia": 86, "Belgium": 85, "Uruguay": 84, "Colombia": 84, "Switzerland": 82, "USA": 80, "Real Madrid": 95, "Manchester City": 95, "Bayern Munich": 93, "Arsenal": 92, "Liverpool": 91, "Barcelona": 90, "Paris Saint Germain": 89, "Inter": 89, "Bayer Leverkusen": 88, "Juventus": 86, "AC Milan": 85, "Atletico Madrid": 85 }
-
-def llogarit_dhe_ruaj_dna(league_id: int):
-    # Bypass per te ruajtur API calls
-    pass
 
 def merr_dna_nga_db(team_id):
     try:
@@ -263,7 +260,7 @@ def analizo_ndeshjen_premium(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ekipi_2_i
     t1_atk, t1_def = TAKTIKAT[form_1]["atk"], TAKTIKAT[form_1]["def_fortitude"]
     t2_atk, t2_def = TAKTIKAT[form_2]["atk"], TAKTIKAT[form_2]["def_fortitude"]
 
-    # BONUSI +15% I GOLAVE PËR REZULTATE MË TË LARTA (PSH 2-1)
+    # BONUSI +15% I GOLAVE
     xg_1_baze = max(0.1, (p1_real * 2.6) + (diferenca_fuqise * 0.8)) * 1.15
     xg_2_baze = max(0.1, (p2_real * 2.6) - (diferenca_fuqise * 0.8)) * 1.15
     
@@ -485,9 +482,10 @@ async def lemonsqueezy_webhook(request: Request):
             attributes = payload.get("data", {}).get("attributes", {})
             custom_data = attributes.get("custom_data") or {}
             
-            email = custom_data.get("user_email") or attributes.get("user_email")
-            if not email: return {"status": "injoruar"}
+            email_raw = custom_data.get("user_email") or attributes.get("user_email")
+            if not email_raw: return {"status": "injoruar"}
             
+            email = email_raw.lower().strip()
             blerja_type = custom_data.get("type", "ppm")
             user_res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS)
             
@@ -503,6 +501,19 @@ async def lemonsqueezy_webhook(request: Request):
                 elif blerja_type == "topup":
                     shuma = float(custom_data.get("amount", attributes.get("total", 0) / 100.0))
                     update_data["portofoli"] = float(user.get("portofoli", 0.0)) + shuma
+                    
+                elif blerja_type == "ppm":
+                    blerja_e_re = {
+                        "id": str(custom_data.get("match_id", "N/A")),
+                        "ndeshja": custom_data.get("ndeshja", "Ndeshje PPM"),
+                        "rezultati": custom_data.get("rezultati", "N/A"),
+                        "koef": str(custom_data.get("koef", "N/A")),
+                        "cmimi": float(custom_data.get("cmimi", attributes.get("total", 0) / 100.0))
+                    }
+                    blerjet = user.get("blerjet", [])
+                    if not any(b["id"] == blerja_e_re["id"] for b in blerjet):
+                        blerjet.append(blerja_e_re)
+                        update_data["blerjet"] = blerjet
                 
                 if update_data:
                     requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS, json=update_data)
