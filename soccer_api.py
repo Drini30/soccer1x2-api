@@ -347,7 +347,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         except: pass
 
 # ==========================================
-# ENDPOINTI KRYESOR (ON-THE-FLY)
+# ENDPOINTI KRYESOR (ON-THE-FLY) PËR TË GJITHA NDESHJET
 # ==========================================
 SKEDINA_CACHE = {}
 SKEDINA_LAST_UPDATE = {}
@@ -416,13 +416,13 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 statusi_kod = n["fixture"]["status"]["short"]
                 rezultati = f"{n['goals']['home']} - {n['goals']['away']}" if n["goals"]["home"] is not None else "0 - 0"
                 
-                # 🛑 VDEKJE SIMULIMEVE BOSH: Vetëm të dhëna reale
+                # Ndeshja Skualifikohet nëse s'ka koeficientë realë tregu!
                 k1, kx, k2 = None, None, None
                 if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]: 
                     k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
                 
                 if not k1 or not kx or not k2:
-                    continue # Ndeshja Skualifikohet nëse s'ka koeficientë!
+                    continue 
                 
                 try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
                 except: ora_sakte = "N/A"
@@ -474,7 +474,49 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
 
 @app.get("/")
-def root(): return {"status": "online", "engine": "SmartFilter_NoSimulations_OnTheFly"}
+def root(): return {"status": "online", "engine": "Live_OnTheFly_Engine"}
+
+# ==========================================
+# ENDPOINTI PËR SEKSIONIN LIVE TË FAQES
+# ==========================================
+@app.get("/api/live")
+def merr_ndeshjet_live():
+    try:
+        # Marrim vetëm ndeshjet që po luhen TANI sipas API-Sports
+        response = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"live": "all"}, timeout=10)
+        te_dhenat = response.json()
+        
+        if "errors" in te_dhenat and te_dhenat["errors"]: 
+            return {"mesazhi": "Gabim", "ndeshjet": []}
+            
+        ndeshjet_live = []
+        if "response" in te_dhenat:
+            for n in te_dhenat["response"]:
+                emri_liges = f"{n['league']['country']} - {n['league']['name']}"
+                
+                # Shtojmë në LIVE vetëm nëse është Ligë VIP e lejuar nga platforma
+                if is_vip_league(emri_liges):
+                    id_ndeshja = str(n["fixture"]["id"])
+                    ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
+                    ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
+                    statusi_kod = n["fixture"]["status"]["short"]
+                    minuta = n["fixture"]["status"]["elapsed"] or 0
+                    gola_1 = n["goals"]["home"] if n["goals"]["home"] is not None else 0
+                    gola_2 = n["goals"]["away"] if n["goals"]["away"] is not None else 0
+                    
+                    ndeshjet_live.append({
+                        "id": id_ndeshja,
+                        "liga_emri": emri_liges,
+                        "ekipi_1": ekipi_1,
+                        "ekipi_2": ekipi_2,
+                        "statusi": statusi_kod,
+                        "minuta": f"{minuta}'",
+                        "rezultati": f"{gola_1} - {gola_2}"
+                    })
+                    
+        return {"mesazhi": "Sukses", "ndeshjet": ndeshjet_live}
+    except Exception as e:
+        return {"mesazhi": "Gabim", "detaje": str(e), "ndeshjet": []}
 
 # ==========================================
 # MIDNIGHT TASK (PËRDITËSIMI I ELO-S DINAMIKE)
@@ -554,7 +596,7 @@ def merr_historine(team_id: int):
             except: data_sakte = "N/A"
             rezultati_hist.append({"data": data_sakte, "ora": "FT", "ndeshja": f"{n['teams']['home']['name']} vs {n['teams']['away']['name']}", "ht": f"{ht.get('home')}-{ht.get('away')}" if ht and ht.get('home') is not None else "0-0", "ft": f"{ft.get('home')}-{ft.get('away')}" if ft and ft.get('home') is not None else "0-0"})
         return {"mesazhi": "Sukses", "historia": rezultati_hist}
-    except: return {"mesazhi": "Gabim", "detaje": "Error"}
+    except Exception as e: return {"mesazhi": "Gabim", "detaje": str(e)}
 
 @app.get("/api/renditja/{league_id}/{season}")
 def merr_renditjen(league_id: int, season: int, team: str = None):
@@ -568,7 +610,7 @@ def merr_renditjen(league_id: int, season: int, team: str = None):
         for grup in grupet:
             for r in grup: renditja_list.append({"pozicioni": r["rank"], "ekipi": r["team"]["name"], "piket": r["points"], "ndeshje": r["all"]["played"], "gola": f"{r['all']['goals']['for']}:{r['all']['goals']['against']}", "forma": r["form"]})
         return {"mesazhi": "Sukses", "renditja": renditja_list}
-    except: return {"mesazhi": "Gabim", "renditja": []}
+    except Exception as e: return {"mesazhi": "Gabim", "renditja": [], "detaje": str(e)}
 
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
