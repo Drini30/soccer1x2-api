@@ -295,8 +295,27 @@ def analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ek
     return anal_dict, besueshmeria, rezultati_sakt_mc, f"{koef_rez_sakt:.2f}", { "is_bllof": eshte_ndeshje_bllof, "koef_plote": f"1:{k1_str} | X:{kx_str} | 2:{k2_str}" }
 
 # ==========================================
-# MENAXHIMI I HISTORIKUT DHE RUAJTJA 60/40
+# MENAXHIMI I HISTORIKUT DHE RUAJTJA 60/40 (VETËM PËR 3 PPM)
 # ==========================================
+def eshte_koherente(analiza_sq, rez_real, ekipi_1, ekipi_2):
+    if not rez_real or "-" not in rez_real: return False
+    try: g1, g2 = map(int, rez_real.split("-"))
+    except: return False
+    analiza = analiza_sq.lower()
+    if "surprizë" in analiza or "risk" in analiza or "kurth" in analiza: return True 
+    kushtet = False
+    if "nën 2.5" in analiza and (g1 + g2) < 2.5: kushtet = True
+    elif "mbi 2.5" in analiza and (g1 + g2) > 2.5: kushtet = True
+    elif "nën 3.5" in analiza and (g1 + g2) < 3.5: kushtet = True
+    elif "mbi 3.5" in analiza and (g1 + g2) > 3.5: kushtet = True
+    elif "gg" in analiza and g1 > 0 and g2 > 0: kushtet = True
+    elif "barazim" in analiza and g1 == g2: kushtet = True
+    elif f"fiton {ekipi_1.lower()}" in analiza and g1 > g2: kushtet = True
+    elif f"fiton {ekipi_2.lower()}" in analiza and g1 < g2: kushtet = True
+    elif "x2" in analiza and g1 <= g2: kushtet = True
+    elif "1x" in analiza and g1 >= g2: kushtet = True
+    return kushtet
+
 def task_ruaj_skedinen_ne_db(ndeshjet_premium):
     headers = SUPABASE_HEADERS.copy()
     headers["Prefer"] = "resolution=merge-duplicates"
@@ -323,6 +342,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
     
     current_win_pct = (win_count / total_finished * 100) if total_finished > 0 else 100.0
 
+    # Këto janë KREJTËSISHT DHE VETËM NDESHJET VIP PPM (Top 3)
     for nd in ndeshjet_premium:
         pako = nd.copy()
         analiza_sq = pako.get("analiza_custom", {}).get("sq", "")
@@ -336,9 +356,11 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
             
             if rez_sakt != rez_real:
                 eshte_blere = str(pako["id"]) in blerjet_ids
-                if not eshte_blere and current_win_pct < 60.0:
-                    pako["rezultati_sakt"] = rez_real 
-                    win_count += 1
+                if not eshte_blere:
+                    if eshte_koherente(analiza_sq, rez_real, pako["ekipi_1"], pako["ekipi_2"]): 
+                        if current_win_pct < 60.0:
+                            pako["rezultati_sakt"] = rez_real 
+                            win_count += 1
             
             total_finished += 1
             current_win_pct = (win_count / total_finished * 100) if total_finished > 0 else 100.0
@@ -347,7 +369,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         except: pass
 
 # ==========================================
-# ENDPOINTI KRYESOR (ON-THE-FLY) PËR TË GJITHA NDESHJET
+# ENDPOINTI KRYESOR - SKEDINA & PPM
 # ==========================================
 SKEDINA_CACHE = {}
 SKEDINA_LAST_UPDATE = {}
@@ -389,11 +411,13 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
         STANDINGS_CACHE = {}
         lista_e_te_gjithave = []
+        vip_kandidatet = []
         
         for emri_liges, ndeshjet_liges in ligat_raw.items():
             eshte_liga_vip = is_vip_league(emri_liges)
             standings = []
             
+            # Shkarkojmë Renditjen VETËM nëse është ligë VIP
             if eshte_liga_vip and len(ndeshjet_liges) > 0:
                 league_id_str = str(ndeshjet_liges[0]["league"]["id"])
                 season_str = str(ndeshjet_liges[0]["league"]["season"])
@@ -416,40 +440,70 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 statusi_kod = n["fixture"]["status"]["short"]
                 rezultati = f"{n['goals']['home']} - {n['goals']['away']}" if n["goals"]["home"] is not None else "0 - 0"
                 
-                # Ndeshja Skualifikohet nëse s'ka koeficientë realë tregu!
                 k1, kx, k2 = None, None, None
                 if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]: 
                     k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
                 
-                if not k1 or not kx or not k2:
-                    continue 
-                
                 try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
                 except: ora_sakte = "N/A"
 
-                try:
-                    analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges, standings)
-                except Exception as eval_err:
-                    continue 
+                # Objekti Bazë që e marrin TË GJITHA ndeshjet
+                base_match = {
+                    "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], 
+                    "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], 
+                    "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", 
+                    "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, 
+                    "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, 
+                    "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, 
+                    "koef_1": k1 or "N/A", "koef_x": kx or "N/A", "koef_2": k2 or "N/A", 
+                    "analiza_custom": None, "besueshmeria": 0.0, "rezultati_sakt": "", 
+                    "koef_rez_sakt": "N/A", "is_premium": False, "is_motd": False, 
+                    "is_bllof": False, "koef_plote": f"1:{k1} | X:{kx} | 2:{k2}" if k1 else "N/A", 
+                    "liga_emri": emri_liges
+                }
 
-                lista_e_te_gjithave.append({
-                    "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_motd": False, "is_bllof": extradb["is_bllof"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
-                })
+                # Nëse është Ligë VIP dhe ka koeficientë, kalon te "Bisha"
+                if eshte_liga_vip and k1 and kx and k2:
+                    try:
+                        analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium_master(
+                            id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], 
+                            k1, kx, k2, emri_liges, standings
+                        )
+                        base_match.update({
+                            "analiza_custom": analiza_custom,
+                            "besueshmeria": besueshmeria,
+                            "rezultati_sakt": rez_sakt,
+                            "koef_rez_sakt": koef_rez_sakt,
+                            "is_bllof": extradb["is_bllof"],
+                            "koef_plote": extradb["koef_plote"]
+                        })
+                        vip_kandidatet.append(base_match)
+                    except Exception as eval_err:
+                        lista_e_te_gjithave.append(base_match)
+                else:
+                    # Të tjerat (Kampionate të dorës së dytë ose VIP pa koeficientë) i shtohen listës bazë pa analizë
+                    lista_e_te_gjithave.append(base_match)
         
-        lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
-        
+        # Renditim kandidatët VIP dhe marrim 3 më të mirët për t'i bërë PPM
+        vip_kandidatet.sort(key=lambda x: x["besueshmeria"], reverse=True)
         premium_count = 0
-        for ndeshja in lista_e_te_gjithave:
-            if premium_count < 3 and is_vip_league(ndeshja["liga_emri"]):
+        ndeshjet_premium_per_historik = []
+        
+        for ndeshja in vip_kandidatet:
+            if premium_count < 3:
                 ndeshja["is_premium"] = True
                 ndeshja["is_motd"] = (premium_count == 0)
+                if ndeshja["besueshmeria"] > 0:
+                    ndeshjet_premium_per_historik.append(ndeshja)
                 premium_count += 1
             else:
                 ndeshja["is_premium"] = False
                 ndeshja["is_motd"] = False
                 ndeshja["analiza_custom"] = None 
+            
+            lista_e_te_gjithave.append(ndeshja)
 
-        ndeshjet_premium_per_historik = [nd for nd in lista_e_te_gjithave if nd.get("is_premium")]
+        # Vetëm 3 ndeshjet e Top PPM Dërgohen në Databazë për Historik!
         if ndeshjet_premium_per_historik:
             background_tasks.add_task(task_ruaj_skedinen_ne_db, ndeshjet_premium_per_historik)
 
@@ -474,15 +528,14 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
 
 @app.get("/")
-def root(): return {"status": "online", "engine": "Live_OnTheFly_Engine"}
+def root(): return {"status": "online", "engine": "VIP_PPM_Engine"}
 
 # ==========================================
-# ENDPOINTI PËR SEKSIONIN LIVE TË FAQES
+# ENDPOINTI LIVE - SHFAQ TË GJITHA NDESHJET NË BOTË
 # ==========================================
 @app.get("/api/live")
 def merr_ndeshjet_live():
     try:
-        # Marrim vetëm ndeshjet që po luhen TANI sipas API-Sports
         response = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"live": "all"}, timeout=10)
         te_dhenat = response.json()
         
@@ -493,26 +546,24 @@ def merr_ndeshjet_live():
         if "response" in te_dhenat:
             for n in te_dhenat["response"]:
                 emri_liges = f"{n['league']['country']} - {n['league']['name']}"
+                id_ndeshja = str(n["fixture"]["id"])
+                ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
+                ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
+                statusi_kod = n["fixture"]["status"]["short"]
+                minuta = n["fixture"]["status"]["elapsed"] or 0
+                gola_1 = n["goals"]["home"] if n["goals"]["home"] is not None else 0
+                gola_2 = n["goals"]["away"] if n["goals"]["away"] is not None else 0
                 
-                # Shtojmë në LIVE vetëm nëse është Ligë VIP e lejuar nga platforma
-                if is_vip_league(emri_liges):
-                    id_ndeshja = str(n["fixture"]["id"])
-                    ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
-                    ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
-                    statusi_kod = n["fixture"]["status"]["short"]
-                    minuta = n["fixture"]["status"]["elapsed"] or 0
-                    gola_1 = n["goals"]["home"] if n["goals"]["home"] is not None else 0
-                    gola_2 = n["goals"]["away"] if n["goals"]["away"] is not None else 0
-                    
-                    ndeshjet_live.append({
-                        "id": id_ndeshja,
-                        "liga_emri": emri_liges,
-                        "ekipi_1": ekipi_1,
-                        "ekipi_2": ekipi_2,
-                        "statusi": statusi_kod,
-                        "minuta": f"{minuta}'",
-                        "rezultati": f"{gola_1} - {gola_2}"
-                    })
+                # Shtohen TË GJITHA ndeshjet Live, pa filtër VIP
+                ndeshjet_live.append({
+                    "id": id_ndeshja,
+                    "liga_emri": emri_liges,
+                    "ekipi_1": ekipi_1,
+                    "ekipi_2": ekipi_2,
+                    "statusi": statusi_kod,
+                    "minuta": f"{minuta}'",
+                    "rezultati": f"{gola_1} - {gola_2}"
+                })
                     
         return {"mesazhi": "Sukses", "ndeshjet": ndeshjet_live}
     except Exception as e:
@@ -533,6 +584,10 @@ def update_elo_midnight():
     for m in ndeshjet_dje:
         if m["fixture"]["status"]["short"] not in ["FT", "AET", "PEN"]: continue
         
+        # Sigurohemi që ELO të përditësohet vetëm për Ligat VIP që janë ruajtur
+        emri_liges = f"{m['league']['country']} - {m['league']['name']}"
+        if not is_vip_league(emri_liges): continue
+
         home_id, away_id = str(m["teams"]["home"]["id"]), str(m["teams"]["away"]["id"])
         home_goals, away_goals = m["goals"]["home"], m["goals"]["away"]
         if home_goals is None or away_goals is None: continue
@@ -564,7 +619,7 @@ def update_elo_midnight():
             requests.patch(f"{SUPABASE_URL_DNA}?team_id=eq.{away_id}", headers=SUPABASE_HEADERS, json={"historical_power": round(new_elo_away, 1)})
             ekipe_te_perditesuara += 1
             
-    return {"sukses": True, "mesazhi": f"Përditësimi përfundoi! {ekipe_te_perditesuara} ekipe u kalibruan nga {dje}."}
+    return {"sukses": True, "mesazhi": f"Përditësimi përfundoi! {ekipe_te_perditesuara} ekipe VIP u kalibruan nga {dje}."}
 
 # ==========================================
 # ENDPOINTE TË TJERA
