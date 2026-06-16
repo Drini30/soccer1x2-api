@@ -7,7 +7,7 @@ import random
 import math
 import time
 
-app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo, True Data & Morning Brain Engine")
+app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -236,15 +236,12 @@ def analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ek
 
     diferenca_elo = (elo_1 * desp_1) - (elo_2 * desp_2)
     
-    # xG i paster (Pa asnjë favorizim të panatyrshëm)
     xg_1_baze = max(0.40, (p1_adj * 3.15) + (diferenca_elo / 850.0))
     xg_2_baze = max(0.40, (p2_adj * 3.15) - (diferenca_elo / 850.0))
 
     total_xg = xg_1_baze + xg_2_baze
 
-    # 🚀 FILTRI INTELIGJENT (Nanometrik)
     if total_xg > 2.5:
-        # Ndeshje e hapur! Këtu gjen hapësirë humbësi të shënojë (Eviton overfitting)
         rritja = 1 + max(0, (total_xg - 2.5) / 10.0)
         if xg_1_baze < xg_2_baze:
             xg_1_baze = xg_1_baze * rritja * clutch_1
@@ -253,11 +250,9 @@ def analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ek
             xg_2_baze = xg_2_baze * rritja * clutch_2
             xg_1_baze = xg_1_baze * clutch_1
     else:
-        # Ndeshje taktike, nuk prek xG e Humbësit (lejon 1-0 dhe 0-0 të ndodhin)
         xg_1_baze *= clutch_1
         xg_2_baze *= clutch_2
 
-    # Draw Affinity: Mbrojtje për ekipet që parkojnë autobusin
     draw_1 = float(dna_1.get("draw_affinity", 30.0)) if dna_1 else 30.0
     draw_2 = float(dna_2.get("draw_affinity", 30.0)) if dna_2 else 30.0
     if draw_1 > 35.0 and draw_2 > 35.0:
@@ -352,15 +347,23 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         except: pass
 
 # ==========================================
-# TRURI I MËNGJESIT & GJENERIMI BAZË
+# ENDPOINTI KRYESOR (ON-THE-FLY)
 # ==========================================
 SKEDINA_CACHE = {}
+SKEDINA_LAST_UPDATE = {}
 
-def gjenero_skedinen_algoritmi(data_target, background_tasks=None, ruaj_ne_db=False):
+@app.get("/api/skedina")
+def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
+    data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
+    koha_tani = time.time()
+    
+    if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 600):
+        return {"mesazhi": "Sukses", "skedina_grupuar": SKEDINA_CACHE[data_target]}
+
     try:
         response = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target}, timeout=10)
         te_dhenat = response.json()
-        if "errors" in te_dhenat and te_dhenat["errors"]: return []
+        if "errors" in te_dhenat and te_dhenat["errors"]: return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
         
         bet365_odds = {}
         try:
@@ -388,48 +391,56 @@ def gjenero_skedinen_algoritmi(data_target, background_tasks=None, ruaj_ne_db=Fa
         lista_e_te_gjithave = []
         
         for emri_liges, ndeshjet_liges in ligat_raw.items():
-            if is_vip_league(emri_liges) and len(ndeshjet_liges) > 0:
+            eshte_liga_vip = is_vip_league(emri_liges)
+            standings = []
+            
+            if eshte_liga_vip and len(ndeshjet_liges) > 0:
                 league_id_str = str(ndeshjet_liges[0]["league"]["id"])
                 season_str = str(ndeshjet_liges[0]["league"]["season"])
                 cache_key = f"{league_id_str}_{season_str}"
                 
-                if cache_key not in STANDINGS_CACHE:
+                if cache_key in STANDINGS_CACHE:
+                    standings = STANDINGS_CACHE[cache_key]
+                else:
                     try:
                         s_res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": league_id_str, "season": season_str}, timeout=2)
                         if s_res.status_code == 200 and s_res.json().get("response"): 
-                            STANDINGS_CACHE[cache_key] = s_res.json()["response"][0]["league"]["standings"][0]
-                    except: STANDINGS_CACHE[cache_key] = []
+                            standings = s_res.json()["response"][0]["league"]["standings"][0]
+                            STANDINGS_CACHE[cache_key] = standings
+                    except: 
+                        standings = [] 
 
-                for n in ndeshjet_liges:
-                    id_ndeshja = str(n["fixture"]["id"])
-                    ekipi_1, ekipi_2 = n["teams"]["home"]["name"].replace("'", ""), n["teams"]["away"]["name"].replace("'", "")
-                    statusi_kod = n["fixture"]["status"]["short"]
-                    rezultati = f"{n['goals']['home']} - {n['goals']['away']}" if n["goals"]["home"] is not None else "0 - 0"
-                    
-                    # 🛑 VDEKJE SIMULIMEVE: Vetëm të dhëna reale
-                    k1, kx, k2 = None, None, None
-                    if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]: 
-                        k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
-                    
-                    if not k1 or not kx or not k2:
-                        continue # Ndeshja Skualifikohet!
-                    
-                    try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
-                    except: ora_sakte = "N/A"
+            for n in ndeshjet_liges:
+                id_ndeshja = str(n["fixture"]["id"])
+                ekipi_1, ekipi_2 = n["teams"]["home"]["name"].replace("'", ""), n["teams"]["away"]["name"].replace("'", "")
+                statusi_kod = n["fixture"]["status"]["short"]
+                rezultati = f"{n['goals']['home']} - {n['goals']['away']}" if n["goals"]["home"] is not None else "0 - 0"
+                
+                # 🛑 VDEKJE SIMULIMEVE BOSH: Vetëm të dhëna reale
+                k1, kx, k2 = None, None, None
+                if id_ndeshja in bet365_odds and bet365_odds[id_ndeshja]["1"]: 
+                    k1, kx, k2 = str(bet365_odds[id_ndeshja]["1"]), str(bet365_odds[id_ndeshja]["X"]), str(bet365_odds[id_ndeshja]["2"])
+                
+                if not k1 or not kx or not k2:
+                    continue # Ndeshja Skualifikohet nëse s'ka koeficientë!
+                
+                try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
+                except: ora_sakte = "N/A"
 
-                    try:
-                        analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges, STANDINGS_CACHE[cache_key])
-                    except: continue 
+                try:
+                    analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges, standings)
+                except Exception as eval_err:
+                    continue 
 
-                    lista_e_te_gjithave.append({
-                        "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_motd": False, "is_bllof": extradb["is_bllof"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
-                    })
+                lista_e_te_gjithave.append({
+                    "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_motd": False, "is_bllof": extradb["is_bllof"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
+                })
         
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
         
         premium_count = 0
         for ndeshja in lista_e_te_gjithave:
-            if premium_count < 3:
+            if premium_count < 3 and is_vip_league(ndeshja["liga_emri"]):
                 ndeshja["is_premium"] = True
                 ndeshja["is_motd"] = (premium_count == 0)
                 premium_count += 1
@@ -439,7 +450,7 @@ def gjenero_skedinen_algoritmi(data_target, background_tasks=None, ruaj_ne_db=Fa
                 ndeshja["analiza_custom"] = None 
 
         ndeshjet_premium_per_historik = [nd for nd in lista_e_te_gjithave if nd.get("is_premium")]
-        if ruaj_ne_db and background_tasks and ndeshjet_premium_per_historik:
+        if ndeshjet_premium_per_historik:
             background_tasks.add_task(task_ruaj_skedinen_ne_db, ndeshjet_premium_per_historik)
 
         ligat_grup = {}
@@ -453,35 +464,17 @@ def gjenero_skedinen_algoritmi(data_target, background_tasks=None, ruaj_ne_db=Fa
                 if liga_top.lower() in emri.lower(): return i 
             return 999 
             
-        return sorted([{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()], key=lambda x: merr_rendesine_e_liges(x["liga"]))
-    except: return []
-
-@app.get("/api/cron/truri_mengjesit")
-def truri_mengjesit(background_tasks: BackgroundTasks):
-    sot = datetime.utcnow().strftime('%Y-%m-%d')
-    rezultati = gjenero_skedinen_algoritmi(sot, background_tasks, ruaj_ne_db=True)
-    SKEDINA_CACHE[sot] = rezultati
-    return {"mesazhi": "Truri i Mëngjesit ka përfunduar llogaritjet 100% reale!", "grupe_ligash": len(rezultati)}
-
-@app.get("/api/skedina")
-def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
-    sot = datetime.utcnow().strftime('%Y-%m-%d')
-    data_target = date if date else sot
-    
-    # Rasti 1: Klienti kerkon ndeshjet e sotme (Aktivizohet Bllokada e Trurit te Mengjesit)
-    if data_target == sot:
-        if sot in SKEDINA_CACHE:
-            return {"mesazhi": "Sukses", "skedina_grupuar": SKEDINA_CACHE[sot]}
-        else:
-            return {"mesazhi": "Në pritje", "skedina_grupuar": [], "error_msg": "Bisha po mbledh të dhënat zyrtare. Ju lutem prisni (Truri i Mëngjesit nuk është ndezur ende)."}
-    
-    # Rasti 2: Ti kërkon një datë të kaluar për Backtesting! (Llogaritet LIVE me formulat e reja)
-    else:
-        rezultati = gjenero_skedinen_algoritmi(data_target, background_tasks, ruaj_ne_db=False)
-        return {"mesazhi": "Sukses (Backtesting Mode)", "skedina_grupuar": rezultati}
+        rezultati_perfundimtar = sorted([{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()], key=lambda x: merr_rendesine_e_liges(x["liga"]))
+        
+        SKEDINA_CACHE[data_target] = rezultati_perfundimtar
+        SKEDINA_LAST_UPDATE[data_target] = koha_tani
+        
+        return {"mesazhi": "Sukses", "skedina_grupuar": rezultati_perfundimtar}
+    except Exception as e: 
+        return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
 
 @app.get("/")
-def root(): return {"status": "online", "engine": "SmartFilter_NoSimulations_MorningBrain"}
+def root(): return {"status": "online", "engine": "SmartFilter_NoSimulations_OnTheFly"}
 
 # ==========================================
 # MIDNIGHT TASK (PËRDITËSIMI I ELO-S DINAMIKE)
