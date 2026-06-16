@@ -142,12 +142,14 @@ def llogarit_lodhjen_e_series(k_wins, prob_baze_fitore):
 
 def llogarit_desperation_index(ekipi_id, standings):
     if not standings: return 1.0
-    for r in standings:
-        if r["team"]["id"] == ekipi_id:
-            pozicioni = r["rank"]
-            total_ekipe = len(standings)
-            if pozicioni >= total_ekipe - 3 or pozicioni <= 3:
-                return 1.15
+    try:
+        for r in standings:
+            if r.get("team", {}).get("id") == ekipi_id:
+                pozicioni = r.get("rank", 10)
+                total_ekipe = len(standings)
+                if pozicioni >= total_ekipe - 3 or pozicioni <= 3:
+                    return 1.15
+    except: pass
     return 1.0
 
 def apliko_kaosin_e_liges(emri_liges):
@@ -228,7 +230,6 @@ def analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, ekipi_1_id, ek
     except: g1, g2 = 1, 0
 
     eshte_ndeshje_bllof = False
-    ht_ft_sugjerim = ""
     
     if k1 < 1.60 and probabiliteti_rez_sakt < 0.12 and g1 <= g2: eshte_ndeshje_bllof = True
     elif k2 < 1.60 and probabiliteti_rez_sakt < 0.12 and g2 <= g1: eshte_ndeshje_bllof = True
@@ -310,9 +311,9 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
             
             if not eshte_fitore_natyrale:
                 eshte_blere = str(pako["id"]) in blerjet_ids
-                if not eshte_blere: # Nëse nuk është blerë nga askush
-                    if eshte_koherente(analiza_sq, rez_real, pako["ekipi_1"], pako["ekipi_2"]): # Nëse është brenda analizës
-                        if current_win_pct < 60.0: # Ruajmë balancën e fitoreve
+                if not eshte_blere: 
+                    if eshte_koherente(analiza_sq, rez_real, pako["ekipi_1"], pako["ekipi_2"]): 
+                        if current_win_pct < 60.0: 
                             pako["rezultati_sakt"] = rez_real 
                             win_count += 1
             
@@ -359,15 +360,17 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         lista_e_te_gjithave = []
         for emri_liges, ndeshjet_liges in ligat_raw.items():
             eshte_liga_vip = is_vip_league(emri_liges)
-            
             standings = []
+            
+            # Mbrojtje e shtuar (Siguresa)
             if eshte_liga_vip and len(ndeshjet_liges) > 0:
                 try:
-                    s_res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": ndeshjet_liges[0]["league"]["id"], "season": ndeshjet_liges[0]["league"]["season"]}, timeout=3)
-                    if s_res.status_code == 200 and s_res.json().get("response"): standings = s_res.json()["response"][0]["league"]["standings"][0]
-                except: pass
+                    s_res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": ndeshjet_liges[0]["league"]["id"], "season": ndeshjet_liges[0]["league"]["season"]}, timeout=2)
+                    if s_res.status_code == 200 and s_res.json().get("response"): 
+                        standings = s_res.json()["response"][0]["league"]["standings"][0]
+                except: 
+                    standings = [] # Nese bllokohet API-Sports, kthehu bosh pa ndalur kodin
 
-            # Procesojmë çdo ndeshje të mundshme
             for n in ndeshjet_liges:
                 id_ndeshja = str(n["fixture"]["id"])
                 ekipi_1, ekipi_2 = n["teams"]["home"]["name"].replace("'", ""), n["teams"]["away"]["name"].replace("'", "")
@@ -383,13 +386,16 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 try: ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
                 except: ora_sakte = "N/A"
 
-                analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges, standings)
+                try:
+                    analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges, standings)
+                except Exception as eval_err:
+                    print(f"Gabim në analizën e ndeshjes {id_ndeshja}: {eval_err}")
+                    continue # Kaloje këtë ndeshje nëse thyhet gjatë analizës, mos e rrëzo të gjithë faqen
 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_motd": False, "is_bllof": extradb["is_bllof"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
                 })
         
-        # Rendisim të gjitha ndeshjet për të gjetur më të mirat
         lista_e_te_gjithave.sort(key=lambda x: x["besueshmeria"], reverse=True)
         
         premium_count = 0
@@ -401,7 +407,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
             else:
                 ndeshja["is_premium"] = False
                 ndeshja["is_motd"] = False
-                # Vetëm ato Premium i ruajnë analizat, të tjerave ua fshijmë
                 ndeshja["analiza_custom"] = None 
 
         ndeshjet_premium_per_historik = [nd for nd in lista_e_te_gjithave if nd.get("is_premium")]
@@ -422,9 +427,6 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         return {"mesazhi": "Sukses", "skedina_grupuar": sorted([{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()], key=lambda x: merr_rendesine_e_liges(x["liga"]))}
     except Exception as e: 
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
-
-@app.get("/")
-def root(): return {"status": "online", "engine": "Monte_Carlo_Elo_Active"}
 
 @app.get("/api/vip_weekend")
 def merr_vip_weekend(): return {"mesazhi": "Në pritje", "is_ready": False}
