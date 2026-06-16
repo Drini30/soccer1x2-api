@@ -159,10 +159,10 @@ def apliko_kaosin_e_liges(emri_liges):
     return 1.10
 
 # ==========================================
-# MODULI 3: SIMULIMI MONTE CARLO (10,000 Iteracione)
+# MODULI 3: SIMULIMI MONTE CARLO (Mbetet 10,000 Iteracione)
 # ==========================================
 def simulim_monte_carlo(xg_1, xg_2, kaos_factor, is_derbi):
-    iteracione = 10000
+    iteracione = 10000 # E lënë fiks siç e kërkove për saktësi maksimale
     rezultatet_freq = {}
     
     if is_derbi:
@@ -325,11 +325,20 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
 
 
 # ==========================================
-# ENDPOINTET E APLIKACIONIT
+# ENDPOINTET E APLIKACIONIT DHE SUPER CACHE
 # ==========================================
+SKEDINA_CACHE = {}
+SKEDINA_LAST_UPDATE = {}
+
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
+    koha_tani = time.time()
+    
+    # SUPER CACHE (Ruhet 10 minuta në server për shpejtësi maksimale tek vizitorët e tjerë)
+    if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 600):
+        return {"mesazhi": "Sukses", "skedina_grupuar": SKEDINA_CACHE[data_target]}
+
     try:
         response = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": data_target}, timeout=10)
         te_dhenat = response.json()
@@ -357,19 +366,29 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 if emri_liges not in ligat_raw: ligat_raw[emri_liges] = []
                 ligat_raw[emri_liges].append(n)
 
+        STANDINGS_CACHE = {}
         lista_e_te_gjithave = []
+        
         for emri_liges, ndeshjet_liges in ligat_raw.items():
             eshte_liga_vip = is_vip_league(emri_liges)
             standings = []
             
-            # Mbrojtje e shtuar (Siguresa)
+            # STANDINGS CACHE PËR TË SHMANGUR BLLOKIMET E API-t
             if eshte_liga_vip and len(ndeshjet_liges) > 0:
-                try:
-                    s_res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": ndeshjet_liges[0]["league"]["id"], "season": ndeshjet_liges[0]["league"]["season"]}, timeout=2)
-                    if s_res.status_code == 200 and s_res.json().get("response"): 
-                        standings = s_res.json()["response"][0]["league"]["standings"][0]
-                except: 
-                    standings = [] # Nese bllokohet API-Sports, kthehu bosh pa ndalur kodin
+                league_id_str = str(ndeshjet_liges[0]["league"]["id"])
+                season_str = str(ndeshjet_liges[0]["league"]["season"])
+                cache_key = f"{league_id_str}_{season_str}"
+                
+                if cache_key in STANDINGS_CACHE:
+                    standings = STANDINGS_CACHE[cache_key]
+                else:
+                    try:
+                        s_res = requests.get("https://v3.football.api-sports.io/standings", headers=HEADERS, params={"league": league_id_str, "season": season_str}, timeout=2)
+                        if s_res.status_code == 200 and s_res.json().get("response"): 
+                            standings = s_res.json()["response"][0]["league"]["standings"][0]
+                            STANDINGS_CACHE[cache_key] = standings
+                    except: 
+                        standings = [] 
 
             for n in ndeshjet_liges:
                 id_ndeshja = str(n["fixture"]["id"])
@@ -389,8 +408,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 try:
                     analiza_custom, besueshmeria, rez_sakt, koef_rez_sakt, extradb = analizo_ndeshjen_premium_master(id_ndeshja, ekipi_1, ekipi_2, n["teams"]["home"]["id"], n["teams"]["away"]["id"], k1, kx, k2, emri_liges, standings)
                 except Exception as eval_err:
-                    print(f"Gabim në analizën e ndeshjes {id_ndeshja}: {eval_err}")
-                    continue # Kaloje këtë ndeshje nëse thyhet gjatë analizës, mos e rrëzo të gjithë faqen
+                    continue 
 
                 lista_e_te_gjithave.append({
                     "id": id_ndeshja, "liga_id": n["league"]["id"], "sezoni": n["league"]["season"], "ekipi_1_id": n["teams"]["home"]["id"], "ekipi_2_id": n["teams"]["away"]["id"], "ekipi_1": ekipi_1, "ekipi_2": ekipi_2, "ndeshja": f"{ekipi_1} vs {ekipi_2}", "data": data_target, "ora": "FT" if statusi_kod in ["FT","AET","PEN"] else ora_sakte, "ora_sakte": ora_sakte, "koha_utc": n["fixture"]["date"], "statusi": statusi_kod, "minuta": n["fixture"]["status"]["elapsed"] or 0, "rezultati": rezultati, "koef_1": k1, "koef_x": kx, "koef_2": k2, "analiza_custom": analiza_custom, "besueshmeria": besueshmeria, "rezultati_sakt": rez_sakt, "koef_rez_sakt": koef_rez_sakt, "is_premium": False, "is_motd": False, "is_bllof": extradb["is_bllof"], "koef_plote": extradb["koef_plote"], "liga_emri": emri_liges
@@ -424,9 +442,18 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 if liga_top.lower() in emri.lower(): return i 
             return 999 
             
-        return {"mesazhi": "Sukses", "skedina_grupuar": sorted([{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()], key=lambda x: merr_rendesine_e_liges(x["liga"]))}
+        rezultati_perfundimtar = sorted([{"liga": k, "ndeshjet": v} for k, v in ligat_grup.items()], key=lambda x: merr_rendesine_e_liges(x["liga"]))
+        
+        # RUAJTJA E REZULTATIT FINAL NË SUPER CACHE PËR 10 MINUTA
+        SKEDINA_CACHE[data_target] = rezultati_perfundimtar
+        SKEDINA_LAST_UPDATE[data_target] = koha_tani
+        
+        return {"mesazhi": "Sukses", "skedina_grupuar": rezultati_perfundimtar}
     except Exception as e: 
         return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
+
+@app.get("/")
+def root(): return {"status": "online", "engine": "Monte_Carlo_10k_Active"}
 
 @app.get("/api/vip_weekend")
 def merr_vip_weekend(): return {"mesazhi": "Në pritje", "is_ready": False}
