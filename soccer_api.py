@@ -644,32 +644,58 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         if "errors" in te_dhenat and te_dhenat["errors"]:
             return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
 
-        # Merr koeficientët Bet365
-        bet365_odds = {}
-        try:
-            res_odds = requests.get(
-                "https://v3.football.api-sports.io/odds",
-                headers=HEADERS,
-                params={"date": data_target, "bookmaker": 8, "page": 1},
-                timeout=10
-            ).json()
-            if "response" in res_odds:
-                for item in res_odds["response"]:
-                    fix_id = str(item["fixture"]["id"])
-                    try:
-                        bets = item["bookmakers"][0]["bets"]
-                        mw   = next((b for b in bets if b["id"] == 1 or b["name"] == "Match Winner"), None)
-                        if mw:
-                            v = mw["values"]
-                            bet365_odds[fix_id] = {
-                                "1": next((x["odd"] for x in v if x["value"] == "Home"), None),
-                                "X": next((x["odd"] for x in v if x["value"] == "Draw"), None),
-                                "2": next((x["odd"] for x in v if x["value"] == "Away"), None),
-                            }
-                    except:
-                        pass
-        except:
-            pass
+        # ── KOEFICIENTËT: paginim i plotë + multi-bookmaker fallback ──
+        # Bookmakers prioritet: 8=Bet365, 4=Pinnacle, 6=1xBet, 2=Marathon, 11=William Hill
+        BOOKMAKERS_PRIORITY = [8, 4, 6, 2, 11]
+        bet365_odds = {}  # emër i ruajtur për kompatibilitet (real: të gjithë bookmakers)
+
+        for bookmaker_id in BOOKMAKERS_PRIORITY:
+            try:
+                page_num = 1
+                while page_num <= 10:  # max 10 faqe = 100 ndeshje (mjafton për 1 ditë)
+                    res_odds = requests.get(
+                        "https://v3.football.api-sports.io/odds",
+                        headers=HEADERS,
+                        params={
+                            "date":      data_target,
+                            "bookmaker": bookmaker_id,
+                            "page":      page_num
+                        },
+                        timeout=10
+                    ).json()
+
+                    if "response" not in res_odds or not res_odds["response"]:
+                        break
+
+                    for item in res_odds["response"]:
+                        fix_id = str(item["fixture"]["id"])
+                        # Mos rishkruaj nëse e kemi nga bookmaker me prioritet më të lartë
+                        if fix_id in bet365_odds and bet365_odds[fix_id]["1"]:
+                            continue
+                        try:
+                            bets = item["bookmakers"][0]["bets"]
+                            mw   = next(
+                                (b for b in bets if b["id"] == 1 or b["name"] == "Match Winner"),
+                                None
+                            )
+                            if mw:
+                                v = mw["values"]
+                                k1 = next((x["odd"] for x in v if x["value"] == "Home"), None)
+                                kx = next((x["odd"] for x in v if x["value"] == "Draw"), None)
+                                k2 = next((x["odd"] for x in v if x["value"] == "Away"), None)
+                                if k1 and kx and k2:
+                                    bet365_odds[fix_id] = {"1": k1, "X": kx, "2": k2}
+                        except:
+                            pass
+
+                    # Kontrollo paging — nëse pagination existon në response
+                    paging = res_odds.get("paging", {})
+                    total_pages = paging.get("total", 1)
+                    if page_num >= total_pages:
+                        break
+                    page_num += 1
+            except:
+                continue
 
         # Grupo ndeshjet sipas ligës
         ligat_raw = {}
@@ -838,7 +864,28 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
 @app.get("/")
 def root():
-    return {"status": "online", "engine": "VIP_PPM_Engine_V2", "monte_carlo": "50k_numpy"}
+    return {
+        "status":      "online",
+        "engine":      "VIP_PPM_Engine_V2",
+        "monte_carlo": "50k_numpy",
+        "uptime":      datetime.utcnow().isoformat()
+    }
+
+# ==========================================
+# KEEP-ALIVE ENDPOINT (për UptimeRobot)
+# ==========================================
+# Konfiguro UptimeRobot.com të ping-on këtë URL çdo 5 minuta:
+# https://soccer1x2-api.onrender.com/api/ping
+# Kështu Render Free nuk fle kurrë → 0 sekonda cold start.
+
+@app.get("/api/ping")
+def keep_alive_ping():
+    """Endpoint i lehtë për UptimeRobot — vetëm timestamp, asnjë DB call."""
+    return {
+        "pong":      True,
+        "timestamp": datetime.utcnow().isoformat(),
+        "service":   "soccer1x2-api"
+    }
 
 # ==========================================
 # ENDPOINTI LIVE
@@ -877,7 +924,273 @@ def merr_ndeshjet_live():
         return {"mesazhi": "Gabim", "detaje": str(e), "ndeshjet": []}
 
 # ==========================================
-# MIDNIGHT CRON — PËRDITËSIM ELO DINAMIK
+# DNA ENGINE V2 — Mbushje dhe përditësim i team_dna_cache
+# ==========================================
+
+def llogarit_dna_nga_historia(team_id: int, sezoni: int, last_n: int = 30) -> dict:
+    """
+    Merr last_n ndeshjet e fundit të ekipit dhe llogarit DNA komplete:
+    historical_power (ELO), win_rate, avg_gola, clutch_factor,
+    volatility_index, draw_affinity, consistency_score.
+    """
+    try:
+        res = requests.get(
+            "https://v3.football.api-sports.io/fixtures",
+            headers=HEADERS,
+            params={"team": team_id, "last": last_n, "status": "FT"},
+            timeout=10
+        )
+        ndeshjet = res.json().get("response", [])
+    except:
+        return None
+
+    if not ndeshjet or len(ndeshjet) < 5:
+        return None
+
+    fitore = barazime = humbje = 0
+    gola_shenuar = gola_prane = 0
+    gola_per_ndeshje = []
+    clutch_wins = clutch_total = 0
+    team_name = ""
+
+    for n in ndeshjet:
+        eshte_shtepie = n["teams"]["home"]["id"] == team_id
+        team_name = (n["teams"]["home"]["name"] if eshte_shtepie
+                     else n["teams"]["away"]["name"])
+        g_ekip = n["goals"]["home"] if eshte_shtepie else n["goals"]["away"]
+        g_kund = n["goals"]["away"] if eshte_shtepie else n["goals"]["home"]
+        if g_ekip is None or g_kund is None:
+            continue
+
+        gola_shenuar += g_ekip
+        gola_prane   += g_kund
+        gola_per_ndeshje.append(g_ekip + g_kund)
+        diff = g_ekip - g_kund
+
+        if g_ekip > g_kund:
+            fitore += 1
+            if abs(diff) <= 1:
+                clutch_wins += 1
+                clutch_total += 1
+        elif g_ekip == g_kund:
+            barazime += 1
+        else:
+            humbje += 1
+            if abs(diff) <= 1:
+                clutch_total += 1
+
+    total = fitore + barazime + humbje
+    if total == 0:
+        return None
+
+    win_rate           = round(fitore / total, 3)
+    draw_rate          = round((barazime / total) * 100, 2)
+    avg_goals_scored   = round(gola_shenuar / total, 2)
+    avg_goals_conceded = round(gola_prane / total, 2)
+
+    # ELO i llogaritur nga performanca reale
+    base_elo         = 600.0
+    bonus_win        = win_rate * 400
+    bonus_gd         = (avg_goals_scored - avg_goals_conceded) * 80
+    historical_power = round(base_elo + bonus_win + bonus_gd, 1)
+    historical_power = float(np.clip(historical_power, 400, 1000))
+
+    # Clutch factor: performanca në ndeshje të ngushta (≤1 gol diferencë)
+    if clutch_total > 0:
+        clutch_factor = round(0.85 + (clutch_wins / clutch_total) * 0.3, 3)
+    else:
+        clutch_factor = 1.0
+    clutch_factor = float(np.clip(clutch_factor, 0.85, 1.20))
+
+    # Volatility: devijimi standard i golave (sa ndryshon performanca)
+    if len(gola_per_ndeshje) >= 3:
+        volatility_index = round(float(np.std(gola_per_ndeshje)) * 10, 2)
+    else:
+        volatility_index = 15.0
+
+    # Consistency: e kundërta e volatility
+    consistency_score = round(100 - min(100, volatility_index * 3), 2)
+
+    return {
+        "team_id":           team_id,
+        "team_name":         team_name,
+        "elo_rating":        historical_power,
+        "historical_power":  historical_power,
+        "win_rate":          win_rate,
+        "avg_goals_scored":  avg_goals_scored,
+        "avg_goals_conceded": avg_goals_conceded,
+        "clutch_factor":     clutch_factor,
+        "volatility_index":  volatility_index,
+        "draw_affinity":     draw_rate,
+        "consistency_score": consistency_score,
+        "last_updated":      datetime.utcnow().isoformat(),
+    }
+
+
+@app.get("/api/dna_status")
+def merr_dna_status():
+    """Tregon sa skuadra ke në team_dna_cache."""
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL_DNA}?select=team_id,team_name,historical_power,win_rate",
+            headers=SUPABASE_HEADERS,
+            timeout=5
+        )
+        if res.status_code == 200:
+            te_dhenat = res.json()
+            return {
+                "sukses":        True,
+                "total_skuadra": len(te_dhenat),
+                "shfaq_20_para": [
+                    {
+                        "id":   x.get("team_id"),
+                        "emri": x.get("team_name"),
+                        "elo":  x.get("historical_power"),
+                        "wr":   x.get("win_rate"),
+                    }
+                    for x in te_dhenat[:20]
+                ],
+            }
+        return {"sukses": False, "mesazhi": f"Status code: {res.status_code}"}
+    except Exception as e:
+        return {"sukses": False, "mesazhi": str(e)}
+
+
+@app.get("/api/update_dna/{team_id}")
+def update_dna_per_skuader(team_id: int, season: int = 2025):
+    """
+    Llogarit DNA për një skuadër dhe e ruan/përditëson në DB.
+    Përdorimi: /api/update_dna/541?season=2025  (541 = Real Madrid)
+    """
+    dna_e_re = llogarit_dna_nga_historia(team_id, season)
+    if not dna_e_re:
+        return {"sukses": False, "mesazhi": f"Nuk u gjetën ndeshje për ekipin {team_id}"}
+
+    try:
+        res_check = requests.get(
+            f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
+            headers=SUPABASE_HEADERS, timeout=5
+        )
+        ekziston = res_check.status_code == 200 and len(res_check.json()) > 0
+
+        if ekziston:
+            res = requests.patch(
+                f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
+                headers=SUPABASE_HEADERS, json=dna_e_re, timeout=5
+            )
+            veprimi = "UPDATED"
+        else:
+            res = requests.post(
+                SUPABASE_URL_DNA,
+                headers=SUPABASE_HEADERS, json=dna_e_re, timeout=5
+            )
+            veprimi = "INSERTED"
+
+        if res.status_code in [200, 201, 204]:
+            return {"sukses": True, "veprimi": veprimi,
+                    "team": dna_e_re["team_name"], "dna": dna_e_re}
+        return {"sukses": False,
+                "mesazhi": f"DB error: {res.status_code} - {res.text[:200]}"}
+    except Exception as e:
+        return {"sukses": False, "mesazhi": str(e)}
+
+
+@app.get("/api/seed_dna")
+def seed_dna_per_ligat_vip(season: int = 2025, max_teams: int = 30, start_index: int = 0):
+    """
+    RUN ONCE: Mbush team_dna_cache për skuadrat e ligave VIP.
+    Render free plan = 30s timeout, prandaj max_teams=30 për thirrje.
+    
+    Përdorimi:
+      /api/seed_dna?max_teams=30&start_index=0    (skuadrat 0-29)
+      /api/seed_dna?max_teams=30&start_index=30   (skuadrat 30-59)
+      /api/seed_dna?max_teams=30&start_index=60   (skuadrat 60-89)
+    """
+    skuadrat_e_perpunuara = []
+    deshtuar              = []
+    skuadra_index_global  = 0
+    perpunuar_total       = 0
+
+    for league_id, emri_liges in LIGAT_VIP_MAP.items():
+        if perpunuar_total >= max_teams:
+            break
+
+        try:
+            s_res = requests.get(
+                "https://v3.football.api-sports.io/standings",
+                headers=HEADERS,
+                params={"league": league_id, "season": season},
+                timeout=8
+            )
+            if s_res.status_code != 200:
+                continue
+            response = s_res.json().get("response", [])
+            if not response:
+                continue
+            standings = response[0]["league"]["standings"][0]
+        except:
+            continue
+
+        for r in standings:
+            if perpunuar_total >= max_teams:
+                break
+
+            if skuadra_index_global < start_index:
+                skuadra_index_global += 1
+                continue
+
+            team_id   = r["team"]["id"]
+            team_name = r["team"]["name"]
+
+            dna = llogarit_dna_nga_historia(team_id, season, last_n=15)
+            if not dna:
+                deshtuar.append({"team": team_name, "id": team_id, "arsye": "no fixtures"})
+                skuadra_index_global += 1
+                continue
+
+            try:
+                res_check = requests.get(
+                    f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
+                    headers=SUPABASE_HEADERS, timeout=3
+                )
+                ekziston = res_check.status_code == 200 and len(res_check.json()) > 0
+
+                if ekziston:
+                    requests.patch(
+                        f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
+                        headers=SUPABASE_HEADERS, json=dna, timeout=3
+                    )
+                else:
+                    requests.post(
+                        SUPABASE_URL_DNA,
+                        headers=SUPABASE_HEADERS, json=dna, timeout=3
+                    )
+
+                skuadrat_e_perpunuara.append({
+                    "team": team_name,
+                    "id":   team_id,
+                    "elo":  dna["historical_power"],
+                    "wr":   dna["win_rate"],
+                })
+                perpunuar_total += 1
+            except Exception as ex:
+                deshtuar.append({"team": team_name, "arsye": str(ex)[:100]})
+
+            skuadra_index_global += 1
+
+    return {
+        "sukses":             True,
+        "start_index":        start_index,
+        "skuadra_te_shtuara": perpunuar_total,
+        "deshtuara":          len(deshtuar),
+        "lista":              skuadrat_e_perpunuara,
+        "mesazhi":            f"DNA u krijua/përditësua për {perpunuar_total} skuadra. "
+                              f"Për të vazhduar: ?start_index={start_index + max_teams}",
+    }
+
+
+# ==========================================
+# MIDNIGHT TASK — PËRDITËSIMI I ELO-S DINAMIKE (me auto-bootstrap)
 # ==========================================
 
 @app.get("/api/cron/update_elo_midnight")
@@ -910,6 +1223,36 @@ def update_elo_midnight():
 
         dna_home = merr_dna_nga_db(home_id)
         dna_away = merr_dna_nga_db(away_id)
+
+        # ── KRIJO DNA NËSE MUNGON (auto-bootstrap) ──
+        sezoni = m["league"]["season"]
+        if not dna_home:
+            dna_e_re = llogarit_dna_nga_historia(int(home_id), sezoni)
+            if dna_e_re:
+                try:
+                    requests.post(
+                        SUPABASE_URL_DNA,
+                        headers=SUPABASE_HEADERS,
+                        json=dna_e_re, timeout=3
+                    )
+                    dna_home = dna_e_re
+                    ekipe_te_perditesuara += 1
+                except:
+                    pass
+        if not dna_away:
+            dna_e_re = llogarit_dna_nga_historia(int(away_id), sezoni)
+            if dna_e_re:
+                try:
+                    requests.post(
+                        SUPABASE_URL_DNA,
+                        headers=SUPABASE_HEADERS,
+                        json=dna_e_re, timeout=3
+                    )
+                    dna_away = dna_e_re
+                    ekipe_te_perditesuara += 1
+                except:
+                    pass
+
         if not dna_home and not dna_away:
             continue
 
@@ -1060,16 +1403,34 @@ def merr_renditjen(league_id: int, season: int, team: str = None):
 
 @app.get("/api/koeficientet/{match_id}")
 def merr_koeficientet_shtese(match_id: str):
+    """
+    Kthen tregjet shtesë (HT, DC, O/U, GG/NG, CS) për një ndeshje.
+    Provojnë bookmakers sipas radhës: Bet365 → Pinnacle → 1xBet → Marathon → William Hill.
+    """
+    BOOKMAKERS_PRIORITY = [8, 4, 6, 2, 11]
+    bets = None
+
+    for bookmaker_id in BOOKMAKERS_PRIORITY:
+        try:
+            res = requests.get(
+                "https://v3.football.api-sports.io/odds",
+                headers=HEADERS,
+                params={"fixture": match_id, "bookmaker": bookmaker_id},
+                timeout=8
+            )
+            response = res.json().get("response", [])
+            if response and response[0].get("bookmakers"):
+                bets_provuar = response[0]["bookmakers"][0].get("bets", [])
+                if bets_provuar:
+                    bets = bets_provuar
+                    break
+        except:
+            continue
+
+    if not bets:
+        return {"mesazhi": "Nuk ka koeficientë realë", "koeficientet": []}
+
     try:
-        res = requests.get(
-            "https://v3.football.api-sports.io/odds",
-            headers=HEADERS,
-            params={"fixture": match_id, "bookmaker": 8},
-            timeout=8
-        )
-        if not res.json().get("response"):
-            return {"mesazhi": "Nuk ka koeficientë realë", "koeficientet": []}
-        bets = res.json()["response"][0]["bookmakers"][0]["bets"]
         tregjet = []
 
         def get_bet(b_id):
