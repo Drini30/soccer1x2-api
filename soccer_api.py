@@ -184,11 +184,11 @@ def merr_dna_nga_db(team_id):
 FORMA_CACHE = {}
 FORMA_CACHE_TTL = 3600  # 1 orë
 
-def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 5) -> dict:
+def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 8) -> dict:
     """
-    Merr 5 ndeshjet e fundit të ekipit dhe llogarit:
+    Merr ndeshjet e fundit të ekipit dhe llogarit:
     win_rate, xG mesatar, lodhjen e serisë — me të dhëna REALE.
-    Zëvendëson: k_wins_sim = random.randint(0, 4)
+    SHTUAR: home/away split (gola shtëpi vs jashtë veçmas).
     """
     koha_tani = time.time()
     if team_id in FORMA_CACHE:
@@ -214,6 +214,10 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 5) -> dict:
     gola_shenuar = gola_prane = 0
     piket_forma = 0.0
 
+    # Statistika të ndara HOME / AWAY
+    h_gola_shenuar = h_gola_prane = h_ndeshje = 0
+    a_gola_shenuar = a_gola_prane = a_ndeshje = 0
+
     for n in ndeshjet:
         eshte_shtepie = n["teams"]["home"]["id"] == team_id
         g_ekip = n["goals"]["home"] if eshte_shtepie else n["goals"]["away"]
@@ -222,6 +226,17 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 5) -> dict:
             continue
         gola_shenuar += g_ekip
         gola_prane   += g_kund
+
+        # Ndaje sipas vendndodhjes
+        if eshte_shtepie:
+            h_gola_shenuar += g_ekip
+            h_gola_prane   += g_kund
+            h_ndeshje      += 1
+        else:
+            a_gola_shenuar += g_ekip
+            a_gola_prane   += g_kund
+            a_ndeshje      += 1
+
         if g_ekip > g_kund:
             fitore += 1
             piket_forma += 3.0
@@ -243,6 +258,12 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 5) -> dict:
     k_wins_rresht     = _llogarit_wins_rresht(ndeshjet, team_id)
     lodhja_factor     = 1.0 - (0.04 * max(0, k_wins_rresht - 2))
 
+    # Mesataret home/away (me fallback te mesatarja e përgjithshme nëse s'ka mjaft)
+    avg_shenuar_home = (h_gola_shenuar / h_ndeshje) if h_ndeshje >= 2 else avg_gola_shenuar
+    avg_prane_home   = (h_gola_prane   / h_ndeshje) if h_ndeshje >= 2 else avg_gola_prane
+    avg_shenuar_away = (a_gola_shenuar / a_ndeshje) if a_ndeshje >= 2 else avg_gola_shenuar
+    avg_prane_away   = (a_gola_prane   / a_ndeshje) if a_ndeshje >= 2 else avg_gola_prane
+
     rezultati = {
         "win_rate":         round(win_rate, 3),
         "avg_gola_shenuar": round(avg_gola_shenuar, 2),
@@ -253,6 +274,13 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 5) -> dict:
         "lodhja_factor":    round(lodhja_factor, 3),
         "piket_forma":      round(piket_forma, 1),
         "total_ndeshje":    total,
+        # Home/away split
+        "avg_shenuar_home": round(avg_shenuar_home, 2),
+        "avg_prane_home":   round(avg_prane_home, 2),
+        "avg_shenuar_away": round(avg_shenuar_away, 2),
+        "avg_prane_away":   round(avg_prane_away, 2),
+        "h_ndeshje":        h_ndeshje,
+        "a_ndeshje":        a_ndeshje,
     }
     FORMA_CACHE[team_id] = (rezultati, koha_tani)
     return rezultati
@@ -262,6 +290,9 @@ def _forma_boshe() -> dict:
         "win_rate": 0.40, "avg_gola_shenuar": 1.2, "avg_gola_prane": 1.2,
         "xg_shenuar": 1.25, "xg_prane": 1.20, "k_wins_rresht": 0,
         "lodhja_factor": 1.0, "piket_forma": 0.0, "total_ndeshje": 0,
+        "avg_shenuar_home": 1.2, "avg_prane_home": 1.2,
+        "avg_shenuar_away": 1.2, "avg_prane_away": 1.2,
+        "h_ndeshje": 0, "a_ndeshje": 0,
     }
 
 def _llogarit_wins_rresht(ndeshjet: list, team_id: int) -> int:
@@ -292,35 +323,50 @@ def llogarit_xg_te_perparuara(
     35% forma reale + 30% ELO + 25% tregu (koeficientët) + 10% avantazhi shtëpiak
     Zëvendëson: xg_1_baze = max(0.40, (p1_adj * 3.15) + (diferenca_elo / 850.0))
     """
-    W_FORMA   = 0.35
-    W_ELO     = 0.30
+    W_FORMA   = 0.40
+    W_ELO     = 0.25
     W_MARKET  = 0.25
-    W_SHTEPIE = 0.10
+    W_BASE    = 0.10
 
-    # Burimi 1: Forma
-    xg1_forma = forma_1["xg_shenuar"] * forma_1["lodhja_factor"]
-    xg2_forma = forma_2["xg_shenuar"] * forma_2["lodhja_factor"]
+    # Burimi 1: Forma me HOME/AWAY SPLIT
+    # Ekipi 1 luan në SHTËPI → përdor sulmin e tij në shtëpi vs mbrojtjen e ekipit 2 jashtë
+    # Ekipi 2 luan JASHTË → përdor sulmin e tij jashtë vs mbrojtjen e ekipit 1 në shtëpi
+    sulm_1 = forma_1.get("avg_shenuar_home", forma_1["avg_gola_shenuar"])
+    mbrojtje_2 = forma_2.get("avg_prane_away", forma_2["avg_gola_prane"])
+    sulm_2 = forma_2.get("avg_shenuar_away", forma_2["avg_gola_shenuar"])
+    mbrojtje_1 = forma_1.get("avg_prane_home", forma_1["avg_gola_prane"])
 
-    # Burimi 2: ELO
+    # xG i pritur = mesatarja e (sulmit të vet) dhe (dobësisë mbrojtëse të kundërshtarit)
+    xg1_forma_raw = (sulm_1 + mbrojtje_2) / 2.0
+    xg2_forma_raw = (sulm_2 + mbrojtje_1) / 2.0
+    xg1_forma = (xg1_forma_raw * 0.85 + 0.25) * forma_1["lodhja_factor"]
+    xg2_forma = (xg2_forma_raw * 0.85 + 0.25) * forma_2["lodhja_factor"]
+
+    # Burimi 2: ELO (multiplikator i rritur 2.5 → 3.0)
     diff_elo = (elo_1 - elo_2) / 400.0
     p1_elo   = 1 / (1 + 10 ** (-diff_elo))
     p2_elo   = 1 - p1_elo
-    xg1_elo  = p1_elo * 2.5
-    xg2_elo  = p2_elo * 2.5
+    xg1_elo  = p1_elo * 3.0
+    xg2_elo  = p2_elo * 3.0
 
-    # Burimi 3: Tregu
-    xg1_market = p1_real * 2.7
-    xg2_market = p2_real * 2.7
+    # Burimi 3: Tregu (multiplikator i rritur 2.7 → 3.2)
+    xg1_market = p1_real * 3.2
+    xg2_market = p2_real * 3.2
 
-    # Burimi 4: Avantazhi shtëpiak
-    shtepie_bonus = 1.08
-    jashte_minus  = 0.93
+    # Burimi 4: Baza e golave (mesatarja globale e futbollit ~1.35 gola/ekip)
+    xg1_base = 1.35
+    xg2_base = 1.35
 
-    xg_1_final = (W_FORMA * xg1_forma + W_ELO * xg1_elo + W_MARKET * xg1_market) * shtepie_bonus
-    xg_2_final = (W_FORMA * xg2_forma + W_ELO * xg2_elo + W_MARKET * xg2_market) * jashte_minus
+    # Avantazhi shtëpiak (rritur pak)
+    shtepie_bonus = 1.12
+    jashte_minus  = 0.95
 
-    xg_1_final = float(np.clip(xg_1_final, 0.30, 3.50))
-    xg_2_final = float(np.clip(xg_2_final, 0.30, 3.50))
+    xg_1_final = (W_FORMA * xg1_forma + W_ELO * xg1_elo + W_MARKET * xg1_market + W_BASE * xg1_base) * shtepie_bonus
+    xg_2_final = (W_FORMA * xg2_forma + W_ELO * xg2_elo + W_MARKET * xg2_market + W_BASE * xg2_base) * jashte_minus
+
+    # Kufijtë e rritur (3.50 → 4.20) që të lejojë rezultate me shumë gola
+    xg_1_final = float(np.clip(xg_1_final, 0.35, 4.20))
+    xg_2_final = float(np.clip(xg_2_final, 0.35, 4.20))
 
     return round(xg_1_final, 3), round(xg_2_final, 3)
 
@@ -361,16 +407,37 @@ def simulim_monte_carlo_v2(
     rezultatet_unique, counts = np.unique(
         np.stack([gola_1, gola_2], axis=1), axis=0, return_counts=True
     )
-    idx_max    = np.argmax(counts)
-    rez_max    = rezultatet_unique[idx_max]
-    rez_str    = f"{rez_max[0]}-{rez_max[1]}"
-    prob_max   = float(counts[idx_max]) / iteracione
 
+    # Top 15 rezultatet më të shpeshta
     top_idx = np.argsort(counts)[::-1][:15]
     rezultatet_freq = {
         f"{rezultatet_unique[i][0]}-{rezultatet_unique[i][1]}": int(counts[i])
         for i in top_idx
     }
+
+    # ── ZGJEDHJA E REZULTATIT (e korrigjuar kundër nënvlerësimit) ──
+    # Problem i njohur: modusi i Poisson jep gjithmonë pak gola.
+    # Zgjidhje: ndër top-5 rezultatet, zgjedh atë që është më afër
+    # totalit të pritur (xg_1 + xg_2), jo thjesht më të shpeshtin.
+    total_pritur = xg_1 + xg_2
+
+    top5_idx = np.argsort(counts)[::-1][:5]
+    kandidatet = []
+    for i in top5_idx:
+        g1c = int(rezultatet_unique[i][0])
+        g2c = int(rezultatet_unique[i][1])
+        freq = int(counts[i])
+        total_c = g1c + g2c
+        # Score: kombinim i frekuencës dhe afërsisë me totalin e pritur
+        diff_total = abs(total_c - total_pritur)
+        score = freq * (1.0 / (1.0 + diff_total * 0.5))
+        kandidatet.append((g1c, g2c, freq, score))
+
+    # Zgjedh kandidatin me score më të lartë
+    kandidatet.sort(key=lambda x: x[3], reverse=True)
+    rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
+    rez_str  = f"{rez_g1}-{rez_g2}"
+    prob_max = freq_zgjedhur / iteracione
 
     return rez_str, round(prob_max, 4), rezultatet_freq, prob_1x2
 
