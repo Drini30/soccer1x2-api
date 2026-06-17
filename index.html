@@ -1,154 +1,1539 @@
 <!DOCTYPE html>
-<html lang="sq">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCCER 1X2</title>
+    <title>SOCCER1X2 PRO - Sports Data Analytics</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://app.lemonsqueezy.com/js/lemon.js" defer></script>
     <style>
-        /* Dizajni i Aplikacionit (Dark Mode) */
-        body {
-            background-color: #121212;
-            color: #ffffff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-        }
-        .app-container {
-            width: 100%;
-            max-width: 400px; /* E bën të duket fiks si ekran telefoni */
-            background-color: #1e1e1e;
-            min-height: 100vh;
-            padding: 20px;
-            box-sizing: border-box;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        }
-        h1 {
-            text-align: center;
-            color: #00ff88; /* E gjelbër Neoni */
-            font-size: 28px;
-            margin-bottom: 5px;
-            letter-spacing: 2px;
-        }
-        .subtitle {
-            text-align: center;
-            color: #aaaaaa;
-            font-size: 14px;
-            margin-bottom: 30px;
-        }
-        .total-odds-card {
-            background: linear-gradient(135deg, #ff8a00, #e52e71);
-            border-radius: 15px;
-            padding: 20px;
-            text-align: center;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 15px rgba(229, 46, 113, 0.4);
-        }
-        .total-odds-card h2 {
-            margin: 0;
-            font-size: 16px;
-            text-transform: uppercase;
-        }
-        .total-odds-card .odds-value {
-            font-size: 36px;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-        .match-card {
-            background-color: #2a2a2a;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
-            border-left: 5px solid #00ff88;
-        }
-        .match-title {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .match-details {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 14px;
-            color: #cccccc;
-        }
-        .prediction {
-            background-color: #3a3a3a;
-            padding: 5px 10px;
-            border-radius: 5px;
-            color: #00ff88;
-            font-weight: bold;
-        }
-        #loading {
-            text-align: center;
-            color: #00ff88;
-            font-style: italic;
-            margin-top: 50px;
+        body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 0; font-size: 14px; overflow-x: hidden; }
+        #app-container { max-width: 1100px; margin: 0 auto; background: #161b22; min-height: 100vh; border-left: 1px solid #30363d; border-right: 1px solid #30363d; box-shadow: 0 0 20px rgba(0,0,0,0.5); position: relative; display: flex; flex-direction: column; }
+        .sticky-zone { position: sticky; top: 0; z-index: 1000; background-color: #161b22; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        .top-header { background-color: #0a2617; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1a4a2c; }
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        
+        .logo-wrapper { display: flex; align-items: center; cursor: pointer; text-decoration: none; }
+        .logo-text { color: #e5e7eb; font-size: 22px; font-weight: 900; letter-spacing: -1.5px; margin: 0; text-transform: uppercase; transition: color 0.2s;}
+        .logo-text:hover { color: #3fb950; }
+        .pro-badge { color: #ff8c00; font-size: 22px; font-weight: 900; font-style: italic; text-transform: uppercase; }
+
+        .lang-container { position: relative; display: inline-block; }
+        .lang-btn { background-color: #1a4a2c; border: 1px solid #2d6b43; color: white; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 5px; font-weight: bold; }
+        .lang-btn:hover { background-color: #238636; }
+        .lang-dropdown { position: absolute; top: 100%; left: 0; background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none; flex-direction: column; z-index: 3000; min-width: 100px; margin-top: 5px; }
+        .lang-option { padding: 8px 12px; color: white; cursor: pointer; font-size: 12px; font-weight: bold; }
+        .lang-option:hover { background-color: #21262d; color: #58a6ff; }
+        #searchInput { width: 140px; padding: 6px 12px; background-color: #1a4a2c; border: 1px solid #2d6b43; border-radius: 6px; color: white; font-size: 12px; outline: none; }
+        
+        .auth-block { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; }
+        .auth-action { font-size: 13px; font-weight: bold; color: #58a6ff; cursor: pointer; transition: color 0.2s; }
+        .auth-action:hover { color: #fff; text-decoration: underline; }
+        .auth-or { font-size: 9px; color: #8ba898; text-transform: uppercase; margin: 1px 0; }
+        .user-profile-icon { font-size: 18px; color: #e5e7eb; cursor: pointer; background: #1a4a2c; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid #2d6b43; transition: all 0.2s; }
+        .user-profile-icon:hover { background: #238636; transform: scale(1.1); }
+
+        .filtra-wrapper { display: flex; justify-content: space-between; align-items: center; padding: 8px 15px; background-color: #0d1117; border-bottom: 1px solid #30363d; overflow-x: auto; white-space: nowrap; gap: 15px; }
+        .filtra-wrapper::-webkit-scrollbar { display: none; }
+        .filtra-left, .filtra-qender, .filtra-actions-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .btn-ppm-badge { background: linear-gradient(90deg, #3a2c00 0%, #1a1500 100%); border: 1px solid #d4af37; color: #d4af37; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 10px; transition: transform 0.2s; }
+        .btn-ppm-badge:hover { transform: scale(1.05); background: #d4af37; color: #000; }
+        .fire-badge { background: linear-gradient(90deg, #ff4500, #ff8c00); color: #fff; font-weight: 900; font-size: 10px; padding: 5px 8px; border-radius: 6px; text-transform: uppercase; animation: fireGlow 1.5s infinite alternate; box-shadow: 0 0 8px #ff4500; border: 1px solid #ffaa00; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        .fire-badge:hover { transform: scale(1.05); }
+        @keyframes fireGlow { 0% { box-shadow: 0 0 5px #ff4500, inset 0 0 5px #ff4500; } 100% { box-shadow: 0 0 15px #ff8c00, inset 0 0 10px #ff8c00; } }
+        .filter-btn { background-color: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 10px; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 11px; }
+        .filter-btn.active { background-color: #1a4a2c; color: #fff; border-color: #2d6b43; }
+        
+        .vip-diamond { color: #00e5ff; font-size: 16px; cursor: pointer; animation: shine 1.5s infinite alternate; }
+        @keyframes shine { 0% { text-shadow: 0 0 5px #00e5ff, 0 0 10px #00e5ff; transform: scale(1); } 100% { text-shadow: 0 0 15px #00e5ff, 0 0 25px #00e5ff; transform: scale(1.15); } }
+        
+        .action-sub-icon { font-size: 14px; color: #8b949e; cursor: pointer; transition: all 0.2s; }
+        .action-sub-icon:hover { color: #58a6ff; transform: scale(1.15); }
+        .icon-donate:hover { color: #f2cc60; }
+        .icon-tg:hover { color: #0088cc !important; text-shadow: 0 0 8px #0088cc; }
+        
+        .notif-container { position: relative; display: inline-block; cursor: pointer; }
+        .notif-badge { position: absolute; top: -6px; right: -8px; background-color: #ff4500; color: white; font-size: 9px; font-weight: bold; border-radius: 50%; padding: 2px 5px; box-shadow: 0 0 5px rgba(255, 69, 0, 0.5); pointer-events: none; display: none; }
+        
+        .calendar-wrapper { display: flex; justify-content: flex-end; padding: 8px 15px; background-color: #161b22; border-bottom: 2px solid #30363d;}
+        #datePicker { background-color: #1a4a2c; border: 1px solid #2d6b43; color: white; padding: 5px 8px; border-radius: 6px; font-family: inherit; font-size: 12px; font-weight: bold; outline: none; cursor: pointer; }
+        #datePicker::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+        
+        .permbajtja { padding: 8px; display: flex; gap: 10px; position: relative; flex-grow: 1; }
+        
+        .sidebar-ligat { width: 240px; flex-shrink: 0; background-color: #161b22; border-right: 1px solid #30363d; padding: 8px; position: sticky; top: 160px; height: calc(100vh - 240px); overflow-y: auto; }
+        .sidebar-ligat::-webkit-scrollbar { width: 4px; }
+        .sidebar-ligat::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+        .sidebar-title { font-size: 12px; color: #8b949e; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #30363d; padding-bottom: 4px;}
+        .liga-nav-item { padding: 6px 8px; color: #fff; font-weight: bold; cursor: pointer; border-radius: 4px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .liga-nav-item:hover { background-color: #21262d; color: #58a6ff; }
+        .matches-area { flex-grow: 1; padding: 0 5px; width: 100%; }
+        .liga-header { background: #21262d; color: #58a6ff; padding: 6px 10px; margin-top: 10px; margin-bottom: 4px; border-radius: 4px; font-size: 13px; font-weight: bold; border-left: 3px solid #58a6ff; }
+        .ndeshje-box { background: #0d1117; padding: 6px 8px; margin: 4px 0; border-radius: 6px; border: 1px solid #30363d; display: flex; flex-direction: column; gap: 4px; }
+        .ndeshje-main-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+        .n-ora { font-size: 11px; font-weight: bold; color: #8ba898; white-space: nowrap; flex-shrink: 0; min-width: 40px; text-align: center;}
+        .n-ora.live { color: #ff4500; animation: pulse 1.5s infinite; }
+        .n-ekipet { font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; text-align: left; display: flex; align-items: center; gap: 8px;}
+        .clickable-team { cursor: pointer; transition: color 0.2s; }
+        .clickable-team:hover { color: #58a6ff; text-decoration: underline; }
+        .qendra-rezultati { flex-grow: 1; display: flex; justify-content: center; align-items: center; }
+        .n-result-djathat { font-size: 13px; font-weight: 900; color: #fff; min-width: 40px; text-align: center; background: #21262d; padding: 4px 6px; border-radius: 4px; border: 1px solid #30363d; cursor: pointer; transition: 0.2s; }
+        .n-result-djathat:hover { border-color: #58a6ff; color: #58a6ff; }
+        .pulse-anim { animation: pulse 1.5s infinite; }
+        .n-koef-grid { display: flex; gap: 4px; flex-shrink: 0; align-items: center;}
+        .k-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; font-size: 11px; font-weight: 700; padding: 5px 0; width: 40px; text-align: center; cursor: pointer; transition: 0.2s; }
+        .k-btn.selected { background: #f2cc60; color: #000; border-color: #f2cc60; }
+        .k-btn:hover { border-color: #58a6ff; }
+        .btn-more { background: #1a4a2c; color: #fff; border: none; border-radius: 4px; width: 32px; padding: 5px 0; font-size: 11px; font-weight: bold; cursor: pointer; flex-shrink: 0; transition: 0.2s; }
+        .btn-more:hover { background: #238636; }
+        
+        .ai-prediction-bar { background-color: #161b22; border: 1px dashed #2d6b43; border-radius: 4px; padding: 4px 8px; font-size: 10.5px; color: #8ba898; line-height: 1.2; text-align: left; margin-top: 2px;}
+        .ai-prediction-bar.locked { background-color: #1c0e0e; border-color: #da3633; display: flex; align-items: center; gap: 8px;}
+        
+        .skedina-custom-row { background: rgba(88, 166, 255, 0.1); border-left: 3px solid #58a6ff; padding: 4px 8px; font-size: 11px; color: #c9d1d9; margin-top: 2px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .sk-val { font-weight: bold; color: #f2cc60; }
+        .loading-container { text-align: center; padding: 40px 20px; width: 100%; display:flex; justify-content:center; align-items:center;}
+        .loading-title { font-size: 15px; color: #8ba898; font-weight: bold;}
+        .dot-anim::after { content: ''; animation: dotBlink 1.5s infinite steps(4, end); }
+        @keyframes dotBlink { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+        
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 2000; display: none; justify-content: center; align-items: center; }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 12px; width: 95%; max-width: 600px; padding: 20px; max-height: 85vh; overflow-y: auto; position: relative;}
+        .modal-content::-webkit-scrollbar { width: 6px; }
+        .modal-content::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 12px; margin-bottom: 15px; }
+        .modal-title { font-size: 16px; font-weight: bold; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;}
+        .close-btn { background: none; border: none; color: #ff7b72; font-size: 28px; cursor: pointer; }
+        
+        .tab-container { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid #30363d; padding-bottom: 10px;}
+        .tab-btn { background: transparent; color: #8ba898; border: 1px solid transparent; padding: 8px 15px; cursor: pointer; font-weight: bold; font-size: 13px; border-radius: 6px; }
+        .tab-btn.active { background: #21262d; color: #58a6ff; border-color: #30363d; }
+        .renditja-table { width: 100%; border-collapse: collapse; font-size: 12px; color: #c9d1d9; }
+        .renditja-table th { background: #0d1117; color: #8ba898; padding: 8px; text-align: center; border-bottom: 1px solid #30363d; }
+        .renditja-table td { padding: 8px; text-align: center; border-bottom: 1px solid #21262d; }
+        .renditja-table tr:hover td { background: #21262d; }
+        .team-left { text-align: left !important; font-weight: bold; color: #fff;}
+        .form-box { display: inline-block; width: 15px; height: 15px; text-align: center; line-height: 15px; font-size: 9px; color: #fff; font-weight: bold; border-radius: 3px; margin: 0 1px; }
+        .f-W { background: #238636; } .f-D { background: #d4af37; } .f-L { background: #da3633; }
+        .hist-row { background: #0d1117; padding: 10px; border-radius: 6px; margin-bottom: 10px; border: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; gap: 10px;}
+        .hist-left { flex: 1; }
+        .hist-top { color: #8ba898; margin-bottom: 5px; font-size: 11px;}
+        .hist-teams { font-weight: bold; font-size: 13px; margin-bottom: 6px; color: #fff;}
+        
+        .treg-box { margin-bottom: 16px; background: #0d1117; padding: 10px; border-radius: 6px; border: 1px solid #30363d;}
+        .treg-title { color: #8ba898; font-weight: bold; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; border-bottom: 1px dashed #30363d; padding-bottom: 4px;}
+        .treg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; }
+        .treg-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 8px; border-radius: 4px; text-align: center; font-size: 12px; font-weight: bold; display: flex; flex-direction: column; align-items: center; cursor: pointer; transition: 0.2s;}
+        .treg-btn:hover { border-color: #58a6ff; }
+        .treg-btn.selected { background: #f2cc60; color: #000; border-color: #f2cc60; }
+        .treg-emri { font-weight: normal; font-size: 11px; color: inherit; margin-bottom: 2px;}
+        
+        .profile-section { display: flex; flex-direction: column; gap: 15px; }
+        .profile-card { background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; }
+        .profile-label { font-size: 12px; color: #8b949e; display: block; margin-bottom: 3px; }
+        .profile-value { font-size: 16px; color: #fff; font-weight: bold; }
+        .wallet-card { background: linear-gradient(135deg, #3a2c00 0%, #161b22 100%); border: 1px solid #d4af37; text-align: center; padding: 20px; border-radius: 10px; }
+        .wallet-amount { font-size: 32px; color: #d4af37; font-weight: 900; display: block; margin-top: 5px; }
+        .history-item { background: #21262d; padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid #238636; font-size: 13px;}
+        
+        .ppm-box { background: #0d1117; border: 1px solid #d4af37; padding: 15px; border-radius: 8px; margin-bottom: 12px; text-align: center;}
+        .ppm-btn-buy { background: #d4af37; color: #000; border: none; padding: 10px 25px; font-weight: bold; border-radius: 5px; cursor: pointer; transition: 0.2s; }
+        .ppm-btn-buy:hover { transform: scale(1.03); }
+        .ppm-btn-buy:disabled { cursor: not-allowed; transform: none; opacity: 0.5; }
+        .checkout-box { background: #0a0e14; border: 1px solid #30363d; padding: 15px; border-radius: 8px; text-align: left; margin-top: 15px; }
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 11px; color: #8ba898; margin-bottom: 4px; font-weight: bold;}
+        .card-input { width: 100%; box-sizing: border-box; background: #161b22; border: 1px solid #30363d; color: #fff; padding: 10px; border-radius: 6px; font-size: 14px; outline: none; font-family: inherit;}
+        .card-input:focus { border-color: #58a6ff; }
+        
+        .ticket-modal { text-align: center; padding: 20px; }
+        .ticket-icon { font-size: 50px; color: #3fb950; margin-bottom: 15px; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popIn { 0% { transform: scale(0); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        .error-panel { background: #21262d; border-left: 4px solid #da3633; padding: 20px; text-align: center; border-radius: 6px; margin-top: 20px; color: #c9d1d9; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        
+        .footer-zone { padding: 20px; text-align: center; border-top: 1px solid #30363d; margin-top: auto; color: #8ba898; font-size: 12px; }
+        .footer-links { margin-bottom: 10px; display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; }
+        .footer-links a { color: #58a6ff; text-decoration: none; cursor: pointer; font-weight: bold; transition: color 0.2s; }
+        .footer-links a:hover { color: #fff; text-decoration: underline; }
+        .legal-text { text-align: left; color: #c9d1d9; font-size: 13px; line-height: 1.6; }
+        .legal-text h4 { color: #fff; margin-top: 20px; margin-bottom: 10px; }
+        .legal-text ul { padding-left: 20px; margin-top: 5px; }
+        .legal-text li { margin-bottom: 8px; }
+
+        @keyframes skeleton-pulse { 0% { background-color: #161b22; } 50% { background-color: #21262d; } 100% { background-color: #161b22; } }
+        .skeleton-match-card { height: 60px; width: 100%; border-radius: 8px; margin-bottom: 10px; background-color: #161b22; animation: skeleton-pulse 1.5s infinite ease-in-out; display: flex; align-items: center; padding: 0 15px; border: 1px solid #30363d; box-sizing: border-box; }
+        .skeleton-line-short { height: 15px; width: 15%; border-radius: 4px; background-color: rgba(255, 255, 255, 0.05); margin-right: auto; }
+        .skeleton-line-long { height: 15px; width: 40%; border-radius: 4px; background-color: rgba(255, 255, 255, 0.05); }
+
+        .history-badge-win { background:rgba(63, 185, 80, 0.15); border:1px solid #3fb950; color:#3fb950; padding:8px; text-align:center; font-weight:bold; border-radius:4px; margin-top:5px; font-size:12px; }
+        .history-badge-loss { background:rgba(218, 54, 51, 0.15); border:1px solid #da3633; color:#da3633; padding:8px; text-align:center; font-weight:bold; border-radius:4px; margin-top:5px; font-size:12px; }
+
+        @media (max-width: 800px) {
+            .sidebar-ligat { display: none; }
+            .header-left { gap: 10px; }
+            .header-right { gap: 10px; }
+            .logo-text { font-size: 18px; }
+            #searchInput { width: 90px; }
+            .filtra-wrapper { padding: 10px; }
+            .permbajtja { flex-direction: column; padding: 0;}
+            .matches-area { padding: 5px; }
+            .ndeshje-main-row { flex-wrap: wrap; gap: 5px;}
+            .n-ekipet { width: 100%; text-align: left; order: -1; font-size: 13px;}
+            .n-ora { font-size: 11px; min-width: 35px;}
+            .qendra-rezultati { justify-content: flex-start; flex-grow: 0; }
+            .n-koef-grid { justify-content: flex-end; flex-grow: 1;}
+            .k-btn { width: 38px; font-size: 10px;}
+            .n-result-djathat { font-size: 13px; min-width: 35px;}
+            .auth-block { margin-right: 5px; }
+            .auth-action { font-size: 11px; }
         }
     </style>
 </head>
 <body>
-
-<div class="app-container">
-    <h1>SOCCER 1X2</h1>
-    <div class="subtitle">AI Sports Predictions</div>
-
-    <div id="loading">Duke analizuar ndeshjet botërore... ⏳</div>
-    
-    <div id="content" style="display: none;">
-        <div class="total-odds-card">
-            <h2>🔥 Skedina e Ditës</h2>
-            <div class="odds-value" id="total-odds">0.00</div>
-        </div>
-
-        <div id="matches-list"></div>
-    </div>
-</div>
-
-<script>
-    // Lidhja me Serverin Python të SOCCER 1X2
-    const API_URL = "http://127.0.0.1:8000/api/skedina";
-
-    async function merrSkedinen() {
-        try {
-            const response = await fetch(API_URL);
-            const data = await response.json();
-
-            // Fshehim tekstin e ngarkimit dhe shfaqim përmbajtjen
-            document.getElementById("loading").style.display = "none";
-            document.getElementById("content").style.display = "block";
-
-            // Vendosim Koeficientin Total
-            document.getElementById("total-odds").innerText = data.koeficienti_total_skedines;
-
-            // Krijojmë kartat vizuale për secilën ndeshje
-            const matchesContainer = document.getElementById("matches-list");
-            
-            data.ndeshjet_e_perzgjedhura.forEach(ndeshja => {
-                const card = document.createElement("div");
-                card.className = "match-card";
-                card.innerHTML = `
-                    <div class="match-title">${ndeshja.ndeshja}</div>
-                    <div class="match-details">
-                        <span class="prediction">${ndeshja.parashikimi}</span>
-                        <span>Koeficienti: <b>${ndeshja.koeficienti}</b></span>
-                        <span>Siguria: <b>${ndeshja.siguria_AI}</b></span>
+    <div id="app-container">
+        <div class="sticky-zone">
+            <div class="top-header">
+                <div class="header-left">
+                    <div class="logo-wrapper" onclick="window.location.reload()" title="Soccer1X2 PRO">
+                        <h1 class="logo-text">SOCCER1X2<span class="pro-badge">PRO</span></h1>
                     </div>
-                `;
-                matchesContainer.appendChild(card);
-            });
+                    <div class="lang-container" style="margin-left: 10px;">
+                        <button class="lang-btn" onclick="toggleLangDropdown()"><i class="fa-solid fa-earth-europe"></i> <span id="langText">EN</span></button>
+                        <div class="lang-dropdown" id="langDropdown">
+                            <div class="lang-option" onclick="ndryshoGjuhen('en')">🇬🇧 English</div>
+                            <div class="lang-option" onclick="ndryshoGjuhen('sq')">🇦🇱 Shqip</div>
+                            <div class="lang-option" onclick="ndryshoGjuhen('de')">🇩🇪 Deutsch</div>
+                            <div class="lang-option" onclick="ndryshoGjuhen('fr')">🇫🇷 Français</div>
+                            <div class="lang-option" onclick="ndryshoGjuhen('it')">🇮🇹 Italiano</div>
+                        </div>
+                    </div>
+                    <div class="search-container"><input type="text" id="searchInput" placeholder="Search team..."></div>
+                </div>
+                <div class="header-right">
+                    <div class="auth-block" id="authBlockUI">
+                        <div class="auth-action" onclick="hapAuthModal('login')" id="lblLogin">Log In</div>
+                        <div class="auth-or" id="lblOr">or</div>
+                        <div class="auth-action" onclick="hapAuthModal('register')" id="lblReg">Register</div>
+                    </div>
+                    <div class="user-profile-icon" onclick="klikoIkoneNjeriut()"><i class="fa-solid fa-user"></i></div>
+                </div>
+            </div>
 
-        } catch (error) {
-            document.getElementById("loading").innerText = "Gabim në lidhje me serverin. Sigurohu që serveri Python është i ndezur!";
-            document.getElementById("loading").style.color = "#ff4444";
+            <div class="filtra-wrapper">
+                <div class="filtra-left">
+                    <button class="btn-ppm-badge" onclick="verifikoAksesin(hapPremiumModal)"><span id="lblPPM">🔒 Pay Per Match</span> (<span id="ppmCount">0</span>)</button>
+                    <span class="fire-badge" onclick="hapCreditBackInfo()"><i class="fa-solid fa-fire"></i> <span id="lblCB">100% CREDIT BACK</span></span>
+                </div>
+                <div class="filtra-qender">
+                    <button class="filter-btn active" id="btnAll" onclick="ndryshoFiltra('Të Gjitha', this)">All Matches</button>
+                    <button class="filter-btn" id="btnLive" onclick="ndryshoFiltra('LIVE', this)">LIVE</button>
+                    <button class="filter-btn" id="btnTicket" onclick="verifikoAksesin(() => ndryshoFiltra('Skedina Ime', this))">My Ticket</button>
+                    <button class="filter-btn" id="btnHistory" onclick="ndryshoFiltra('Historiku', this)">📊 Historiku PPM</button>
+                </div>
+                <div class="filtra-actions-right">
+                    <i class="fa-solid fa-gem vip-diamond" id="ttVip" title="VIP Sub" onclick="verifikoAksesin(hapVipAbonim)"></i>
+                    <i class="fa-brands fa-telegram action-sub-icon icon-tg" id="ttTg" title="Komuniteti" style="color:#0088cc; font-size:18px;" onclick="hapKomunitetin()"></i>
+                    <div class="notif-container" onclick="verifikoAksesin(hapNjoftimet)">
+                        <i class="fa-solid fa-bell action-sub-icon" id="ttNotif" title="Notifications"></i>
+                        <span id="notifBadge" class="notif-badge">1</span>
+                    </div>
+                    <i class="fa-solid fa-basket-shopping action-sub-icon icon-donate" id="ttDonate" title="Donate" onclick="hapDonacionet()"></i>
+                </div>
+            </div>
+            <div class="calendar-wrapper" id="calendarWrapper"><input type="date" id="datePicker" onchange="ndryshoDaten()"></div>
+        </div>
+        
+        <div class="permbajtja" id="rezultati">
+            </div>
+
+        <div class="footer-zone">
+            <div class="footer-links">
+                <a onclick="hapKushtet()">Terms of Service</a>
+                <a onclick="hapRimbursimin()">Refund Policy</a>
+                <a onclick="hapKontakt()">Contact Us</a>
+            </div>
+            <div>&copy; 2026 Soccer1X2 PRO Analytics. All rights reserved.<br>This is a sports data and statistical analysis software.</div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-content" id="modalContainerSize">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle" style="color:#fff;">Title</h3>
+                <button class="close-btn" onclick="mbyllModal()">&times;</button>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 0. LINQET E ZYRTARIZUARA TË LEMONSQUEEZY
+        // ==========================================
+        const LINKS = {
+            VIP: "https://soccer1x2pro.lemonsqueezy.com/checkout/buy/3c429b57-23a7-4ac4-8938-2453e4f2bb8e",
+            SHTO_CASH: "https://soccer1x2pro.lemonsqueezy.com/checkout/buy/cdd315b6-1c5f-4c1b-a86a-ee67effe750c",
+            DONATE: "https://soccer1x2pro.lemonsqueezy.com/checkout/buy/91cc46ed-b6fe-4054-8bd3-56fed368b125",
+            PPM_TIER1: "https://soccer1x2pro.lemonsqueezy.com/checkout/buy/ee811df3-4c9b-4a32-97f2-da72ec32634c", // Deri në 4.9
+            PPM_TIER2: "https://soccer1x2pro.lemonsqueezy.com/checkout/buy/862b541e-a711-4d9a-bfd0-f1a9f0ce6553", // 5.0 - 7.9
+            PPM_TIER3: "https://soccer1x2pro.lemonsqueezy.com/checkout/buy/ae51a089-b60c-4acd-8b76-a6558ecbe966"  // Mbi 8.0
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.createLemonSqueezy) {
+                window.createLemonSqueezy();
+            }
+        });
+
+        function hapLemonSqueezyOverlay(url) {
+            let finalUrl = url + (url.includes('?') ? '&' : '?') + 'locale=' + gjuhaAktuale;
+            if (window.LemonSqueezy && window.LemonSqueezy.Url) {
+                LemonSqueezy.Url.Open(finalUrl);
+                
+                document.getElementById('modalBody').innerHTML = `
+                    <div style="margin-top:20px; padding:15px; background:rgba(88, 166, 255, 0.1); border:1px solid #58a6ff; border-radius:6px; text-align:center;">
+                        <p style="color:#c9d1d9; font-size:13px; margin:0 0 10px 0;">${ui[gjuhaAktuale].refreshMsg}</p>
+                        <button class="filter-btn active" style="background:#58a6ff; width:100%; padding:10px;" onclick="rifreskoLlogarineNgaServeri(this)">🔄 ${ui[gjuhaAktuale].refreshBtn}</button>
+                    </div>`;
+            } else {
+                window.open(finalUrl, '_blank');
+            }
         }
+
+        async function rifreskoLlogarineNgaServeri(btnKlikuar) {
+            if(!isLogged || !perdoruesi.email) return;
+            
+            try {
+                let originalText = btnKlikuar.innerHTML;
+                btnKlikuar.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> ${ui[gjuhaAktuale].verifying}...`;
+                
+                // SKANIMI 8-SEKONDËSH I DATABAZËS
+                for(let i=0; i<4; i++) {
+                    let res = await fetch(`https://soccer1x2-api.onrender.com/api/users?email=eq.${perdoruesi.email}`, {
+                        headers: {
+                            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ",
+                            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
+                        }
+                    });
+                    
+                    if (res.ok) {
+                        let data = await res.json();
+                        if(data && data.length > 0) {
+                            let userDB = data[0];
+                            let oldBlerjeCount = perdoruesi.blerjet ? perdoruesi.blerjet.length : 0;
+                            let newBlerjeCount = userDB.blerjet ? userDB.blerjet.length : 0;
+                            
+                            if(newBlerjeCount > oldBlerjeCount || userDB.isVip !== perdoruesi.isVip || userDB.portofoli !== perdoruesi.portofoli) {
+                                perdoruesi = userDB;
+                                ruajTeDhenat();
+                                mbyllModal();
+                                vizatoNdeshjet();
+                                alert(ui[gjuhaAktuale].successTitle);
+                                return; // E GJETËM, DALIM NGA LOOP-I
+                            }
+                        }
+                    }
+                    await new Promise(r => setTimeout(r, 2000)); // Prisim 2 sekonda
+                }
+                
+                // Nëse bëmë 4 skanime dhe s'gjetëm gjë
+                btnKlikuar.innerHTML = originalText;
+                alert("Pagesa po proçesohet nga banka ose po vonon pak. Prisni pak sekonda dhe klikoni 'Rifresko' përsëri!");
+                
+            } catch(e) {
+                console.error(e);
+                if(btnKlikuar) btnKlikuar.innerHTML = "Error! Riprovo";
+            }
+        }
+
+        try { let sot = new Date(); let dateStr = sot.toISOString().split('T')[0]; document.getElementById('datePicker').value = dateStr; } catch(e) {}
+
+        let gjuhaAktuale = localStorage.getItem('soccer_lang');
+if (!gjuhaAktuale) {
+    let browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    let langCode = browserLang.split('-')[0];
+    const supportedLangs = ['en', 'sq', 'de', 'fr', 'it'];
+    if (supportedLangs.includes(langCode)) {
+        gjuhaAktuale = langCode;
+    } else {
+        try {
+            let tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+            if (tz.includes('Tirane') || tz.includes('Pristina')) gjuhaAktuale = 'sq';
+            else if (tz.includes('Berlin') || tz.includes('Vienna') || tz.includes('Zurich')) gjuhaAktuale = 'de';
+            else if (tz.includes('Paris') || tz.includes('Brussels')) gjuhaAktuale = 'fr';
+            else if (tz.includes('Rome') || tz.includes('Milan')) gjuhaAktuale = 'it';
+            else gjuhaAktuale = 'en';
+        } catch(e) { gjuhaAktuale = 'en'; }
     }
+    localStorage.setItem('soccer_lang', gjuhaAktuale);
+}
+        
+        let isLogged = localStorage.getItem('soccer_logged') === 'true';
+        let defaultPerdoruesi = { email: "", emri: "", mbiemri: "", portofoli: 0.00, blerjet: [], isVip: false, vip_skadon_me: null, auto_rinovim: false };
+        let savedData = localStorage.getItem('soccer_user');
+        let perdoruesi = savedData ? JSON.parse(savedData) : defaultPerdoruesi;
+        
+        function ruajTeDhenat() {
+            localStorage.setItem('soccer_user', JSON.stringify(perdoruesi));
+            localStorage.setItem('soccer_logged', isLogged);
+        }
 
-    // Ekzekuto funksionin sapo të hapet faqja
-    merrSkedinen();
-</script>
+        async function ruajDheSinkronizo() {
+            ruajTeDhenat();
+            if(isLogged && perdoruesi.email) {
+                try {
+                    await fetch('https://soccer1x2-api.onrender.com/api/update_user', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(perdoruesi)
+                    });
+                } catch(e) {}
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => { 
+            document.getElementById('langText').innerText = gjuhaAktuale.toUpperCase();
+            
+            if(isLogged) { 
+                document.getElementById('authBlockUI').style.display = 'none'; 
+                setTimeout(kontrolloFitoret, 2500); 
+            } 
+            
+            setTimeout(përditësoUI, 100);
+        });
 
+        const LIGAT_KRYESORE_SORT = ["World Cup", "Euro Championship", "Champions League", "Europa League", "Premier League", "La Liga", "Serie A", "Bundesliga", "Ligue 1", "Friendly", "Nations League", "Superliga"];
+
+        const ui = {
+            en: {
+                loading: "Loading<span class='dot-anim'></span>", empty: "No matches available.", search: "Search team...", all: "All Matches", live: "LIVE", ticket: "My Ticket", historyTab: "📊 PPM History", analysis: "Analysis", ppm: "Pay Per Match", creditBack: "100% CREDIT BACK",
+                login: "Log In", register: "Register", or: "or", loginToSee: "Log in for full analysis.", email: "Email Address", pass: "Password", noAcc: "Don't have an account?", yesAcc: "Already have an account?", finishAuth: "Complete",
+                invalidEmail: "Invalid format.", errAuth: "Account not found or wrong password!", emailExists: "This email is already registered!", forgotPass: "Forgot password?", resetPassMsg: "Enter your email to receive a reset link.", resetBtn: "Send Link",
+                rememberMe: "Remember me", vipTicket: "VIP TICKET OF THE DAY", totalOdds: "TOTAL ODDS", subscribeVip: "Subscribe ($69.99 / Mo)",
+                vipSub: "VIP SUBSCRIPTION", donate: "DONATIONS", profile: "MY PROFILE", wallet: "FUNDS & CREDITS", walletNote: "*These funds are valid only for in-app purchases and cannot be withdrawn.", name: "FULL NAME", history: "PURCHASE HISTORY",
+                noPurchases: "No purchases yet.", buyRes: "Buy Result", result: "RESULT", odds: "ODDS", noVip: "No VIP matches today.", checkout: "SECURE PAYMENT", haveCredits: "Your Balance", payCredits: "Pay with Credits",
+                match: "Match", amount: "Amount to pay", payCard: "Pay with Card", processing: "Processing...", successTitle: "Purchase successful!",
+                successMsg: "The result is unlocked and added to your history. Good luck!", viewRes: "View Result", statsTitle: "📊 MAIN STATS", eventsTitle: "📋 GOALS & CARDS", noStats: "No statistics available.", noEvents: "No events available.",
+                teamHist: "Team History", leagueStand: "League Standings", last5: "Last 5 matches of", pos: "#", teamStr: "Team", pStr: "P", gStr: "Goals", ptsStr: "Pts", formStr: "Form", noStandings: "Standings not available.",
+                noOdds: "Odds not currently available.", yourChoice: "Your choice:", motd: "🌟 MATCH OF THE DAY:", leagues: "LEAGUES", errApi: "System updating! Wait 2 minutes.", btnReload: "RELOAD PAGE", logout: "Log Out",
+                cbInfo: "<p>In <b>Soccer1X2 PRO</b>, we trust our analysis!</p><ul><li>Choose a <b>Pay Per Match</b>.</li><li>If the result is <b>incorrect</b>...</li><li><b>100% Refund automatically to your Wallet!</b></li></ul>",
+                vipInfo1: "4 Tickets / month (1 per weekend)", vipInfo2: "Average Odds: ~10.0+", vipInfo3: "Compensation: Fixed Match if ticket fails", autoRenew: "Subscription auto-renews every 30 days.",
+                donateT1: "🥉 Supporter", donateT2: "🥇 VIP Funder", btnDonate: "Donate", lifetime: "Lifetime", refreshMsg: "After completing the payment in the new window, click the button below to refresh your account.", refreshBtn: "Refresh Account", verifying: "Verifying",
+                noPpmMatches: "No Pay-Per-Match available at the moment. Completed matches are moved to the History Section.", donateDesc: "Support our vision and the development of Soccer1X2. Your contribution helps us increase prediction accuracy for your future wins.", goDonate: "Go to Donation Page",
+                pendingResult: "Waiting for result...", won: "WON", lost: "LOST", prediction: "Prediction", real: "Real",
+                notEnough: "Not enough. Add Credits", orText: "━━━━━━━━ OR ━━━━━━━━",
+                ttVip: "VIP Subscription", ttTg: "Community", ttNotif: "Notifications", ttDonate: "Donations"
+            },
+            sq: {
+                loading: "Duke ngarkuar<span class='dot-anim'></span>", empty: "Nuk ka ndeshje aktuale.", search: "Kërko ekipin...", all: "Të Gjitha", live: "LIVE", ticket: "Skedina Ime", historyTab: "📊 Historiku PPM", analysis: "Analiza", ppm: "Pay Per Match", creditBack: "100% RIMBURSIM",
+                login: "Hyr", register: "Regjistrohu", or: "ose", loginToSee: "Logohu për analizën e plotë.", email: "Adresa Email", pass: "Fjalëkalimi", noAcc: "Nuk keni llogari?", yesAcc: "Keni një llogari?", finishAuth: "Përfundo",
+                invalidEmail: "Formati i pasaktë.", errAuth: "Llogaria nuk u gjet ose fjalëkalimi i gabuar!", emailExists: "Ky email është i regjistruar!", forgotPass: "Keni harruar fjalëkalimin?", resetPassMsg: "Ju lutem fusni emailin për të marrë linkun e ri-kthimit.", resetBtn: "Dërgo Linkun",
+                rememberMe: "Ruaj të dhënat", vipTicket: "SKEDINA VIP E DITËS", totalOdds: "KOEFICIENTI TOTAL", subscribeVip: "Abonohu ($69.99 / Muaj)",
+                vipSub: "ABONIMI VIP", donate: "DONACIONE", profile: "PROFILI IM", wallet: "FONDET DHE KREDITET", walletNote: "*Këto fonde vlejnë vetëm për blerje në aplikacion.", name: "EMRI", history: "HISTORIKU I BLERJEVE",
+                noPurchases: "Nuk ka blerje.", buyRes: "Bli Rezultatin", result: "REZULTATI", odds: "KOEFICIENTI", noVip: "S'ka ndeshje VIP sot.", checkout: "PAGESA E SIGURT", haveCredits: "Gjendja Juaj", payCredits: "Paguaj me Kredite",
+                match: "Ndeshja", amount: "Shuma", payCard: "Paguaj me Kartë", processing: "Duke procesuar...", successTitle: "Blerja u krye me sukses!",
+                successMsg: "Rezultati u zhbllokua dhe u shtua në historikun tuaj. Suksese!", viewRes: "Shiko Rezultatin", statsTitle: "📊 STATISTIKAT", eventsTitle: "📋 EVENTET", noStats: "Nuk ka statistika.", noEvents: "Nuk ka evente.",
+                teamHist: "Historiku i Ekipit", leagueStand: "Renditja e Ligës", last5: "5 Ndeshjet e fundit të", pos: "#", teamStr: "Ekipi", pStr: "N", gStr: "Golat", ptsStr: "Pikët", formStr: "Forma", noStandings: "Renditja nuk është e disponueshme.",
+                noOdds: "Koeficientët nuk janë të disponueshëm.", yourChoice: "Zgjedhja juaj:", motd: "🌟 NDESHJA E DITËS:", leagues: "LIGAT", errApi: "Sistemi po përditësohet! Prit 2 minuta.", btnReload: "RI-NGARKO", logout: "Çidentifikohu",
+                cbInfo: "<p>Në <b>Soccer1X2 PRO</b>, ne i besojmë analizave tona!</p><ul><li>Zgjidh një ndeshje <b>Pay Per Match</b>.</li><li>Nëse rezultati <b>nuk del i saktë</b>...</li><li><b>Kthehen 100% të parave në Portofolin tënd!</b></li></ul>",
+                vipInfo1: "4 Skedina në muaj (1 çdo fundjavë)", vipInfo2: "Koeficient Mesatar: ~10.0+", vipInfo3: "Kompensim: Fixed Match në rast dështimi", autoRenew: "Abonimi rinovohet automatikisht çdo 30 ditë.",
+                donateT1: "🥉 Mbështetës", donateT2: "🥇 VIP Donator", btnDonate: "Dhuro", lifetime: "I Përhershëm", refreshMsg: "Pasi të përfundoni pagesën në dritaren e re, klikoni butonin më poshtë për të rifreskuar llogarinë.", refreshBtn: "Rifresko Llogarinë", verifying: "Duke verifikuar",
+                noPpmMatches: "Nuk ka ndeshje të hapura Pay-Per-Match momentalisht. Ndeshjet e përfunduara kalojnë te Seksioni i Historikut.", donateDesc: "Mbështesni vizionin tonë dhe zhvillimin e aplikacionit Soccer1X2. Kontributi juaj na ndihmon të rrisim saktësinë e parashikimeve për fitimet tuaja të ardhshme.", goDonate: "Shko te faqja e Donacionit",
+                pendingResult: "Në pritje të rezultatit...", won: "FITUAR", lost: "HUMBUR", prediction: "Parashikimi", real: "Real",
+                notEnough: "Nuk mjafton. Shto Kredite", orText: "━━━━━━━━ OSE ━━━━━━━━",
+                ttVip: "Abonimi VIP", ttTg: "Komuniteti", ttNotif: "Njoftimet", ttDonate: "Donacione"
+            },
+            de: {
+                loading: "Wird geladen<span class='dot-anim'></span>", empty: "Keine Spiele verfügbar.", search: "Team suchen...", all: "Alle Spiele", live: "LIVE", ticket: "Mein Ticket", historyTab: "📊 PPM-Verlauf", analysis: "Analyse", ppm: "Pay Per Match", creditBack: "100% CASHBACK",
+                login: "Anmelden", register: "Registrieren", or: "oder", loginToSee: "Melden Sie sich für die vollständige Analyse an.", email: "E-Mail", pass: "Passwort", noAcc: "Kein Konto?", yesAcc: "Haben Sie bereits ein Konto?", finishAuth: "Abschließen",
+                invalidEmail: "Ungültiges Format.", errAuth: "Konto nicht gefunden oder falsches Passwort!", emailExists: "Diese E-Mail ist bereits registriert!", forgotPass: "Passwort vergessen?", resetPassMsg: "Geben Sie Ihre E-Mail ein, um einen Link zu erhalten.", resetBtn: "Link senden",
+                rememberMe: "Erinnere dich an mich", vipTicket: "VIP-TICKET DES TAGES", totalOdds: "GESAMTQUOTEN", subscribeVip: "Abonnieren ($69.99 / Monat)",
+                vipSub: "VIP-ABONNEMENT", donate: "SPENDEN", profile: "MEIN PROFIL", wallet: "GUTHABEN & CREDITS", walletNote: "*Diese Mittel gelten nur für In-App-Käufe.", name: "VOLLSTÄNDIGER NAME", history: "KAUFVERLAUF",
+                noPurchases: "Noch keine Einkäufe.", buyRes: "Ergebnis kaufen", result: "ERGEBNIS", odds: "QUOTEN", noVip: "Heute keine VIP-Spiele.", checkout: "SICHERE ZAHLUNG", haveCredits: "Ihr Guthaben", payCredits: "Mit Credits bezahlen",
+                match: "Spiel", amount: "Zu zahlender Betrag", payCard: "Mit Karte bezahlen", processing: "Verarbeitung...", successTitle: "Kauf erfolgreich!",
+                successMsg: "Das Ergebnis wurde freigeschaltet und zu Ihrem Verlauf hinzugefügt. Viel Glück!", viewRes: "Ergebnis anzeigen", statsTitle: "📊 STATISTIKEN", eventsTitle: "📋 EREIGNISSE", noStats: "Keine Statistiken.", noEvents: "Keine Ereignisse.",
+                teamHist: "Team-Verlauf", leagueStand: "Liga-Tabelle", last5: "Letzte 5 Spiele von", pos: "#", teamStr: "Team", pStr: "S", gStr: "Tore", ptsStr: "Pkt", formStr: "Form", noStandings: "Tabelle nicht verfügbar.",
+                noOdds: "Quoten derzeit nicht verfügbar.", yourChoice: "Ihre Wahl:", motd: "🌟 SPIEL DES TAGES:", leagues: "LIGEN", errApi: "System wird aktualisiert! 2 Minuten warten.", btnReload: "NEU LADEN", logout: "Abmelden",
+                cbInfo: "<p>In <b>Soccer1X2 PRO</b> vertrauen wir unserer Analyse!</p><ul><li>Wählen Sie ein <b>Pay Per Match</b>.</li><li>Wenn das Ergebnis <b>falsch</b> ist...</li><li><b>100% Rückerstattung in Ihr Wallet!</b></li></ul>",
+                vipInfo1: "4 Tickets / Monat (1 pro Wochenende)", vipInfo2: "Durchschnittsquote: ~10.0+", vipInfo3: "Entschädigung: Fixed Match bei Fehltritt", autoRenew: "Abo verlängert sich alle 30 Tage.",
+                donateT1: "🥉 Unterstützer", donateT2: "🥇 VIP-Geldgeber", btnDonate: "Spenden", lifetime: "Lebenslang", refreshMsg: "Nachdem Sie die Zahlung im neuen Fenster abgeschlossen haben, klicken Sie auf die Schaltfläche unten, um Ihr Konto zu aktualisieren.", refreshBtn: "Konto aktualisieren", verifying: "Überprüfung",
+                noPpmMatches: "Derzeit sind keine Pay-Per-Match-Spiele verfügbar. Abgeschlossene Spiele werden in den Abschnitt 'Verlauf' verschoben.", donateDesc: "Unterstützen Sie unsere Vision und die Entwicklung von Soccer1X2. Ihr Beitrag hilft uns, die Vorhersagegenauigkeit für Ihre zukünftigen Gewinne zu erhöhen.", goDonate: "Zur Spendenseite",
+                pendingResult: "Warten auf Ergebnis...", won: "GEWONNEN", lost: "VERLOREN", prediction: "Vorhersage", real: "Real",
+                notEnough: "Nicht genug. Credits aufladen", orText: "━━━━━━━━ ODER ━━━━━━━━",
+                ttVip: "VIP-Abo", ttTg: "Gemeinschaft", ttNotif: "Benachrichtigungen", ttDonate: "Spenden"
+            },
+            fr: {
+                loading: "Chargement<span class='dot-anim'></span>", empty: "Aucun match disponible.", search: "Chercher une équipe...", all: "Tous les matchs", live: "EN DIRECT", ticket: "Mon Ticket", historyTab: "📊 Historique PPM", analysis: "Analyse", ppm: "Pay Per Match", creditBack: "100% REMBOURSÉ",
+                login: "Connexion", register: "S'inscrire", or: "ou", loginToSee: "Connectez-vous pour l'analyse complète.", email: "E-mail", pass: "Mot de passe", noAcc: "Pas de compte ?", yesAcc: "Vous avez déjà un compte ?", finishAuth: "Terminer",
+                invalidEmail: "Format invalide.", errAuth: "Compte introuvable ou mot de passe erroné !", emailExists: "Cet e-mail est déjà enregistré !", forgotPass: "Mot de passe oublié ?", resetPassMsg: "Entrez votre e-mail pour recevoir un lien.", resetBtn: "Envoyer",
+                rememberMe: "Se souvenir de moi", vipTicket: "TICKET VIP DU JOUR", totalOdds: "COTES TOTALES", subscribeVip: "S'abonner (69,99 $ / Mois)",
+                vipSub: "ABONNEMENT VIP", donate: "DONS", profile: "MON PROFIL", wallet: "FONDS ET CRÉDITS", walletNote: "*Ces fonds ne sont valables que pour les achats intégrés.", name: "NOM COMPLET", history: "HISTORIQUE D'ACHAT",
+                noPurchases: "Aucun achat pour le moment.", buyRes: "Acheter Résultat", result: "RÉSULTAT", odds: "COTES", noVip: "Pas de matchs VIP aujourd'hui.", checkout: "PAIEMENT SÉCURISÉ", haveCredits: "Votre Solde", payCredits: "Payer avec des Crédits",
+                match: "Match", amount: "Montant à payer", payCard: "Payer par Carte", processing: "Traitement...", successTitle: "Achat réussi !",
+                successMsg: "Le résultat est débloqué et ajouté à votre historique. Bonne chance !", viewRes: "Voir le résultat", statsTitle: "📊 STATISTIQUES", eventsTitle: "📋 ÉVÉNEMENTS", noStats: "Aucune statistique.", noEvents: "Aucun événement.",
+                teamHist: "Historique Équipe", leagueStand: "Classement Ligue", last5: "Les 5 derniers matchs de", pos: "#", teamStr: "Équipe", pStr: "J", gStr: "Buts", ptsStr: "Pts", formStr: "Forme", noStandings: "Classement non disponible.",
+                noOdds: "Cotes non disponibles.", yourChoice: "Votre choix :", motd: "🌟 MATCH DU JOUR :", leagues: "LIGUES", errApi: "Mise à jour du système ! Attendez 2 min.", btnReload: "RECHARGER", logout: "Déconnexion",
+                cbInfo: "<p>Dans <b>Soccer1X2 PRO</b>, nous faisons confiance à notre analyse !</p><ul><li>Choisissez un <b>Pay Per Match</b>.</li><li>Si le résultat est <b>incorrect</b>...</li><li><b>Remboursement à 100% dans votre Wallet !</b></li></ul>",
+                vipInfo1: "4 Tickets / mois (1 par week-end)", vipInfo2: "Cote moyenne : ~10.0+", vipInfo3: "Compensation : Fixed Match en cas d'échec", autoRenew: "L'abonnement se renouvelle tous les 30 jours.",
+                donateT1: "🥉 Supporter", donateT2: "🥇 Finançeur VIP", btnDonate: "Faire un don", lifetime: "À vie", refreshMsg: "Après avoir effectué le paiement dans la nouvelle fenêtre, cliquez sur le bouton ci-dessous pour actualiser votre compte.", refreshBtn: "Actualiser le compte", verifying: "Vérification",
+                noPpmMatches: "Aucun Pay-Per-Match disponible pour le moment. Les matchs terminés sont déplacés vers la section Historique.", donateDesc: "Soutenez notre vision et le développement de Soccer1X2. Votre contribution nous aide à accroître la précision des prévisions pour vos futurs gains.", goDonate: "Aller à la page de don",
+                pendingResult: "En attente du résultat...", won: "GAGNÉ", lost: "PERDU", prediction: "Prédiction", real: "Réel",
+                notEnough: "Pas assez. Ajouter des crédits", orText: "━━━━━━━━ OU ━━━━━━━━",
+                ttVip: "Abonnement VIP", ttTg: "Communauté", ttNotif: "Notifications", ttDonate: "Dons"
+            },
+            it: {
+                loading: "Caricamento<span class='dot-anim'></span>", empty: "Nessuna partita disponibile.", search: "Cerca squadra...", all: "Tutte le partite", live: "LIVE", ticket: "Il mio Ticket", historyTab: "📊 Storico PPM", analysis: "Analisi", ppm: "Pay Per Match", creditBack: "100% RIMBORSATO",
+                login: "Accedi", register: "Registrati", or: "o", loginToSee: "Accedi per l'analisi completa.", email: "E-mail", pass: "Password", noAcc: "Non hai un account?", yesAcc: "Hai già un account?", finishAuth: "Completa",
+                invalidEmail: "Formato non valido.", errAuth: "Account non trovato o password errata!", emailExists: "Questa e-mail è già registrata!", forgotPass: "Password dimenticata?", resetPassMsg: "Inserisci la tua e-mail per ricevere il link.", resetBtn: "Invia Link",
+                rememberMe: "Ricordami", vipTicket: "TICKET VIP DEL GIORNO", totalOdds: "QUOTE TOTALI", subscribeVip: "Abbonati ($69.99 / Mese)",
+                vipSub: "ABONAMENTO VIP", donate: "DONAZIONI", profile: "IL MIO PROFILO", wallet: "FONDS E CREDITI", walletNote: "*Questi fondi sono validi solo per acquisti in-app.", name: "NOME COMPLETO", history: "STORICO ACQUISTI",
+                noPurchases: "Ancora nessun acquisto.", buyRes: "Acquista Risultato", result: "RISULTATO", odds: "QUOTE", noVip: "Nessuna partita VIP oggi.", checkout: "PAGAMENTO SICURO", haveCredits: "Il Tuo Saldo", payCredits: "Paga con Crediti",
+                match: "Partita", amount: "Importo da pagare", payCard: "Paga con Carta", processing: "Elaborazione...", successTitle: "Acquisto riuscito!",
+                successMsg: "Il risultato è sbloccato e aggiunto allo storico. Buona fortuna!", viewRes: "Vedi Risultato", statsTitle: "📊 STATISTICHE", eventsTitle: "📋 EVENTI", noStats: "Nessuna statistica.", noEvents: "Nessun evento.",
+                teamHist: "Storico Squadra", leagueStand: "Classifica Lega", last5: "Ultime 5 partite di", pos: "#", teamStr: "Squadra", pStr: "G", gStr: "Gol", ptsStr: "Pti", formStr: "Forma", noStandings: "Classifica non disponibile.",
+                noOdds: "Quote non attualmente disponibili.", yourChoice: "La tua scelta:", motd: "🌟 PARTITA DEL GIORNO:", leagues: "LEGHE", errApi: "Aggiornamento del sistema! Attendi 2 min.", btnReload: "RICARICA", logout: "Esci",
+                cbInfo: "<p>In <b>Soccer1X2 PRO</b> ci fidiamo della nostra analisi!</p><ul><li>Scegli un <b>Pay Per Match</b>.</li><li>Se il risultato è <b>sbagliato</b>...</li><li><b>Rimborso del 100% nel tuo Wallet!</b></li></ul>",
+                vipInfo1: "4 Ticket / mese (1 a fine settimana)", vipInfo2: "Quota Media: ~10.0+", vipInfo3: "Compensazione: Fixed Match in caso di fallimento", autoRenew: "L'abbonamento si rinnova ogni 30 giorni.",
+                donateT1: "🥉 Sostenitore", donateT2: "🥇 Finanziatore VIP", btnDonate: "Dona", lifetime: "A vita", refreshMsg: "Dopo aver completato il pagamento nella nuova finestra, fai clic sul pulsante sottostante per aggiornare il tuo account.", refreshBtn: "Aggiorna Account", verifying: "Verifica",
+                noPpmMatches: "Nessun Pay-Per-Match disponibile al momento. Le partite completate vengono spostate nella sezione Storico.", donateDesc: "Sostieni la nostra visione e lo sviluppo di Soccer1X2. Il tuo contributo ci aiuta ad aumentare la precisione delle previsioni per le tue future vincite.", goDonate: "Vai alla pagina delle donazioni",
+                pendingResult: "In attesa del risultato...", won: "VINTO", lost: "PERSO", prediction: "Previsione", real: "Reale",
+                notEnough: "Non abbastanza. Aggiungi crediti", orText: "━━━━━━━━ O ━━━━━━━━",
+                ttVip: "Abbonamento VIP", ttTg: "Comunità", ttNotif: "Notifiche", ttDonate: "Donazioni"
+            }
+        };
+
+        const tregjetMap = { "ht_result": "HT 1X2", "double_chance": "Double Chance", "goals_35_65": "Over/Under Goals", "btts": "BTTS (GG/NG)", "correct_score": "Correct Score" };
+        let teDhenatGlobale = []; let filtriAktiv = 'Të Gjitha'; let skedinaIme = {}; let ndeshjetPremium = [];
+
+        function eshteBiletFituese(parashikimi, rezultatiNdeshjes) {
+            try {
+                if (!rezultatiNdeshjes || !rezultatiNdeshjes.includes("-")) return false;
+                let parts = rezultatiNdeshjes.split("-");
+                let g1 = parseInt(parts[0].trim());
+                let g2 = parseInt(parts[1].trim());
+                if(isNaN(g1) || isNaN(g2)) return false;
+
+                let totalG = g1 + g2;
+                let out = (g1 > g2) ? "1" : ((g1 === g2) ? "X" : "2");
+                let p = parashikimi.toUpperCase().replace(/\s/g, ''); 
+
+                if (p === "1" && out === "1") return true;
+                if (p === "X" && out === "X") return true;
+                if (p === "2" && out === "2") return true;
+                if (p === "1X" && (out === "1" || out === "X")) return true;
+                if (p === "X2" && (out === "X" || out === "2")) return true;
+                if (p === "12" && (out === "1" || out === "2")) return true;
+                
+                if (p.includes("OVER")) {
+                    let val = parseFloat(p.replace("OVER", ""));
+                    if (totalG > val) return true;
+                }
+                if (p.includes("UNDER")) {
+                    let val = parseFloat(p.replace("UNDER", ""));
+                    if (totalG < val) return true;
+                }
+                if (p === "GG" || p === "BTTS") {
+                    if (g1 > 0 && g2 > 0) return true;
+                }
+                if (p === "NG") {
+                    if (g1 === 0 || g2 === 0) return true;
+                }
+                if (p === rezultatiNdeshjes.replace(/\s/g, "")) return true;
+                return false;
+            } catch(e) { return false; }
+        }
+
+        function kontrolloFitoret() {
+            if(!isLogged || !perdoruesi.blerjet || teDhenatGlobale.length === 0) return;
+            const statusetMbaruara = ["FT", "AET", "PEN", "AWD", "WO"];
+            
+            let blerjaFituese = perdoruesi.blerjet.find(b => {
+                if (b.popup_fitore_shfaqur) return false; 
+                let ndeshjaReale = null;
+                for (let liga of teDhenatGlobale) {
+                    let gjetur = liga.ndeshjet.find(n => n.id === b.id);
+                    if (gjetur) { ndeshjaReale = gjetur; break; }
+                }
+                if (ndeshjaReale && statusetMbaruara.includes(ndeshjaReale.statusi)) {
+                    if (eshteBiletFituese(b.rezultati, ndeshjaReale.rezultati)) return true; 
+                    else { b.popup_fitore_shfaqur = true; ruajDheSinkronizo(); return false; }
+                }
+                return false;
+            });
+            
+            if(blerjaFituese) {
+                blerjaFituese.popup_fitore_shfaqur = true;
+                ruajDheSinkronizo();
+                shfaqPopUpFitues(blerjaFituese.ndeshja);
+            }
+        }
+
+        function shfaqPopUpFitues(emriNdeshjes) {
+            document.getElementById('modalContainerSize').style.maxWidth = '500px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "🎉 URIME!";
+            document.getElementById('modalTitle').style.color = "#3fb950";
+            
+            document.getElementById('modalBody').innerHTML = `
+                <div style="text-align:center; padding: 10px;">
+                    <i class="fa-solid fa-trophy" style="font-size:50px; color:#f2cc60; margin-bottom:15px; animation: popIn 0.5s;"></i>
+                    <p style="color:#c9d1d9; font-size:15px; line-height:1.6;">
+                        Parashikimi për ndeshjen <b style="color:#fff;">[ ${emriNdeshjes} ]</b> doli i saktë!<br><br>
+                        Aplikacioni ynë mbahet gjallë nga suporti juaj. Dëshironi të na mbështesni me një donacion?
+                    </p>
+                    <button class="ppm-btn-buy" style="background:#f2cc60; color:#000; width:100%; margin-top:20px; font-size:16px; font-weight:bold;" onclick="window.open('${LINKS.DONATE}?locale=${gjuhaAktuale}', '_blank'); mbyllModal();">
+                        <i class="fa-solid fa-heart"></i> Po, Dhuro & Mbështet
+                    </button>
+                    <div style="margin-top:15px;">
+                        <span style="color:#8ba898; font-size:12px; cursor:pointer; text-decoration:underline;" onclick="mbyllModal()">Ndoshta herën tjetër</span>
+                    </div>
+                </div>`;
+        }
+
+        function hapKomunitetin() {
+            document.getElementById('modalContainerSize').style.maxWidth = '450px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "💬 KOMUNITETI ZYRTAR";
+            document.getElementById('modalTitle').style.color = "#0088cc";
+            let linkuTelegram = "https://t.me/soccer1X2pro"; 
+            
+            document.getElementById('modalBody').innerHTML = `
+                <div style="text-align:center; padding: 10px;">
+                    <i class="fa-brands fa-telegram" style="font-size:60px; color:#0088cc; margin-bottom:15px;"></i>
+                    <h3 style="color:#fff; margin-top:0;">Bashkohu me Anëtarët e Tjerë</h3>
+                    <div style="color:#c9d1d9; font-size:14px; line-height:1.6; margin-bottom: 20px;">
+                        Për të ruajtur shpejtësinë e aplikacionit, të gjitha diskutimet bëhen në komunitetin tonë në Telegram.
+                    </div>
+                    <button class="ppm-btn-buy" style="background:#0088cc; color:#fff; width:100%; font-size:16px; font-weight:bold; padding:15px;" onclick="window.open('${linkuTelegram}', '_blank'); mbyllModal();">
+                        <i class="fa-brands fa-telegram"></i> Hyr në Grupin e Telegram
+                    </button>
+                </div>`;
+        }
+
+        setInterval(() => {
+            document.querySelectorAll('.live-ticker-seconds').forEach(el => {
+                let s = parseInt(el.innerText) + 1;
+                el.innerText = s >= 60 ? "00" : (s < 10 ? "0" + s : s);
+            });
+        }, 1000);
+
+        function hapKushtet() {
+            document.getElementById('modalContainerSize').style.maxWidth = '650px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "Terms of Service";
+            document.getElementById('modalTitle').style.color = "#58a6ff";
+            document.getElementById('modalBody').innerHTML = `
+                <div class="legal-text">
+                    <p><b>Last Updated: June 2026</b></p>
+                    <p>Welcome to Soccer1X2 PRO. By using our application, you agree to these terms.</p>
+                    <h4>1. Nature of Service</h4>
+                    <p>Soccer1X2 PRO is a <b>Sports Data Analytics Software</b>. We provide mathematical algorithms, statistical analysis, and machine learning predictions based on historical sports data.</p>
+                    <p style="color:#f2cc60; font-weight:bold;">⚠️ IMPORTANT: We are NOT a gambling site, a bookmaker, or a betting operator.</p>
+                    <h4>2. Subscriptions (VIP) & Credits</h4>
+                    <ul>
+                        <li><b>VIP Subscription:</b> A recurring monthly payment granting access to exclusive weekend algorithmic models.</li>
+                        <li><b>Pay-Per-Match (PPM):</b> Individual statistical predictions purchased using in-app Credits.</li>
+                    </ul>
+                </div>
+                <button class="filter-btn active" style="margin-top:20px; width:100%; padding:10px; background:#21262d;" onclick="mbyllModal()">Kuptova (Close)</button>`;
+        }
+
+        function hapRimbursimin() {
+            document.getElementById('modalContainerSize').style.maxWidth = '650px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "Refund Policy";
+            document.getElementById('modalTitle').style.color = "#ff8c00";
+            document.getElementById('modalBody').innerHTML = `
+                <div class="legal-text">
+                    <p><b>Our 100% Credit-Back Guarantee</b></p>
+                    <p>At Soccer1X2 PRO, we stand behind our algorithmic models. However, sports are unpredictable. Here is our refund policy:</p>
+                    <h4>1. Pay-Per-Match (PPM) Refunds</h4>
+                    <p>If you purchase a single match prediction (PPM) using your Credits, and the algorithmic prediction turns out to be incorrect after the match finishes, <b>100% of the credits spent will be automatically refunded to your in-app Wallet.</b></p>
+                    <h4>2. Wallet Credits</h4>
+                    <p>Funds added to your Wallet are <b>Digital Credits</b>. They can only be used to purchase services within the application and <b>cannot be withdrawn as cash.</b></p>
+                </div>
+                <button class="filter-btn active" style="margin-top:20px; width:100%; padding:10px; background:#21262d;" onclick="mbyllModal()">Kuptova (Close)</button>`;
+        }
+
+        function hapKontakt() {
+            document.getElementById('modalContainerSize').style.maxWidth = '500px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "Contact Support";
+            document.getElementById('modalTitle').style.color = "#58a6ff";
+            let formspreeLink = "https://formspree.io/f/meewrryl";
+            
+            document.getElementById('modalBody').innerHTML = `
+                <div style="text-align:center; padding: 10px;">
+                    <i class="fa-solid fa-envelope" style="font-size:40px; color:#58a6ff; margin-bottom:15px;"></i>
+                    <p style="color:#c9d1d9; font-size:14px;">Keni pyetje rreth parashikimeve apo probleme me llogarinë tuaj? Ne jemi këtu për t'ju ndihmuar.</p>
+                    <form action="${formspreeLink}" method="POST" target="_blank" style="background:#21262d; border:1px solid #30363d; padding:15px; border-radius:8px; margin: 20px 0; text-align:left;">
+                        <div class="input-group">
+                            <label>Subjekti</label>
+                            <input type="text" name="subject" class="card-input" placeholder="Psh. Problem me abonimin" required>
+                        </div>
+                        <div class="input-group">
+                            <label>Email-i juaj</label>
+                            <input type="email" name="email" class="card-input" placeholder="emri@email.com" value="${perdoruesi.email}" required>
+                        </div>
+                        <div class="input-group">
+                            <label>Mesazhi</label>
+                            <textarea name="message" class="card-input" rows="4" placeholder="Shkruani mesazhin tuaj këtu..." required></textarea>
+                        </div>
+                        <button type="submit" class="ppm-btn-buy" style="background:#58a6ff; color:#fff; width:100%; border:none; margin-top:10px;" onclick="setTimeout(mbyllModal, 1000)">
+                            <i class="fa-solid fa-paper-plane"></i> Dërgo Mesazhin
+                        </button>
+                    </form>
+                </div>`;
+        }
+
+        function hapTopUp() {
+            document.getElementById('modalContainerSize').style.maxWidth = '400px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "💳 Shto Kredite"; 
+            document.getElementById('modalTitle').style.color = "#d4af37";
+            
+            let fullUrl = `${LINKS.SHTO_CASH}?checkout[email]=${encodeURIComponent(perdoruesi.email)}&checkout[custom][user_email]=${encodeURIComponent(perdoruesi.email)}&checkout[custom][type]=topup`;
+            
+            document.getElementById('modalBody').innerHTML = `
+                <div style="text-align:center; color:#c9d1d9; font-size:14px; margin-bottom:20px; line-height:1.6;">
+                    Zgjidhni një nga paketat e mëposhtme për të rimbushur portofolin tuaj dhe për të blerë ndeshje Pay-Per-Match.
+                </div>
+                
+                <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+                    <button class="filter-btn active" style="background:#21262d; border-color:#30363d; font-size:16px; padding:15px; display:flex; justify-content:space-between; align-items:center;" onclick="hapLemonSqueezyOverlay('${fullUrl}&checkout[custom][amount]=10')">
+                        <span style="color:#fff;">Rimbushje Bazë</span>
+                        <span style="color:#d4af37; font-weight:bold;">$10.00</span>
+                    </button>
+                    
+                    <button class="filter-btn active" style="background:#21262d; border-color:#30363d; font-size:16px; padding:15px; display:flex; justify-content:space-between; align-items:center;" onclick="hapLemonSqueezyOverlay('${fullUrl}&checkout[custom][amount]=20')">
+                        <span style="color:#fff;">Rimbushje Plus</span>
+                        <span style="color:#d4af37; font-weight:bold;">$20.00</span>
+                    </button>
+                    
+                    <button class="filter-btn active" style="background:#1a4a2c; border-color:#238636; font-size:16px; padding:15px; display:flex; justify-content:space-between; align-items:center; box-shadow: 0 0 10px rgba(63, 185, 80, 0.3);" onclick="hapLemonSqueezyOverlay('${fullUrl}&checkout[custom][amount]=50')">
+                        <span style="color:#fff;">Rimbushje Pro</span>
+                        <span style="color:#3fb950; font-weight:bold;">$50.00</span>
+                    </button>
+                </div>`;
+        }
+
+        function hapDonacionet() { 
+            document.getElementById('modalContainerSize').style.maxWidth = '450px'; 
+            document.getElementById('modalOverlay').style.display = 'flex'; 
+            document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].donate; 
+            document.getElementById('modalTitle').style.color = "#f2cc60"; 
+            document.getElementById('modalBody').innerHTML = `
+                <div style="text-align:center; padding:10px;">
+                    <i class="fa-solid fa-hand-holding-heart" style="font-size:50px; color:#f2cc60; margin-bottom:15px;"></i>
+                    <p style="color:#c9d1d9; font-size:14px; line-height:1.6; margin-bottom:20px;">
+                        ${ui[gjuhaAktuale].donateDesc}
+                    </p>
+                    <button class="ppm-btn-buy" style="background:#f2cc60; color:#000; width:100%; font-size:16px; font-weight:bold; padding:15px;" onclick="window.open('${LINKS.DONATE}?locale=${gjuhaAktuale}', '_blank'); mbyllModal();">
+                        <i class="fa-solid fa-heart"></i> ${ui[gjuhaAktuale].goDonate}
+                    </button>
+                </div>`; 
+        }
+
+        function kontrolloNjoftimet() {
+            let dita_sot = new Date().getDay(); 
+            let badge = document.getElementById('notifBadge');
+            if(dita_sot === 5 || dita_sot === 6 || dita_sot === 0) {
+                if(!localStorage.getItem('skedina_pare_kete_jave')) {
+                    badge.style.display = "block";
+                    badge.innerText = "1";
+                } else { badge.style.display = "none"; }
+            } else {
+                localStorage.removeItem('skedina_pare_kete_jave');
+                badge.style.display = "none";
+            }
+        }
+        setTimeout(kontrolloNjoftimet, 1000);
+
+        function hapNjoftimet() { 
+            let dita_sot = new Date().getDay();
+            let msg = "Sistemi është optimal.";
+            if(dita_sot === 5 || dita_sot === 6 || dita_sot === 0) {
+                msg = "🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.";
+                localStorage.setItem('skedina_pare_kete_jave', 'true');
+                kontrolloNjoftimet();
+            } else { msg = "⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!"; }
+            
+            document.getElementById('modalContainerSize').style.maxWidth = '400px'; 
+            document.getElementById('modalOverlay').style.display = 'flex'; 
+            document.getElementById('modalTitle').innerText = "NOTIFICATIONS"; 
+            document.getElementById('modalTitle').style.color = "#58a6ff"; 
+            document.getElementById('modalBody').innerHTML = `<div style="background:#0d1117; padding:15px; border-radius:6px; border-left:4px solid #58a6ff;"><p style="margin:0; font-weight:bold; color:#fff;">Soccer1X2 🧠</p><p style="margin:8px 0 0 0; font-size:13px; color:#8ba898; line-height:1.5;">${msg}</p></div>`; 
+        }
+
+        function ngarkoNdeshjet(dataZgjedhur) {
+            const container = document.getElementById('rezultati');
+            let skeletonHTML = `<div class="matches-area" style="width:100%; padding: 10px;">`;
+            for(let i = 0; i < 6; i++) {
+                skeletonHTML += `<div class="skeleton-match-card"><div class="skeleton-line-short"></div><div class="skeleton-line-long"></div></div>`;
+            }
+            skeletonHTML += `</div>`;
+            container.innerHTML = skeletonHTML;
+
+            let url = 'https://soccer1x2-api.onrender.com/api/skedina';
+            if (dataZgjedhur) url += `?date=${dataZgjedhur}`;
+
+            fetch(url).then(res => res.json()).then(data => {
+                if (data.skedina_grupuar && data.skedina_grupuar.length > 0) {
+                    teDhenatGlobale = data.skedina_grupuar; 
+                    ndeshjetPremium = [];
+                    data.skedina_grupuar.forEach(liga => { liga.ndeshjet.forEach(nd => { if(nd.is_premium) ndeshjetPremium.push(nd); }); });
+                    let aktivePPM = ndeshjetPremium.filter(nd => !["FT", "AET", "PEN", "AWD", "WO"].includes(nd.statusi));
+                    document.getElementById('ppmCount').innerText = aktivePPM.length;
+                    vizatoNdeshjet(); 
+                } else {
+                    document.getElementById('rezultati').innerHTML = `<div style="text-align:center; padding: 40px; width:100%; color:#8ba898;">${ui[gjuhaAktuale].empty}</div>`;
+                }
+            }).catch(err => {
+                document.getElementById('rezultati').innerHTML = `<div class="error-panel" style="width:100%;"><h3 style="color:#ff7b72; margin-top:0;">🚨 ${ui[gjuhaAktuale].errApi}</h3><button class="filter-btn active" style="margin-top:10px;" onclick="location.reload()">${ui[gjuhaAktuale].btnReload}</button></div>`;
+            });
+        }
+        ngarkoNdeshjet();
+
+        function ndryshoDaten() { ngarkoNdeshjet(document.getElementById('datePicker').value); }
+        function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
+        
+        function ndryshoGjuhen(gj) {
+            if(ui[gj]) gjuhaAktuale = gj; else gjuhaAktuale = 'en';
+            localStorage.setItem('soccer_lang', gjuhaAktuale); 
+            document.getElementById('langText').innerText = gjuhaAktuale.toUpperCase();
+            document.getElementById('langDropdown').style.display = 'none';
+            përditësoUI(); vizatoNdeshjet();
+        }
+
+        function përditësoUI() {
+            document.getElementById('searchInput').placeholder = ui[gjuhaAktuale].search;
+            document.getElementById('btnLive').innerText = ui[gjuhaAktuale].live;
+            document.getElementById('btnTicket').innerText = ui[gjuhaAktuale].ticket;
+            document.getElementById('btnHistory').innerText = ui[gjuhaAktuale].historyTab;
+            document.getElementById('lblPPM').innerText = "🔒 " + ui[gjuhaAktuale].ppm;
+            document.getElementById('lblCB').innerText = ui[gjuhaAktuale].creditBack;
+            
+            document.getElementById('ttVip').setAttribute('title', ui[gjuhaAktuale].ttVip);
+            document.getElementById('ttTg').setAttribute('title', ui[gjuhaAktuale].ttTg);
+            document.getElementById('ttNotif').setAttribute('title', ui[gjuhaAktuale].ttNotif);
+            document.getElementById('ttDonate').setAttribute('title', ui[gjuhaAktuale].ttDonate);
+            
+            let authBlock = document.getElementById('authBlockUI');
+            if(authBlock) {
+                document.getElementById('lblLogin').innerText = ui[gjuhaAktuale].login;
+                document.getElementById('lblOr').innerText = ui[gjuhaAktuale].or;
+                document.getElementById('lblReg').innerText = ui[gjuhaAktuale].register;
+            }
+            if(document.getElementById('modalOverlay').style.display === 'flex') mbyllModal();
+        }
+
+        function klikoIkoneNjeriut() { if(isLogged) hapProfilin(); else hapAuthModal('login'); }
+        function verifikoAksesin(funksioni) { if(isLogged) funksioni(); else hapAuthModal('login'); }
+
+        function hapForgotPass() {
+            document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].forgotPass;
+            document.getElementById('modalBody').innerHTML = `
+                <div class="checkout-box" style="margin-top:0; text-align:center;">
+                    <p style="color:#c9d1d9; font-size:13px; margin-bottom:20px;">${ui[gjuhaAktuale].resetPassMsg}</p>
+                    <div class="input-group" style="text-align:left;">
+                        <label>${ui[gjuhaAktuale].email}</label>
+                        <input type="email" id="resetEmail" class="card-input" placeholder="mail@example.com">
+                    </div>
+                    <button class="ppm-btn-buy" style="background:#58a6ff; color:#fff; width:100%; margin-top:15px;" onclick="alert('Link sent to email!')">
+                        ${ui[gjuhaAktuale].resetBtn}
+                    </button>
+                    <div style="margin-top:15px; font-size:12px;">
+                        <span style="color:#8ba898; cursor:pointer;" onclick="hapAuthModal('login')">⬅ Back to Login</span>
+                    </div>
+                </div>`;
+        }
+
+        function hapAuthModal(type) {
+            document.getElementById('modalContainerSize').style.maxWidth = '400px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            let isLogin = type === 'login';
+            document.getElementById('modalTitle').innerText = isLogin ? ui[gjuhaAktuale].login : ui[gjuhaAktuale].register;
+            document.getElementById('modalTitle').style.color = "#58a6ff";
+            
+            let nameField = isLogin ? "" : `<div class="input-group"><label>${ui[gjuhaAktuale].name}</label><input type="text" id="authName" class="card-input" placeholder="Emri Mbiemri"></div>`;
+            let switchText = isLogin ? ui[gjuhaAktuale].noAcc : ui[gjuhaAktuale].yesAcc;
+            let switchAction = isLogin ? 'register' : 'login';
+            let switchLink = isLogin ? ui[gjuhaAktuale].register : ui[gjuhaAktuale].login;
+
+            let savedE = localStorage.getItem('soccer_saved_email') || "";
+            let savedP = localStorage.getItem('soccer_saved_pass') || "";
+            let isChk = savedE !== "" ? "checked" : "";
+
+            let forgotLink = isLogin ? `<div style="text-align:right; margin-top:5px; margin-bottom:10px;"><span style="color:#8ba898; font-size:11px; cursor:pointer;" onclick="hapForgotPass()">${ui[gjuhaAktuale].forgotPass}</span></div>` : "";
+
+            document.getElementById('modalBody').innerHTML = `
+                <div class="checkout-box" style="margin-top:0;">
+                    ${nameField}
+                    <div class="input-group">
+                        <label>${ui[gjuhaAktuale].email}</label>
+                        <input type="email" id="authEmail" class="card-input" value="${savedE}" placeholder="mail@example.com">
+                        <div id="emailError" style="color:#ff7b72; font-size:11px; margin-top:4px; display:none;">${ui[gjuhaAktuale].invalidEmail}</div>
+                    </div>
+                    <div class="input-group" style="margin-bottom:0;">
+                        <label>${ui[gjuhaAktuale].pass}</label>
+                        <input type="password" id="authPass" class="card-input" value="${savedP}" placeholder="••••••••">
+                    </div>
+                    ${forgotLink}
+                    <label style="color:#c9d1d9; font-size:12px; display:flex; align-items:center; gap:5px; cursor:pointer;">
+                        <input type="checkbox" id="chkRemember" ${isChk}> ${ui[gjuhaAktuale].rememberMe}
+                    </label>
+                    <button id="btnAuth" class="ppm-btn-buy" style="background:#238636; color:#fff; width:100%; margin-top:15px;" onclick="kryejLoginSimulim(${!isLogin})">
+                        ${ui[gjuhaAktuale].finishAuth}
+                    </button>
+                    <div style="text-align:center; margin-top:15px; font-size:12px; color:#8ba898;">
+                        ${switchText} <span style="color:#58a6ff; cursor:pointer; font-weight:bold;" onclick="hapAuthModal('${switchAction}')">${switchLink}</span>
+                    </div>
+                </div>`;
+        }
+
+        function shfaqBonusModal() {
+            document.getElementById('modalContainerSize').style.maxWidth = '400px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "🎁 BONUS I FITUAR!";
+            document.getElementById('modalTitle').style.color = "#f2cc60";
+            document.getElementById('modalBody').innerHTML = `
+                <div style="text-align:center; padding:10px;">
+                    <i class="fa-solid fa-gift" style="font-size:60px; color:#f2cc60; margin-bottom:15px; animation: popIn 0.5s;"></i>
+                    <h3 style="color:#fff; margin-top:0;">Urime! Fituat $20 Kredite</h3>
+                    <p style="color:#8ba898; font-size:13px; line-height:1.5;">
+                        Faleminderit që u bashkuat me Soccer1X2 PRO. Kemi shtuar <b>$20</b> në portofolin tuaj si dhuratë mirëseardhje për t'i përdorur në blerjet e ardhshme.
+                    </p>
+                    <button class="ppm-btn-buy" style="background:#f2cc60; color:#000; width:100%; margin-top:15px; font-size:15px;" onclick="mbyllModal()">Fillo Eksplorimin</button>
+                </div>`;
+        }
+
+        async function kryejLoginSimulim(isRegistering) {
+            let emailInput = document.getElementById('authEmail').value;
+            let passInput = document.getElementById('authPass').value;
+            let emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            
+            if(!emailRegex.test(emailInput) || !passInput) {
+                document.getElementById('emailError').innerText = ui[gjuhaAktuale].invalidEmail;
+                document.getElementById('emailError').style.display = 'block';
+                return;
+            }
+            document.getElementById('emailError').style.display = 'none';
+
+            let btn = document.getElementById('btnAuth');
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> ${ui[gjuhaAktuale].processing}`;
+            btn.disabled = true;
+
+            let endpoint = isRegistering ? '/api/register' : '/api/login';
+            let payload = { email: emailInput, password: passInput, name: isRegistering ? (document.getElementById('authName').value || "Client") : "" };
+
+            try {
+                let res = await fetch('https://soccer1x2-api.onrender.com' + endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                if(!res.ok) {
+                    document.getElementById('emailError').innerText = "Gabim serveri / Timeout.";
+                    document.getElementById('emailError').style.display = 'block';
+                    btn.innerHTML = ui[gjuhaAktuale].finishAuth; btn.disabled = false; return;
+                }
+
+                let data = await res.json();
+                if(data.sukses) {
+                    isLogged = true; perdoruesi = data.perdoruesi;
+                    if(document.getElementById('chkRemember').checked) {
+                        localStorage.setItem('soccer_saved_email', emailInput);
+                        localStorage.setItem('soccer_saved_pass', passInput);
+                    }
+                    ruajTeDhenat(); document.getElementById('authBlockUI').style.display = 'none'; mbyllModal(); vizatoNdeshjet(); 
+                    if(isRegistering) { setTimeout(shfaqBonusModal, 500); } else { setTimeout(kontrolloFitoret, 1500); }
+                } else {
+                    let serverMsg = data.mesazhi || "";
+                    if(serverMsg.includes("ekziston")) document.getElementById('emailError').innerText = ui[gjuhaAktuale].emailExists;
+                    else if(serverMsg.includes("Llogaria")) document.getElementById('emailError').innerText = ui[gjuhaAktuale].errAuth;
+                    else document.getElementById('emailError').innerText = serverMsg;
+                    document.getElementById('emailError').style.display = 'block';
+                    btn.innerHTML = ui[gjuhaAktuale].finishAuth; btn.disabled = false;
+                }
+            } catch(e) {
+                document.getElementById('emailError').innerText = ui[gjuhaAktuale].errApi;
+                document.getElementById('emailError').style.display = 'block';
+                btn.innerHTML = ui[gjuhaAktuale].finishAuth; btn.disabled = false;
+            }
+        }
+
+        function dilNgaLlogaria() {
+            isLogged = false; perdoruesi = defaultPerdoruesi;
+            localStorage.removeItem('soccer_user'); localStorage.setItem('soccer_logged', 'false');
+            document.getElementById('authBlockUI').style.display = 'flex'; mbyllModal(); vizatoNdeshjet();
+        }
+
+        function dergoEmailNjoftimi(tipi, shuma, detaje) {
+            if (!perdoruesi.email) return;
+            fetch('https://soccer1x2-api.onrender.com/api/send_email', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ email_klientit: perdoruesi.email, emri_klientit: perdoruesi.emri, tipi_blerjes: tipi, shuma: shuma, detaje: detaje || "" })
+            }).catch(e => console.log(e));
+        }
+
+        function shtoNeSkedine(matchId, opsionEmri, koefVlera) {
+            if(!isLogged) { hapAuthModal('login'); return; }
+            if (skedinaIme[matchId] && skedinaIme[matchId].zgjedhja === opsionEmri) delete skedinaIme[matchId];
+            else skedinaIme[matchId] = { zgjedhja: opsionEmri, koef: koefVlera };
+            vizatoNdeshjet(); 
+        }
+
+        function hapCreditBackInfo() {
+            document.getElementById('modalContainerSize').style.maxWidth = '500px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "🔥 " + ui[gjuhaAktuale].creditBack;
+            document.getElementById('modalTitle').style.color = "#ff8c00";
+            document.getElementById('modalBody').innerHTML = `<div style="text-align:left; color:#c9d1d9; line-height:1.6; font-size:14px;">${ui[gjuhaAktuale].cbInfo}</div>`;
+        }
+        
+        function anuloAbonimin() {
+            if(confirm("Jeni i sigurt che doni të anuloni rinovimin automatik? Ju do të mbeteni VIP deri në datën e skadencës.")) {
+                perdoruesi.auto_rinovim = false; ruajDheSinkronizo(); hapProfilin();
+            }
+        }
+
+        function hapProfilin() {
+            document.getElementById('modalContainerSize').style.maxWidth = '400px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].profile; 
+            document.getElementById('modalTitle').style.color = "#fff";
+            
+            let blerjetHTML = perdoruesi.blerjet.length > 0 ? perdoruesi.blerjet.map(b => `<div class="history-item">🎫 ${b.ndeshja.replace('🌟 NDESHJA E DITËS: ', '')} ➔ <b style="color:#3fb950;">${b.rezultati}</b> (${ui[gjuhaAktuale].odds}: ${b.koef})</div>`).join('') : `<div style='color:#8b949e; font-size:12px;'>${ui[gjuhaAktuale].noPurchases}</div>`;
+            
+            let vipInfo = "";
+            if (perdoruesi.isVip) {
+                let statusRinovimi = perdoruesi.auto_rinovim ? "<span style='color:#3fb950;'>Aktiv</span>" : "<span style='color:#da3633;'>Anuluar</span>";
+                let btnCancel = perdoruesi.auto_rinovim ? `<button class="filter-btn active" style="background:#da3633; color:#fff; border:none; width:100%; margin-top:10px; padding:6px; font-size:11px;" onclick="anuloAbonimin()">Anulo Abonimin (Cancel)</button>` : "";
+                
+                // Rregullimi i vitit 1970
+                let formattedSkad = "N/A";
+                if(perdoruesi.vip_skadon_me) {
+                    let d = new Date(perdoruesi.vip_skadon_me);
+                    if(d.getFullYear() > 2000) { formattedSkad = d.toISOString().split('T')[0]; } else { formattedSkad = ui[gjuhaAktuale].lifetime || "I Përhershëm"; }
+                }
+
+                vipInfo = `
+                <div class="profile-card" style="border-color:#00e5ff; background:rgba(0, 229, 255, 0.05);">
+                    <span class="profile-label" style="color:#00e5ff;">💎 ABONIMI VIP</span>
+                    <div style="font-size:13px; color:#c9d1d9; margin-top:5px;">Skadon më: <b>${formattedSkad}</b></div>
+                    <div style="font-size:13px; color:#c9d1d9; margin-top:3px;">Auto-Rinovimi: <b>${statusRinovimi}</b></div>
+                    ${btnCancel}
+                </div>`;
+            }
+
+            document.getElementById('modalBody').innerHTML = `
+                <div class="profile-section">
+                    <div class="wallet-card">
+                        <span class="profile-label" style="color:#d4af37;">💰 ${ui[gjuhaAktuale].wallet}</span>
+                        <span class="wallet-amount">$${perdoruesi.portofoli.toFixed(2)}</span>
+                        <button class="filter-btn active" style="background:#d4af37; color:#000; border:none; margin-top:12px; font-size:11px; padding:6px 15px;" onclick="hapTopUp()">➕ Shto Kredite</button>
+                        <span style="font-size:9px; color:#8ba898; display:block; margin-top:10px;">${ui[gjuhaAktuale].walletNote}</span>
+                    </div>
+                    <div class="profile-card">
+                        <span class="profile-label">${ui[gjuhaAktuale].name}</span>
+                        <span class="profile-value">${perdoruesi.emri} ${perdoruesi.mbiemri}</span>
+                        <div style="margin-top:10px; border-top:1px dashed #30363d; padding-top:10px;">
+                            <span class="profile-label">${ui[gjuhaAktuale].email}</span>
+                            <span class="profile-value" style="color:#58a6ff; font-size:14px;">${perdoruesi.email}</span>
+                        </div>
+                    </div>
+                    ${vipInfo}
+                    <div class="profile-card"><span class="profile-label">${ui[gjuhaAktuale].history}</span><div style="margin-top:10px; max-height:200px; overflow-y:auto;">${blerjetHTML}</div></div>
+                    <button class="filter-btn active" style="background:#da3633; border:none; width:100%; margin-top:10px; padding:10px;" onclick="dilNgaLlogaria()">${ui[gjuhaAktuale].logout}</button>
+                </div>`;
+        }
+
+        function hapPremiumModal() {
+            if(!isLogged) { hapAuthModal('login'); return; }
+            document.getElementById('modalContainerSize').style.maxWidth = '500px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "🔒 " + ui[gjuhaAktuale].ppm; 
+            document.getElementById('modalTitle').style.color = "#d4af37";
+            
+            let aktivePPM = ndeshjetPremium.filter(nd => !["FT", "AET", "PEN", "AWD", "WO"].includes(nd.statusi));
+            let h = ``;
+            aktivePPM.forEach(nd => {
+                const eshteBlere = perdoruesi.blerjet.find(b => b.id === nd.id);
+                let koefFloat = parseFloat(nd.koef_rez_sakt);
+                let emriSigurt = nd.ndeshja.replace(/'/g, "\'");
+                
+                let cmimiDinamik = 49.99;
+                let linkuBase = LINKS.PPM_TIER1; 
+                
+                if(koefFloat >= 5.0 && koefFloat <= 7.9) {
+                    cmimiDinamik = 59.99;
+                    linkuBase = LINKS.PPM_TIER2; 
+                } else if(koefFloat >= 8.0) {
+                    cmimiDinamik = 99.99;
+                    linkuBase = LINKS.PPM_TIER3; 
+                }
+
+                // Injektimi i te dhenave ne linkun e LemonSqueezy
+                let fullUrl = `${linkuBase}?checkout[email]=${encodeURIComponent(perdoruesi.email)}&checkout[custom][user_email]=${encodeURIComponent(perdoruesi.email)}&checkout[custom][type]=ppm&checkout[custom][match_id]=${nd.id}&checkout[custom][ndeshja]=${encodeURIComponent(nd.ndeshja)}&checkout[custom][rezultati]=${nd.rezultati_sakt}&checkout[custom][koef]=${nd.koef_rez_sakt}&checkout[custom][cmimi]=${cmimiDinamik}`;
+
+                h += `<div class="ppm-box"><div style="font-weight:bold; color:#fff; font-size:15px; margin-bottom:10px;">${nd.ndeshja}</div>`;
+                if(eshteBlere) {
+                    h += `<div style="background:#0a2617; border: 1px solid #238636; padding:12px; border-radius:6px;"><div style="font-size:17px; font-weight:900; color:#3fb950;">${ui[gjuhaAktuale].result}: ${nd.rezultati_sakt}</div><div style="color:#f2cc60; font-size:13px; font-weight:bold; margin-top:4px;">${ui[gjuhaAktuale].odds}: ${nd.koef_rez_sakt}</div></div>`;
+                } else {
+                    h += `<button class="ppm-btn-buy" onclick="hapCheckout('${nd.id}', '${emriSigurt}', '${nd.rezultati_sakt}', '${nd.koef_rez_sakt}', ${cmimiDinamik}, '${fullUrl}')">${ui[gjuhaAktuale].buyRes} ($${cmimiDinamik})</button>`;
+                }
+                h += `</div>`;
+            });
+            if(h==='') h = `<div style='text-align:center; color:#8b949e; margin-top:20px;'><i class="fa-solid fa-lock" style="font-size:30px; margin-bottom:15px;"></i><br>${ui[gjuhaAktuale].noPpmMatches}</div>`;
+            document.getElementById('modalBody').innerHTML = h;
+        }
+
+        function hapCheckout(id, ndeshja, rez, koef, cmimi, urlLemon) {
+            document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].checkout;
+            document.getElementById('modalTitle').style.color = "#fff";
+            
+            let btnPortofol = ``;
+            if (perdoruesi.portofoli >= cmimi) {
+                btnPortofol = `<button class="filter-btn active" style="background:#d4af37; color:#000; border:none; padding:8px 15px;" onclick="perpunoPagesenKredite('${id}', '${ndeshja}', '${rez}', '${koef}', ${cmimi})">${ui[gjuhaAktuale].payCredits} ($${cmimi})</button>`;
+            } else {
+                btnPortofol = `<button class="filter-btn active" style="background:#da3633; color:#fff; border:none; padding:8px 15px;" onclick="hapTopUp()">${ui[gjuhaAktuale].notEnough}</button>`;
+            }
+
+            document.getElementById('modalBody').innerHTML = `
+                <div style="font-size:13px; color:#c9d1d9; margin-bottom:15px; text-align:center;">
+                    ${ui[gjuhaAktuale].match}: <b>${ndeshja}</b><br>
+                    ${ui[gjuhaAktuale].amount}: <b style="color:#58a6ff; font-size:16px;">$${cmimi}</b>
+                </div>
+                
+                <div class="checkout-box">
+                    <button id="btnPaguajKarta" class="ppm-btn-buy" style="background:#58a6ff; color:#fff; width:100%; font-size:15px; padding:12px;" 
+                            onclick="hapLemonSqueezyOverlay('${urlLemon}')">
+                        <i class="fa-solid fa-credit-card"></i> ${ui[gjuhaAktuale].payCard} ($${cmimi})
+                    </button>
+                    
+                    <div style="text-align:center; margin: 20px 0; color:#8ba898; font-size:11px;">${ui[gjuhaAktuale].orText}</div>
+                    
+                    <div style="background:rgba(212, 175, 55, 0.05); border:1px solid #d4af37; padding:15px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <span style="color:#8ba898; font-size:11px; display:block;">${ui[gjuhaAktuale].haveCredits}</span>
+                            <span style="color:#d4af37; font-size:16px; font-weight:bold;">$${perdoruesi.portofoli.toFixed(2)}</span>
+                        </div>
+                        ${btnPortofol}
+                    </div>
+                </div>`;
+        }
+
+        function perpunoPagesenKredite(id, ndeshja, rez, koef, cmimi) {
+            perdoruesi.portofoli -= cmimi;
+            perdoruesi.blerjet.push({ id: id, ndeshja: ndeshja, rezultati: rez, koef: koef, cmimi: cmimi });
+            ruajDheSinkronizo(); 
+            dergoEmailNjoftimi("PPM_CREDITS", cmimi, ndeshja + " (" + rez + ")"); 
+            
+            document.getElementById('modalTitle').innerText = "";
+            document.getElementById('modalBody').innerHTML = `<div class="ticket-modal"><div class="ticket-icon"><i class="fa-solid fa-ticket"></i></div><h3 style="color:#fff; margin-bottom:10px;">${ui[gjuhaAktuale].successTitle}</h3><p style="color:#8ba898; font-size:13px;">${ui[gjuhaAktuale].successMsg}</p><button class="filter-btn active" style="margin-top:20px; padding:10px 30px;" onclick="hapPremiumModal()">${ui[gjuhaAktuale].viewRes}</button></div>`;
+        }
+
+        function shfaqMbrojtjenEKapitalit() {
+            let d = new Date(perdoruesi.vip_skadon_me);
+            if(isNaN(d)) d = new Date();
+            d.setDate(d.getDate() + 7);
+            perdoruesi.vip_skadon_me = d.toISOString().split('T')[0];
+            ruajDheSinkronizo();
+
+            document.getElementById('modalBody').innerHTML = `
+                <div style="text-align:center; padding: 20px;">
+                    <div style="font-size:50px; margin-bottom:15px;">🛡️</div>
+                    <h3 style="color:#00e5ff; margin-top:0; font-size:1.3rem;">MBROJTJA E KAPITALIT AKTIVIZUAR</h3>
+                    <div style="color:#c9d1d9; font-size:14px; line-height:1.6; margin-bottom: 20px;">
+                        Sistemi nuk gjeti ndeshje me vlerë të mjaftueshme sigurie në tregjet kryesore për të formuar Koeficientin 10+ këtë fundjavë. Siguria juaj është prioriteti ynë.
+                    </div>
+                    <div style="background:rgba(63, 185, 80, 0.1); border:1px solid #3fb950; padding:10px; border-radius:6px;">
+                        <h4 style="color:#3fb950; margin:0 0 5px 0;">🎁 Kompensim Automatik</h4>
+                        <span style="color:#c9d1d9; font-size:12px;">Abonimit tuaj VIP i janë shtuar automatikisht +7 Ditë falas! Skadenca e re: <b>${perdoruesi.vip_skadon_me}</b></span>
+                    </div>
+                </div>`;
+        }
+
+        function hapVipAbonim() {
+            if(!isLogged) { hapAuthModal('login'); return; }
+            document.getElementById('modalContainerSize').style.maxWidth = '450px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].vipSub; 
+            document.getElementById('modalTitle').style.color = "#00e5ff";
+            
+            if(perdoruesi.isVip) {
+                let ditaSot = new Date().getDay();
+                if (ditaSot === 5 || ditaSot === 6 || ditaSot === 0) {
+                    document.getElementById('modalBody').innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#00e5ff; font-size:15px;"><i class="fa-solid fa-circle-notch fa-spin"></i> Sistemi po analizon të dhënat...</div></div>`;
+                    
+                    fetch('https://soccer1x2-api.onrender.com/api/vip_weekend')
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.is_ready === false || !data.skedina || data.skedina.length === 0) { shfaqMbrojtjenEKapitalit(); } 
+                        else {
+                            let totalOdds = 1.0; data.skedina.forEach(nd => { totalOdds *= parseFloat(nd.koef_rez_sakt); });
+                            if(data.skedina.length < 2 || totalOdds < 10.0) { shfaqMbrojtjenEKapitalit(); } 
+                            else {
+                                localStorage.setItem('skedina_pare_kete_jave', 'true'); kontrolloNjoftimet(); 
+                                document.getElementById('modalBody').innerHTML = gjeneroSkedinenVip(data.skedina, totalOdds);
+                            }
+                        }
+                    }).catch(err => { document.getElementById('modalBody').innerHTML = `<div style="text-align:center; color:#ff7b72;">Lidhja dështoi. Provo përsëri!</div>`; });
+                } else {
+                    document.getElementById('modalBody').innerHTML = `<div style="text-align:center; padding: 20px;"><i class="fa-solid fa-lock" style="font-size:40px; color:#da3633; margin-bottom:15px;"></i><h3 style="color:#da3633; margin-top:0;">Të dhënat janë të mbyllura</h3><div style="color:#c9d1d9; font-size:14px; margin-bottom: 20px;">Sistemi e gjeneron Skedinën Premium vetëm të Premten.</div><h4 style="color:#f2cc60; margin:0;">Kthehuni të Premten në mëngjes!</h4></div>`;
+                }
+            } else {
+                document.getElementById('modalBody').innerHTML = `
+                    <div style="text-align:center;">
+                        <i class="fa-solid fa-gem vip-diamond" style="font-size:40px; margin-bottom:15px; display:block;"></i>
+                        <div style="background:#0d1117; border:1px solid #30363d; padding:20px; border-radius:8px; margin-bottom:20px;">
+                            <ul style="color:#c9d1d9; text-align:left; font-size:13px; line-height:2; list-style-type:none; padding:0; margin:0;">
+                                <li>🎫 <b>${ui[gjuhaAktuale].vipInfo1}</b></li>
+                                <li>🎯 <b>${ui[gjuhaAktuale].vipInfo2}</b></li>
+                                <li>🛡️ <b>${ui[gjuhaAktuale].vipInfo3}</b></li>
+                            </ul>
+                        </div>
+                        <button id="btnAbonohu" class="ppm-btn-buy" style="background:#00e5ff; color:#000; width:100%; font-size:16px; border-radius:8px; padding:12px;" onclick="hapCheckoutVip()">
+                            ${ui[gjuhaAktuale].subscribeVip}
+                        </button>
+                    </div>`;
+            }
+        }
+
+        function gjeneroSkedinenVip(ndeshjet_fundjaves, tOdds) {
+            let html = `<h4 style="text-align:center; color:#00e5ff; margin-top:0; margin-bottom:20px;">🌟 SKEDINA E FUNDJAVËS 🌟</h4>`;
+            for(let i=0; i < ndeshjet_fundjaves.length; i++) {
+                let nd = ndeshjet_fundjaves[i]; let dataFormatuar = nd.data; try { let p = nd.data.split('-'); dataFormatuar = `${p[2]}/${p[1]}`; } catch(e){}
+                html += `<div style="background:#0a2617; border:1px solid #238636; padding:12px; border-radius:6px; margin-bottom:10px;"><div style="color:#8ba898; font-size:11px; margin-bottom:4px; border-bottom:1px dashed #1a4a2c; padding-bottom:3px;"><i class="fa-regular fa-calendar"></i> ${dataFormatuar}</div><div style="font-weight:bold; color:#fff; font-size:14px;">${nd.ndeshja}</div><div style="display:flex; justify-content:space-between; margin-top:8px; font-size:13px;"><span style="color:#8ba898;">${ui[gjuhaAktuale].result}: <b style="color:#3fb950; font-size:15px;">${nd.rezultati_sakt}</b></span><span style="color:#f2cc60; font-weight:bold; font-size:15px;">${nd.koef_rez_sakt}</span></div></div>`;
+            }
+            html += `<div style="text-align:center; margin-top:20px; padding-top:15px; border-top:1px dashed #30363d;"><div style="color:#8ba898; font-size:12px; margin-bottom:5px;">${ui[gjuhaAktuale].totalOdds}</div><div style="font-size:28px; font-weight:900; color:#00e5ff; text-shadow: 0 0 10px rgba(0, 229, 255, 0.4);">${tOdds.toFixed(2)}</div></div>`;
+            return html;
+        }
+
+        function hapCheckoutVip() {
+            document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].checkout;
+            let cmimi = 69.99;
+            let fullUrl = `${LINKS.VIP}?checkout[email]=${encodeURIComponent(perdoruesi.email)}&checkout[custom][user_email]=${encodeURIComponent(perdoruesi.email)}&checkout[custom][type]=vip`;
+            
+            let btnPortofol = ``;
+            if (perdoruesi.portofoli >= cmimi) {
+                btnPortofol = `<button class="filter-btn active" style="background:#d4af37; color:#000; border:none; padding:8px 15px;" onclick="perpunoPagesenVipKredite()">${ui[gjuhaAktuale].payCredits} ($${cmimi})</button>`;
+            } else {
+                btnPortofol = `<button class="filter-btn active" style="background:#da3633; color:#fff; border:none; padding:8px 15px;" onclick="hapTopUp()">${ui[gjuhaAktuale].notEnough}</button>`;
+            }
+
+            document.getElementById('modalBody').innerHTML = `
+                <div style="font-size:13px; color:#c9d1d9; margin-bottom:15px; text-align:center;">
+                    <b>${ui[gjuhaAktuale].vipSub}</b><br>
+                    ${ui[gjuhaAktuale].amount}: <b style="color:#00e5ff; font-size:16px;">$${cmimi}</b><br>
+                    <span style="font-size:11px; color:#8ba898;">(Auto-renews every 30 days)</span>
+                </div>
+                
+                <div class="checkout-box">
+                    <button id="btnPaguajVip" class="ppm-btn-buy" style="background:#00e5ff; color:#000; width:100%; font-size:15px; padding:12px;" 
+                            onclick="hapLemonSqueezyOverlay('${fullUrl}')">
+                        <i class="fa-solid fa-credit-card"></i> ${ui[gjuhaAktuale].payCard} ($${cmimi})
+                    </button>
+                    
+                    <div style="text-align:center; margin: 20px 0; color:#8ba898; font-size:11px;">${ui[gjuhaAktuale].orText}</div>
+                    
+                    <div style="background:rgba(212, 175, 55, 0.05); border:1px solid #d4af37; padding:15px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <span style="color:#8ba898; font-size:11px; display:block;">${ui[gjuhaAktuale].haveCredits}</span>
+                            <span style="color:#d4af37; font-size:16px; font-weight:bold;">$${perdoruesi.portofoli.toFixed(2)}</span>
+                        </div>
+                        ${btnPortofol}
+                    </div>
+                </div>`;
+        }
+
+        function perpunoPagesenVipKredite() {
+            perdoruesi.portofoli -= 69.99;
+            let dataSkadences = new Date(); dataSkadences.setDate(dataSkadences.getDate() + 30);
+            perdoruesi.isVip = true; perdoruesi.vip_skadon_me = dataSkadences.toISOString().split('T')[0]; perdoruesi.auto_rinovim = true;
+            ruajDheSinkronizo(); dergoEmailNjoftimi("VIP_CREDITS", 69.99, "Abonimi VIP 30 Ditor"); 
+            
+            document.getElementById('modalTitle').innerText = "";
+            document.getElementById('modalBody').innerHTML = `<div class="ticket-modal"><div class="ticket-icon" style="color:#00e5ff;"><i class="fa-solid fa-gem"></i></div><h3 style="color:#fff; margin-bottom:10px;">${ui[gjuhaAktuale].successTitle}</h3><p style="color:#8ba898; font-size:13px;">Welcome to VIP! Your weekend tickets are now active until ${perdoruesi.vip_skadon_me}.</p><button class="filter-btn active" style="margin-top:20px; padding:10px 30px; background:#00e5ff; color:#000;" onclick="hapVipAbonim()">View VIP Area</button></div>`;
+        }
+
+        function hapKoeficientet(matchId, e1, e2) {
+            if(!isLogged) { hapAuthModal('login'); return; }
+            document.getElementById('modalContainerSize').style.maxWidth = '700px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = `${e1} vs ${e2}`; 
+            document.getElementById('modalTitle').style.color = "#fff";
+            document.getElementById('modalBody').innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#8ba898; font-size:15px;">${ui[gjuhaAktuale].loading}</div></div>`;
+            fetch('https://soccer1x2-api.onrender.com/api/koeficientet/' + matchId)
+            .then(res => res.json()).then(data => {
+                let h = ``;
+                if(data.koeficientet.length === 0) { h = `<div style="text-align:center; color:#8ba898; padding:20px;">${ui[gjuhaAktuale].noOdds}</div>`; } 
+                else {
+                    data.koeficientet.forEach(t => {
+                        let titulliTregut = tregjetMap[t.tregu_id] || t.tregu_id;
+                        h += `<div class="treg-box"><div class="treg-title">${titulliTregut}</div><div class="treg-grid">`;
+                        t.opsionet.forEach(o => { 
+                            let isSel = (skedinaIme[matchId] && skedinaIme[matchId].zgjedhja === o.emer) ? 'selected' : '';
+                            h += `<div class="treg-btn ${isSel}" onclick="shtoNeSkedine('${matchId}', '${o.emer}', '${o.koef}')"><span class="treg-emri">${o.emer}</span><span style="color:${isSel ? '#000' : '#f2cc60'}; font-weight:bold;">${o.koef}</span></div>`; 
+                        });
+                        h += `</div></div>`;
+                    });
+                }
+                document.getElementById('modalBody').innerHTML = h;
+            });
+        }
+
+        function hapDetajet(matchId, ekipi1, ekipi2) {
+            document.getElementById('modalContainerSize').style.maxWidth = '700px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = `${ekipi1} vs ${ekipi2}`;
+            document.getElementById('modalTitle').style.color = "#fff";
+            document.getElementById('modalBody').innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#8ba898; font-size:15px;">${ui[gjuhaAktuale].loading}</div></div>`;
+            fetch('https://soccer1x2-api.onrender.com/api/detajet/' + matchId)
+            .then(res => res.json()).then(data => {
+                let events1 = '', events2 = '';
+                if (data.evente) {
+                    data.evente.forEach(ev => {
+                        let icon = ev.lloj === "Goal" ? "⚽" : (ev.detaj.includes("Yellow") ? "🟨" : "🟥");
+                        let evStr = `<div style="margin-bottom:6px; font-size:12px; color:#c9d1d9;"><b>${ev.koha}</b> ${icon} ${ev.lojtari}</div>`;
+                        if (ev.ekipi === ekipi1) events1 += evStr; else events2 += evStr;
+                    });
+                }
+                let stats1 = '', stats2 = '';
+                if (data.statistika && data.statistika.statistikat) {
+                    data.statistika.statistikat.forEach(st => {
+                        let emriStat = st.lloji; let perc = st.lloji === "Ball Possession" ? "%" : "";
+                        stats1 += `<div style="margin-bottom:6px; font-size:12px; display:flex; justify-content:space-between; color:#c9d1d9;"><span>${emriStat}:</span> <b>${st.vler_1}${perc}</b></div>`;
+                        stats2 += `<div style="margin-bottom:6px; font-size:12px; display:flex; justify-content:space-between; color:#c9d1d9;"><span>${emriStat}:</span> <b>${st.vler_2}${perc}</b></div>`;
+                    });
+                }
+                if(!stats1) stats1 = `<div style='color:#8b949e; font-size:11px;'>${ui[gjuhaAktuale].noStats}</div>`; if(!stats2) stats2 = `<div style='color:#8b949e; font-size:11px;'>${ui[gjuhaAktuale].noStats}</div>`;
+                if(!events1) events1 = `<div style='color:#8b949e; font-size:11px;'>${ui[gjuhaAktuale].noEvents}</div>`; if(!events2) events2 = `<div style='color:#8b949e; font-size:11px;'>${ui[gjuhaAktuale].noEvents}</div>`;
+                let safeEkipi1 = ekipi1.replace(/'/g, "\'"), safeEkipi2 = ekipi2.replace(/'/g, "\'");
+                let targetMatch = null;
+                for(let liga_grup of teDhenatGlobale) { let gjetur = liga_grup.ndeshjet.find(n => n.id === matchId.toString()); if(gjetur) { targetMatch = gjetur; break; } }
+                let id1 = targetMatch ? targetMatch.ekipi_1_id : ""; let id2 = targetMatch ? targetMatch.ekipi_2_id : ""; let lid = targetMatch ? targetMatch.liga_id : ""; let sea = targetMatch ? targetMatch.sezoni : "";
+
+                document.getElementById('modalBody').innerHTML = `
+                    <div style="display:flex; width:100%; gap:15px; margin-top:10px;">
+                        <div style="flex:1; border-right:1px solid #30363d; padding-right:15px;">
+                            <div style="text-align:center; margin-bottom:15px;"><span class="clickable-team" style="color:#58a6ff; font-weight:bold; font-size:14px; cursor:pointer;" onclick="hapHistorineDheRenditjen('${id1}', '${safeEkipi1}', '${lid}', '${sea}', '${safeEkipi1}', '${safeEkipi2}')">${ekipi1} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;"></i></span></div>
+                            <div style="color:#8ba898; font-size:11px; font-weight:bold; margin-bottom:10px; border-bottom:1px dashed #30363d; padding-bottom:4px;">${ui[gjuhaAktuale].statsTitle}</div>${stats1}
+                            <div style="color:#8ba898; font-size:11px; font-weight:bold; margin-top:20px; margin-bottom:10px; border-bottom:1px dashed #30363d; padding-bottom:4px;">${ui[gjuhaAktuale].eventsTitle}</div>${events1}
+                        </div>
+                        <div style="flex:1;">
+                            <div style="text-align:center; margin-bottom:15px;"><span class="clickable-team" style="color:#58a6ff; font-weight:bold; font-size:14px; cursor:pointer;" onclick="hapHistorineDheRenditjen('${id2}', '${safeEkipi2}', '${lid}', '${sea}', '${safeEkipi1}', '${safeEkipi2}')">${ekipi2} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;"></i></span></div>
+                            <div style="color:#8ba898; font-size:11px; font-weight:bold; margin-bottom:10px; border-bottom:1px dashed #30363d; padding-bottom:4px;">${ui[gjuhaAktuale].statsTitle}</div>${stats2}
+                            <div style="color:#8ba898; font-size:11px; font-weight:bold; margin-top:20px; margin-bottom:10px; border-bottom:1px dashed #30363d; padding-bottom:4px;">${ui[gjuhaAktuale].eventsTitle}</div>${events2}
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function hapHistorineDheRenditjen(teamId, teamName, leagueId, season, team1, team2) {
+            document.getElementById('modalContainerSize').style.maxWidth = '800px'; document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = `${team1} vs ${team2}`; document.getElementById('modalTitle').style.color = "#58a6ff";
+            document.getElementById('modalBody').innerHTML = `<div class="tab-container"><button class="tab-btn active" id="btnTab1" onclick="switchTab('hist')">${ui[gjuhaAktuale].teamHist}</button><button class="tab-btn" id="btnTab2" onclick="switchTab('rend')">${ui[gjuhaAktuale].leagueStand}</button></div><div id="tabContentHist"><div class="loading-title" style="text-align:center; color:#8ba898; font-size:14px;">${ui[gjuhaAktuale].loading}</div></div><div id="tabContentRend" style="display:none;"><div class="loading-title" style="text-align:center; color:#8ba898; font-size:14px;">${ui[gjuhaAktuale].loading}</div></div>`;
+            
+            fetch('https://soccer1x2-api.onrender.com/api/historia/' + teamId)
+            .then(res => res.json()).then(data => {
+                let h = `<h4 style="color:#fff; margin-top:0; margin-bottom:15px;">${ui[gjuhaAktuale].last5} ${teamName}</h4>`;
+                data.historia.forEach(m => { h += `<div class="hist-row"><div class="hist-left"><div class="hist-top">${m.data} | ${m.ora}</div><div class="hist-teams">${m.ndeshja}</div><div style="font-size:12px; color:#8b949e;">HT: ${m.ht} | FT: <b style="color:#fff;">${m.ft}</b></div></div></div>`; });
+                document.getElementById('tabContentHist').innerHTML = h;
+            });
+            if (leagueId) {
+                fetch(`https://soccer1x2-api.onrender.com/api/renditja/${leagueId}/${season}?team=${encodeURIComponent(teamName)}`)
+                .then(res => res.json()).then(data => {
+                    let r = `<table class="renditja-table"><thead><tr><th style="width:30px;">${ui[gjuhaAktuale].pos}</th><th class="team-left">${ui[gjuhaAktuale].teamStr}</th><th>${ui[gjuhaAktuale].pStr}</th><th>${ui[gjuhaAktuale].gStr}</th><th>${ui[gjuhaAktuale].ptsStr}</th><th>${ui[gjuhaAktuale].formStr}</th></tr></thead><tbody>`;
+                    if (data.renditja && data.renditja.length > 0) {
+                        data.renditja.forEach(ek => {
+                            let formHtml = ''; if(ek.forma) { for(let char of ek.forma) { formHtml += `<span class="form-box f-${char}">${char}</span>`; } }
+                            let highlight = (ek.ekipi.includes(team1) || ek.ekipi.includes(team2)) ? 'style="background:rgba(88,166,255,0.15);"' : '';
+                            r += `<tr ${highlight}><td><b>${ek.pozicioni}</b></td><td class="team-left">${ek.ekipi}</td><td>${ek.ndeshje}</td><td>${ek.gola}</td><td><b style="color:#f2cc60;">${ek.piket}</b></td><td>${formHtml}</td></tr>`;
+                        });
+                    } else { r += `<tr><td colspan="6">${ui[gjuhaAktuale].noStandings}</td></tr>`; }
+                    r += `</tbody></table>`; document.getElementById('tabContentRend').innerHTML = r;
+                });
+            }
+        }
+
+        function switchTab(tab) {
+            document.getElementById('btnTab1').classList.remove('active'); document.getElementById('btnTab2').classList.remove('active');
+            document.getElementById('tabContentHist').style.display = 'none'; document.getElementById('tabContentRend').style.display = 'none';
+            if (tab === 'hist') { document.getElementById('btnTab1').classList.add('active'); document.getElementById('tabContentHist').style.display = 'block'; } 
+            else { document.getElementById('btnTab2').classList.add('active'); document.getElementById('tabContentRend').style.display = 'block'; }
+        }
+
+        function mbyllModal() { document.querySelectorAll('.modal-overlay').forEach(el => { el.style.display = 'none'; }); }
+        function scrollToLeague(ligaId) { const element = document.getElementById(`liga-${ligaId}`); if (element) { const topOffset = 180; window.scrollTo({ top: element.getBoundingClientRect().top + window.pageYOffset - topOffset, behavior: "smooth" }); } }
+
+        function vizatoNdeshjet() {
+            const container = document.getElementById('rezultati');
+            if (!teDhenatGlobale || teDhenatGlobale.length === 0) return;
+            const kerkim = document.getElementById('searchInput').value.toLowerCase();
+            let htmlNdeshjet = ''; let ndeshjeGjeturTotal = 0;
+            const statusetLive = ["1H", "2H", "HT", "LIVE", "PEN", "ET", "BT", "P", "INT", "SUSP"];
+            const statusetMbaruara = ["FT", "AET", "PEN", "AWD", "WO"]; 
+
+            let uniqueLeagues = [];
+            teDhenatGlobale.forEach(liga => {
+                const kaNdeshje = liga.ndeshjet.some(n => {
+                    const perputhetKerkimi = n.ndeshja.toLowerCase().includes(kerkim);
+                    let perputhetFiltri = true;
+                    if (filtriAktiv === 'LIVE') { perputhetFiltri = statusetLive.includes(n.statusi); } 
+                    else if (filtriAktiv === 'Skedina Ime') { perputhetFiltri = skedinaIme.hasOwnProperty(n.id); } 
+                    return perputhetKerkimi && perputhetFiltri;
+                });
+                if (kaNdeshje) uniqueLeagues.push(liga.liga);
+            });
+            
+            uniqueLeagues.sort((a, b) => { let rankA = LIGAT_KRYESORE_SORT.findIndex(liga_top => a.includes(liga_top)); let rankB = LIGAT_KRYESORE_SORT.findIndex(liga_top => b.includes(liga_top)); if (rankA === -1) rankA = 999; if (rankB === -1) rankB = 999; return rankA - rankB; });
+
+            let sidebarHtml = `<div class="sidebar-ligat"><h4 class="sidebar-title">${ui[gjuhaAktuale].leagues}</h4>`;
+            uniqueLeagues.forEach(league => { sidebarHtml += `<div class="liga-nav-item" onclick="scrollToLeague('${league.replace(/[^a-z0-9]/gi, '-')}')" title="${league}">${league}</div>`; });
+            sidebarHtml += `</div><div class="matches-area">`;
+
+            uniqueLeagues.forEach(leagueName => {
+                const liga = teDhenatGlobale.find(l => l.liga === leagueName);
+                if (liga) {
+                    const nd = liga.ndeshjet.filter(n => {
+                        const perputhetKerkimi = n.ndeshja.toLowerCase().includes(kerkim);
+                        let perputhetFiltri = true;
+                        if (filtriAktiv === 'LIVE') { perputhetFiltri = statusetLive.includes(n.statusi); } 
+                        else if (filtriAktiv === 'Skedina Ime') { perputhetFiltri = skedinaIme.hasOwnProperty(n.id); } 
+                        return perputhetKerkimi && perputhetFiltri;
+                    });
+
+                    if (nd.length > 0) {
+                        ndeshjeGjeturTotal += nd.length;
+                        htmlNdeshjet += `<div class="liga-header" id="liga-${liga.liga.replace(/[^a-z0-9]/gi, '-')}">🏆 ${liga.liga}</div>`;
+                        
+                        nd.forEach(n => {
+                            // KONVERTIMI NË ORËN LOKALE
+                            let localTime = n.koha_utc ? new Date(n.koha_utc).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : n.ora_sakte;
+                            let classOra = "n-ora", tekstiOra = localTime, rezultatiDjathatHtml = "";
+                            let safeEkipi1 = n.ekipi_1.replace(/'/g, "\'"), safeEkipi2 = n.ekipi_2.replace(/'/g, "\'");
+
+                            if (statusetMbaruara.includes(n.statusi)) { rezultatiDjathatHtml = `<div class="n-result-djathat clickable" onclick="hapDetajet('${n.id}', '${safeEkipi1}', '${safeEkipi2}')">${n.rezultati}</div>`; } 
+                            else if (statusetLive.includes(n.statusi)) {
+                                classOra = "n-ora live"; rezultatiDjathatHtml = `<div class="n-result-djathat clickable" style="border-color:#ff4500;" onclick="hapDetajet('${n.id}', '${safeEkipi1}', '${safeEkipi2}')"><span class="pulse-anim" style="color:#ff4500; font-size:10px; font-weight:bold; margin-right:4px;">${n.minuta}'</span>${n.rezultati}</div>`;
+                            }
+                            
+                            let sel1 = (skedinaIme[n.id] && skedinaIme[n.id].zgjedhja === '1') ? 'selected' : ''; let selX = (skedinaIme[n.id] && skedinaIme[n.id].zgjedhja === 'X') ? 'selected' : ''; let sel2 = (skedinaIme[n.id] && skedinaIme[n.id].zgjedhja === '2') ? 'selected' : '';
+                            
+                            let htmlAiBar = ""; 
+                            if (n.analiza_custom) {
+                                let translatedHint = ""; let klasaBar = "ai-prediction-bar";
+                                if (!isLogged) { translatedHint = `<span style="color:#ff7b72; cursor:pointer;" onclick="hapAuthModal('login')"><i class="fa-solid fa-lock"></i> ${ui[gjuhaAktuale].loginToSee}</span>`; klasaBar += " locked"; } 
+                                else { translatedHint = `📊 <span style="color:#58a6ff; font-weight:bold;">${ui[gjuhaAktuale].analysis}:</span> ` + (n.analiza_custom[gjuhaAktuale] || n.analiza_custom.en); }
+                                htmlAiBar = `<div class="${klasaBar}">${translatedHint}</div>`;
+                            }
+                            
+                            let customSkedinaRow = (skedinaIme[n.id] && !['1', 'X', '2'].includes(skedinaIme[n.id].zgjedhja)) ? `<div class="skedina-custom-row"><span>${ui[gjuhaAktuale].yourChoice} <b>${skedinaIme[n.id].zgjedhja}</b></span><span class="sk-val">${skedinaIme[n.id].koef}</span></div>` : "";
+                            let emriFinal = n.is_motd ? `<i class="fa-solid fa-star" style="color:#f2cc60;"></i> ` + n.ekipi_1 : n.ekipi_1;
+
+                            htmlNdeshjet += `<div class="ndeshje-box"><div class="ndeshje-main-row"><span class="${classOra}">${tekstiOra}</span><div class="n-ekipet"><span class="clickable-team" onclick="hapHistorineDheRenditjen('${n.ekipi_1_id}', '${safeEkipi1}', '${n.liga_id}', '${n.sezoni}', '${safeEkipi1}', '${safeEkipi2}')">${emriFinal}</span> - <span class="clickable-team" onclick="hapHistorineDheRenditjen('${n.ekipi_2_id}', '${safeEkipi2}', '${n.liga_id}', '${n.sezoni}', '${safeEkipi1}', '${safeEkipi2}')">${n.ekipi_2}</span></div><div class="qendra-rezultati">${rezultatiDjathatHtml}</div><div class="n-koef-grid"><button class="k-btn ${sel1}" onclick="shtoNeSkedine('${n.id}', '1', '${n.koef_1}')">${n.koef_1}</button><button class="k-btn ${selX}" onclick="shtoNeSkedine('${n.id}', 'X', '${n.koef_x}')">${n.koef_x}</button><button class="k-btn ${sel2}" onclick="shtoNeSkedine('${n.id}', '2', '${n.koef_2}')">${n.koef_2}</button></div><button class="btn-more" onclick="hapKoeficientet('${n.id}', '${safeEkipi1}', '${safeEkipi2}')"><i class="fa-solid fa-ellipsis"></i></button></div>${customSkedinaRow}${htmlAiBar}</div>`;
+                        });
+                    }
+                }
+            });
+            container.innerHTML = ndeshjeGjeturTotal > 0 ? sidebarHtml + htmlNdeshjet + `</div>` : `<div style="text-align:center; color: #8b949e; padding: 40px; width: 100%;">${ui[gjuhaAktuale].empty}</div>`;
+        }
+
+        // ==========================================
+        // HISTORIKU PA DATE & FILTRAT
+        // ==========================================
+        function ndryshoFiltra(f, b) { 
+            filtriAktiv = f; 
+            document.querySelectorAll('.filter-btn').forEach(x => x.classList.remove('active')); 
+            b.classList.add('active'); 
+            
+            if (f === 'Historiku') {
+                ngarkoHistorikunNgaDB();
+            } else {
+                document.getElementById('calendarWrapper').style.display = 'flex';
+                vizatoNdeshjet(); 
+            }
+        }
+
+        async function ngarkoHistorikunNgaDB() {
+            document.getElementById('calendarWrapper').style.display = 'none'; 
+            const container = document.getElementById('rezultati');
+            container.innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#8ba898; font-size:15px;">${ui[gjuhaAktuale].loading}</div></div>`;
+            try {
+                let res = await fetch(`https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions?select=*&statusi=in.(FT,AET,PEN,AWD,WO)&order=id.desc&limit=50`, {
+                    headers: {
+                        "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ",
+                        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
+                    }
+                });
+                let historiku = await res.json();
+                
+                if(!historiku || historiku.length === 0) {
+                    container.innerHTML = `<div style="text-align:center; padding: 40px; width:100%; color:#8ba898;">${ui[gjuhaAktuale].noPurchases}</div>`;
+                    return;
+                }
+                
+                let h = `<div class="matches-area" style="width:100%; max-width:800px; margin:0 auto; padding:10px;">`;
+                h += `<h3 style="color:#f2cc60; margin-bottom:15px; border-bottom:1px solid #30363d; padding-bottom:10px;">📊 ${ui[gjuhaAktuale].historyTab.toUpperCase()}</h3>`;
+                
+                historiku.forEach(n => {
+                    let paraSakt = n.rezultati_sakt; let rezReal = n.rezultati || "";
+                    let isWin = eshteBiletFituese(paraSakt, rezReal);
+                    let historyBadge = isWin ? `<div class="history-badge-win">✅ ${ui[gjuhaAktuale].won} (${ui[gjuhaAktuale].prediction}: ${paraSakt})</div>` : (rezReal ? `<div class="history-badge-loss">❌ ${ui[gjuhaAktuale].lost} (${ui[gjuhaAktuale].prediction}: ${paraSakt} | ${ui[gjuhaAktuale].real}: ${rezReal})</div>` : `<div style="color:#8ba898; font-size:12px; margin-top:5px;">${ui[gjuhaAktuale].pendingResult}</div>`);
+                    
+                    let txtAnaliza = n.analiza_custom ? (n.analiza_custom[gjuhaAktuale] || n.analiza_custom.en) : "";
+                    
+                    h += `<div class="ndeshje-box" style="margin-bottom:15px;">
+                            <div style="font-weight:bold; color:#fff; font-size:14px; margin-bottom:5px;">${n.ndeshja}</div>
+                            <div style="color:#58a6ff; font-size:12px; margin-bottom:8px;">${ui[gjuhaAktuale].odds}: <b style="color:#f2cc60;">${n.koef_rez_sakt}</b></div>
+                            <div class="ai-prediction-bar">📊 ${txtAnaliza}</div>
+                            ${historyBadge}
+                          </div>`;
+                });
+                h += `</div>`;
+                container.innerHTML = h;
+            } catch(e) { container.innerHTML = `<div style="text-align:center; padding: 40px; width:100%; color:#da3633;">Gabim në tërheqjen e historikut.</div>`; }
+        }
+
+        document.getElementById('searchInput').addEventListener('keyup', vizatoNdeshjet);
+
+        // ==========================================
+        // DETEKTIVI I HESHTUR (AUTO-SYNC)
+        // ==========================================
+        async function sinkronizoHeshtur() {
+            if(!isLogged || !perdoruesi || !perdoruesi.email) return;
+            try {
+                let res = await fetch(`https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users?email=eq.${perdoruesi.email}`, {
+                    headers: {
+                        "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ",
+                        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
+                    }
+                });
+                if (res.ok) {
+                    let data = await res.json();
+                    if(data && data.length > 0) {
+                        let statusiRi = data[0];
+                        let kaNdryshim = (statusiRi.isVip !== perdoruesi.isVip) || 
+                                         (statusiRi.portofoli !== perdoruesi.portofoli) || 
+                                         (JSON.stringify(statusiRi.blerjet) !== JSON.stringify(perdoruesi.blerjet));
+                        if (kaNdryshim) {
+                            let uBeVipTani = !perdoruesi.isVip && statusiRi.isVip;
+                            perdoruesi = statusiRi;
+                            ruajTeDhenat();
+                            if(document.getElementById('modalOverlay').style.display === 'flex' && document.getElementById('modalTitle').innerText.includes(ui[gjuhaAktuale].profile)) hapProfilin();
+                            if(filtriAktiv !== 'Historiku') vizatoNdeshjet();
+                            if(uBeVipTani) alert(ui[gjuhaAktuale].successTitle);
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+        setInterval(sinkronizoHeshtur, 5000);
+        window.addEventListener('focus', sinkronizoHeshtur);
+    </script>
 </body>
 </html>
