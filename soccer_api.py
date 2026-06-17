@@ -543,42 +543,164 @@ def analizo_ndeshjen_premium_master(
         prob_rez_sakt, forma_1, forma_2
     )
 
-    # ── VALUE BET (nga probabilitetet MC) ──
+    # ── VALUE BET (nga probabilitetet MC) — tani gjenerohet brenda anal_dict per gjuhe ──
     p1_mc = prob_1x2_mc["p1"]
     p2_mc = prob_1x2_mc["p2"]
-    vb_1  = detect_value_bet(p1_mc, k1)
-    vb_2  = detect_value_bet(p2_mc, k2)
-    vb_text = (
-        f"<br><b style='color:#00ff00;'>💎 Value Bet:</b> Fiton 1 (Vlera: {vb_1}%)" if vb_1
-        else f"<br><b style='color:#00ff00;'>💎 Value Bet:</b> Fiton 2 (Vlera: {vb_2}%)" if vb_2
-        else ""
-    )
+    px_mc = prob_1x2_mc["px"]
 
     # ── BLLOF DETECTION (i zgjeruar) ──
     eshte_bllof = (
         (k1 < 1.55 and p2_mc > 0.28) or
         (k2 < 1.55 and p1_mc > 0.28)
     )
-    ht_ft_text = "<br><b style='color:#ff4500;'>🔥 Ekskluzive:</b> Sugjerohet Përmbysje!" if eshte_bllof else ""
 
-    # ── ANALIZA TEKSTUALE ──
-    win1_pct = int(forma_1["win_rate"] * 100)
-    win2_pct = int(forma_2["win_rate"] * 100)
+    # ── ANALIZA TEKSTUALE NË 5 GJUHË (Versioni i ri - i përgjithshëm) ──
 
-    if eshte_bllof:
-        anal_dict = {"sq": f"⚠️ <b>Risk (Kurth i Tregut):</b> Analiza Monte Carlo (50k sim.) tregon anomali. <br><b style='color:#f2cc60;'>Sugjerim:</b> Surprizë kundër favoritit.{ht_ft_text}{vb_text}"}
-    elif g1 == g2:
-        anal_dict = {"sq": f"Përplasje ekuilibri (xG: {xg_1:.1f} vs {xg_2:.1f}). <br><b style='color:#f2cc60;'>Sugjerim:</b> Të dyja shënojnë (GG) ose Barazim.{ht_ft_text}{vb_text}"}
-    elif g1 > g2:
-        if (g1 + g2) >= 3:
-            anal_dict = {"sq": f"<b>{ekipi_1}</b> dominon (ELO: {int(elo_1)}, Forma: {win1_pct}%). <br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Mbi 2.5 gola.{ht_ft_text}{vb_text}"}
-        else:
-            anal_dict = {"sq": f"<b>{ekipi_1}</b> kontrollon taktikisht (Forma: {win1_pct}%, xG: {xg_1:.1f}).<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_1} ose Nën 3.5 gola.{ht_ft_text}{vb_text}"}
+    # Përkthimet e zgjedhura
+    vb_translations = {"sq": "💎 Value Bet:", "en": "💎 Value Bet:",
+                       "de": "💎 Value Bet:", "fr": "💎 Pari Valeur:",
+                       "it": "💎 Value Bet:"}
+    sugg_label = {"sq": "Sugjerim", "en": "Suggestion",
+                  "de": "Empfehlung", "fr": "Suggestion", "it": "Suggerimento"}
+    fitues_label = {"sq": "Fiton", "en": "Wins",
+                    "de": "Gewinnt", "fr": "Gagne", "it": "Vince"}
+    over_label = {"sq": "Mbi", "en": "Over", "de": "Über", "fr": "Plus de", "it": "Oltre"}
+    under_label = {"sq": "Nën", "en": "Under", "de": "Unter", "fr": "Moins de", "it": "Sotto"}
+    gola_label = {"sq": "gola", "en": "goals", "de": "Tore", "fr": "buts", "it": "gol"}
+
+    # Përcaktimi i FAVORITIT bazuar në PARASHIKIMIN (jo në probabilitete teknike)
+    # g1 = parashikimi gola_ekipi_1, g2 = parashikimi gola_ekipi_2
+    if g1 > g2:
+        fituesi_id = 1
+        fituesi_emer = ekipi_1
+        humbsi_emer = ekipi_2
+        p_fituesi = p1_mc
+        koef_fituesi = k1
+    elif g2 > g1:
+        fituesi_id = 2
+        fituesi_emer = ekipi_2
+        humbsi_emer = ekipi_1
+        p_fituesi = p2_mc
+        koef_fituesi = k2
     else:
-        if (g1 + g2) >= 3:
-            anal_dict = {"sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë (Forma: {win2_pct}%, xG: {xg_2:.1f}).<br><b style='color:#f2cc60;'>Sugjerim:</b> Fiton {ekipi_2} ose Mbi 2.5 gola.{ht_ft_text}{vb_text}"}
+        fituesi_id = 0  # barazim
+        fituesi_emer = ""
+        humbsi_emer = ""
+        p_fituesi = px_mc
+        koef_fituesi = kx
+
+    # VALUE BET: kontrollohet VETËM në drejtimin që përputhet me parashikimin
+    def gjeneroVbText(gj):
+        if fituesi_id == 0:
+            # Për barazim, kontrollo VB në X
+            vb = detect_value_bet(px_mc, kx)
+            if vb:
+                draw_label = {"sq": "Barazim", "en": "Draw", "de": "Unentschieden",
+                              "fr": "Match Nul", "it": "Pareggio"}
+                return f"<br><b style='color:#00ff00;'>{vb_translations[gj]}</b> {draw_label[gj]} (Vlera: {vb}%)"
+            return ""
+        vb = detect_value_bet(p_fituesi, koef_fituesi)
+        if vb:
+            return f"<br><b style='color:#00ff00;'>{vb_translations[gj]}</b> {fitues_label[gj]} {fituesi_emer} (Vlera: {vb}%)"
+        return ""
+
+    bllof_msg = {
+        "sq": "🔥 Ekskluzive: Sugjerohet Përmbysje!",
+        "en": "🔥 Exclusive: Comeback suggested!",
+        "de": "🔥 Exklusiv: Comeback vorgeschlagen!",
+        "fr": "🔥 Exclusif: Retournement suggéré!",
+        "it": "🔥 Esclusivo: Rimonta suggerita!"
+    }
+
+    def gjeneroHtFt(gj):
+        return f"<br><b style='color:#ff4500;'>{bllof_msg[gj]}</b>" if eshte_bllof else ""
+
+    # ── ANALIZAT E PËRGJITHSHME (pa detaje teknike si ELO, xG, Forma %) ──
+    # User-it i japim VETËM 20-30% të informacionit teknik. Fjalori i butë.
+    anal_dict = {}
+
+    for gj in ["sq", "en", "de", "fr", "it"]:
+        vb_text_gj = gjeneroVbText(gj)
+        ht_ft_text_gj = gjeneroHtFt(gj)
+
+        if eshte_bllof:
+            # Risk - kurth i tregut
+            risk_text = {
+                "sq": f"⚠️ <b>Vëmendje:</b> Tregjet po reagojnë në kah të kundërt me të dhënat tona statistikore. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Mundësi për surprizë.",
+                "en": f"⚠️ <b>Attention:</b> Markets are reacting opposite to our statistical data. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Possible upset.",
+                "de": f"⚠️ <b>Achtung:</b> Märkte reagieren gegensätzlich zu unseren statistischen Daten. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Überraschung möglich.",
+                "fr": f"⚠️ <b>Attention:</b> Les marchés réagissent à l'opposé de nos données statistiques. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Possible surprise.",
+                "it": f"⚠️ <b>Attenzione:</b> I mercati reagiscono in modo opposto ai nostri dati statistici. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Possibile sorpresa.",
+            }
+            anal_dict[gj] = f"{risk_text[gj]}{ht_ft_text_gj}{vb_text_gj}"
+
+        elif g1 == g2:
+            # Barazim
+            if (g1 + g2) >= 2:
+                # Barazim me gola (1-1, 2-2)
+                bal_text = {
+                    "sq": f"Ndeshje e ekuilibruar mes dy ekipeve me potencial të mirë sulmues. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Të dyja shënojnë (GG) ose barazim.",
+                    "en": f"Balanced match between two teams with good attacking potential. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Both teams to score (BTTS) or Draw.",
+                    "de": f"Ausgeglichenes Spiel zwischen zwei Teams mit guter Angriffsstärke. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Beide treffen (BTTS) oder Unentschieden.",
+                    "fr": f"Match équilibré entre deux équipes avec un bon potentiel offensif. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Les deux marquent (BTTS) ou Match Nul.",
+                    "it": f"Partita equilibrata tra due squadre con buon potenziale offensivo. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Entrambe segnano (GG) o Pareggio.",
+                }
+            else:
+                # Barazim taktik (0-0)
+                bal_text = {
+                    "sq": f"Ndeshje taktike, ku të dyja ekipet ruajnë ekuilibrin defensiv. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Barazim ose nën 2.5 gola.",
+                    "en": f"Tactical match where both teams maintain defensive balance. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Draw or Under 2.5 goals.",
+                    "de": f"Taktisches Spiel, bei dem beide Teams das defensive Gleichgewicht halten. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Unentschieden oder Unter 2.5 Tore.",
+                    "fr": f"Match tactique où les deux équipes maintiennent l'équilibre défensif. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Match Nul ou Moins de 2.5 buts.",
+                    "it": f"Partita tattica dove entrambe le squadre mantengono l'equilibrio difensivo. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> Pareggio o Sotto 2.5 gol.",
+                }
+            anal_dict[gj] = f"{bal_text[gj]}{ht_ft_text_gj}{vb_text_gj}"
+
+        elif g1 > g2:
+            # Ekipi 1 fiton
+            if (g1 + g2) >= 3:
+                # Fitore me shumë gola - DOMINIM
+                dom_text = {
+                    "sq": f"<b>{ekipi_1}</b> tregon avantazh të qartë sulmues dhe pritet të imponojë ritmin. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} ose {over_label[gj]} 2.5 {gola_label[gj]}.",
+                    "en": f"<b>{ekipi_1}</b> shows clear attacking advantage and is expected to dictate the pace. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} or {over_label[gj]} 2.5 {gola_label[gj]}.",
+                    "de": f"<b>{ekipi_1}</b> zeigt klaren Angriffsvorteil und wird das Tempo bestimmen. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} oder {over_label[gj]} 2.5 {gola_label[gj]}.",
+                    "fr": f"<b>{ekipi_1}</b> montre un net avantage offensif et devrait imposer le rythme. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} ou {over_label[gj]} 2.5 {gola_label[gj]}.",
+                    "it": f"<b>{ekipi_1}</b> mostra chiaro vantaggio offensivo e dovrebbe dettare il ritmo. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} o {over_label[gj]} 2.5 {gola_label[gj]}.",
+                }
+                anal_dict[gj] = f"{dom_text[gj]}{ht_ft_text_gj}{vb_text_gj}"
+            else:
+                # Fitore taktike (1-0, 2-1)
+                ctrl_text = {
+                    "sq": f"<b>{ekipi_1}</b> ka avantazhin e fushës dhe pritet të menaxhojë lojën. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} ose {under_label[gj]} 3.5 {gola_label[gj]}.",
+                    "en": f"<b>{ekipi_1}</b> has the home advantage and is expected to control the game. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} or {under_label[gj]} 3.5 {gola_label[gj]}.",
+                    "de": f"<b>{ekipi_1}</b> hat den Heimvorteil und wird das Spiel kontrollieren. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} oder {under_label[gj]} 3.5 {gola_label[gj]}.",
+                    "fr": f"<b>{ekipi_1}</b> a l'avantage du terrain et devrait contrôler le jeu. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} ou {under_label[gj]} 3.5 {gola_label[gj]}.",
+                    "it": f"<b>{ekipi_1}</b> ha il vantaggio del campo e dovrebbe controllare il gioco. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_1} o {under_label[gj]} 3.5 {gola_label[gj]}.",
+                }
+                anal_dict[gj] = f"{ctrl_text[gj]}{ht_ft_text_gj}{vb_text_gj}"
+
         else:
-            anal_dict = {"sq": f"Ndeshje ku <b>{ekipi_2}</b> menaxhon lojën (xG: {xg_2:.1f} vs {xg_1:.1f}).<br><b style='color:#f2cc60;'>Sugjerim:</b> X2 ose Nën 2.5 gola.{ht_ft_text}{vb_text}"}
+            # Ekipi 2 fiton
+            if (g1 + g2) >= 3:
+                # Fitore në transfertë me gola
+                away_text = {
+                    "sq": f"<b>{ekipi_2}</b> performon shkëlqyeshëm në transfertë dhe është favorit i fshehur. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} ose {over_label[gj]} 2.5 {gola_label[gj]}.",
+                    "en": f"<b>{ekipi_2}</b> performs excellently away and is a hidden favorite. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} or {over_label[gj]} 2.5 {gola_label[gj]}.",
+                    "de": f"<b>{ekipi_2}</b> spielt auswärts hervorragend und ist ein versteckter Favorit. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} oder {over_label[gj]} 2.5 {gola_label[gj]}.",
+                    "fr": f"<b>{ekipi_2}</b> performe excellemment à l'extérieur et est un favori caché. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} ou {over_label[gj]} 2.5 {gola_label[gj]}.",
+                    "it": f"<b>{ekipi_2}</b> performa eccellentemente in trasferta ed è un favorito nascosto. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} o {over_label[gj]} 2.5 {gola_label[gj]}.",
+                }
+                anal_dict[gj] = f"{away_text[gj]}{ht_ft_text_gj}{vb_text_gj}"
+            else:
+                # Fitore taktike e transfertës
+                manage_text = {
+                    "sq": f"<b>{ekipi_2}</b> ka momentum të mirë dhe pritet të menaxhojë ndeshjen. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} ose X2.",
+                    "en": f"<b>{ekipi_2}</b> has good momentum and is expected to manage the match. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} or X2.",
+                    "de": f"<b>{ekipi_2}</b> hat guten Schwung und wird das Spiel verwalten. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} oder X2.",
+                    "fr": f"<b>{ekipi_2}</b> a un bon élan et devrait gérer le match. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} ou X2.",
+                    "it": f"<b>{ekipi_2}</b> ha un buon slancio e dovrebbe gestire la partita. <br><b style='color:#f2cc60;'>{sugg_label[gj]}:</b> {fitues_label[gj]} {ekipi_2} o X2.",
+                }
+                anal_dict[gj] = f"{manage_text[gj]}{ht_ft_text_gj}{vb_text_gj}"
 
     koef_rez_sakt = min(40.0, (1 / prob_rez_sakt) * 0.85) if prob_rez_sakt > 0 else 10.0
 
@@ -627,12 +749,77 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
 SKEDINA_CACHE       = {}
 SKEDINA_LAST_UPDATE = {}
 
+# ==========================================
+# BACKGROUND TASK: Auto-update PPM finished matches
+# ==========================================
+
+def task_perditeso_ppm_te_perfunduara():
+    """
+    Kontrollon në Supabase për ndeshje PPM të paplotësuara dhe i përditëson.
+    Thirret AUTOMATIKISHT në sfond çdo herë që ngarkohet skedina.
+    Përdoruesi nuk pret — vetëm ata që hapin /api/skedina pas mbarimit do ta marrin.
+    """
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=id,statusi&statusi=not.in.(FT,AET,PEN,AWD,WO)",
+            headers=SUPABASE_HEADERS, timeout=8
+        )
+        if res.status_code != 200:
+            return
+        ndeshjet_pa_mbaruar = res.json()
+        if not ndeshjet_pa_mbaruar:
+            return
+
+        match_ids = [str(n["id"]) for n in ndeshjet_pa_mbaruar]
+        # Batch deri 20 IDs sipas API-Sports limit
+        for i in range(0, len(match_ids), 20):
+            batch = match_ids[i:i+20]
+            ids_str = "-".join(batch)
+            try:
+                api_res = requests.get(
+                    "https://v3.football.api-sports.io/fixtures",
+                    headers=HEADERS, params={"ids": ids_str}, timeout=10
+                )
+                fixtures = api_res.json().get("response", [])
+            except:
+                continue
+
+            for fx in fixtures:
+                fix_id = str(fx["fixture"]["id"])
+                status = fx["fixture"]["status"]["short"]
+                gola_h = fx["goals"]["home"]
+                gola_a = fx["goals"]["away"]
+
+                if status in ["FT", "AET", "PEN", "AWD", "WO"] and gola_h is not None:
+                    rezultati_str = f"{gola_h} - {gola_a}"
+                    update_payload = {
+                        "statusi":   status,
+                        "rezultati": rezultati_str,
+                        "ora":       "FT",
+                        "minuta":    90,
+                    }
+                    try:
+                        requests.patch(
+                            f"{SUPABASE_URL_PREDS}?id=eq.{fix_id}",
+                            headers=SUPABASE_HEADERS,
+                            json=update_payload, timeout=5
+                        )
+                    except:
+                        pass
+    except:
+        pass
+
+
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
     koha_tani   = time.time()
 
-    if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 600):
+    # ── AUTO-REFRESH PPM TË PËRFUNDUARA (në sfond, pa bllokuar user) ──
+    background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
+
+    # Cache 2 minuta (e ulim që përditësimet të vijnë më shpejt)
+    if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 120):
         return {"mesazhi": "Sukses", "skedina_grupuar": SKEDINA_CACHE[data_target]}
 
     try:
@@ -887,12 +1074,106 @@ def keep_alive_ping():
         "service":   "soccer1x2-api"
     }
 
+
+# ==========================================
+# AUTO-UPDATE I REZULTATIVE TË PËRFUNDUARA
+# ==========================================
+# Ky endpoint duhet të thirret çdo 30 min nga UptimeRobot ose cron.
+# Lexon nga predictions ndeshjet që ende NUK kanë mbaruar,
+# kontrollon te API-Sports dhe i përditëson me rezultatin final.
+
+@app.get("/api/refresh_results")
+def perditeso_rezultatet_perfunduara():
+    """
+    Lexon ndeshjet PPM të paplotësuara dhe i përditëson nga API-Sports.
+    Konfigurim UptimeRobot:
+      URL: https://soccer1x2-api.onrender.com/api/refresh_results
+      Interval: 30 minuta (ose 60 min nëse ke API limit)
+    """
+    try:
+        # Merr të gjitha ndeshjet që nuk kanë mbaruar
+        res = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi&statusi=not.in.(FT,AET,PEN,AWD,WO)",
+            headers=SUPABASE_HEADERS,
+            timeout=10
+        )
+        if res.status_code != 200:
+            return {"sukses": False, "mesazhi": f"DB error: {res.status_code}"}
+
+        ndeshjet_pa_mbaruar = res.json()
+        if not ndeshjet_pa_mbaruar:
+            return {"sukses": True, "perditesuara": 0, "mesazhi": "Të gjitha ndeshjet janë të përditësuara."}
+
+        u_perditesuan = 0
+        ende_aktive   = 0
+        deshtuan      = 0
+
+        # Merr ID-të dhe i kontrollon në batch
+        match_ids = [str(n["id"]) for n in ndeshjet_pa_mbaruar]
+
+        # API-Sports lejon max 20 IDs në një kërkesë
+        for i in range(0, len(match_ids), 20):
+            batch = match_ids[i:i+20]
+            ids_str = "-".join(batch)
+
+            try:
+                api_res = requests.get(
+                    "https://v3.football.api-sports.io/fixtures",
+                    headers=HEADERS,
+                    params={"ids": ids_str},
+                    timeout=10
+                )
+                fixtures = api_res.json().get("response", [])
+            except:
+                deshtuan += len(batch)
+                continue
+
+            for fx in fixtures:
+                fix_id    = str(fx["fixture"]["id"])
+                status    = fx["fixture"]["status"]["short"]
+                gola_h    = fx["goals"]["home"]
+                gola_a    = fx["goals"]["away"]
+
+                if status in ["FT", "AET", "PEN", "AWD", "WO"] and gola_h is not None:
+                    # Përditëso në DB
+                    rezultati_str = f"{gola_h} - {gola_a}"
+                    update_payload = {
+                        "statusi":   status,
+                        "rezultati": rezultati_str,
+                        "ora":       "FT",
+                        "minuta":    90,
+                    }
+                    try:
+                        requests.patch(
+                            f"{SUPABASE_URL_PREDS}?id=eq.{fix_id}",
+                            headers=SUPABASE_HEADERS,
+                            json=update_payload,
+                            timeout=5
+                        )
+                        u_perditesuan += 1
+                    except:
+                        deshtuan += 1
+                else:
+                    ende_aktive += 1
+
+        return {
+            "sukses":         True,
+            "perditesuara":   u_perditesuan,
+            "ende_aktive":    ende_aktive,
+            "deshtuan":       deshtuan,
+            "total_kontrolla": len(ndeshjet_pa_mbaruar),
+        }
+    except Exception as e:
+        return {"sukses": False, "mesazhi": str(e)}
+
 # ==========================================
 # ENDPOINTI LIVE
 # ==========================================
 
 @app.get("/api/live")
-def merr_ndeshjet_live():
+def merr_ndeshjet_live(background_tasks: BackgroundTasks):
+    # Auto-refresh PPM të mbaruara në sfond
+    background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
     try:
         response   = requests.get(
             "https://v3.football.api-sports.io/fixtures",
@@ -1307,7 +1588,186 @@ def update_elo_midnight():
 
 @app.get("/api/vip_weekend")
 def merr_vip_weekend():
-    return {"mesazhi": "Në pritje", "is_ready": False}
+    """
+    Gjeneron skedinën VIP të fundjavës:
+    - Kombinim 3-5 ndeshjesh me besueshmëri më të lartë
+    - Total odds duhet të jetë ≥ 10.0
+    - Vetëm nga e Premtja deri e Diela (3 ditë)
+    - Cache 1 orë (që të mos rilexohet API për çdo user)
+    """
+    koha_tani = time.time()
+
+    # Kontrollo cache
+    if hasattr(merr_vip_weekend, "_cache"):
+        cached, cached_time = merr_vip_weekend._cache
+        if koha_tani - cached_time < 3600:  # 1 orë
+            return cached
+
+    sot = datetime.utcnow()
+    dita_jave = sot.weekday()  # 0=Hënë, 4=Premte, 5=Shtunë, 6=Diel
+
+    # VIP gjenerohet vetëm të Premten, Shtunën, Dielën
+    if dita_jave not in [4, 5, 6]:
+        result = {
+            "is_ready": False,
+            "mesazhi":  "Skedina VIP gjenerohet vetëm gjatë fundjavës.",
+            "skedina":  []
+        }
+        merr_vip_weekend._cache = (result, koha_tani)
+        return result
+
+    # Llogarit datat e fundjavës (e Premtja, Shtuna, Dielë)
+    if dita_jave == 4:    # E Premte
+        dita_premtje = sot
+    elif dita_jave == 5:  # E Shtunë
+        dita_premtje = sot - timedelta(days=1)
+    else:                 # E Dielë
+        dita_premtje = sot - timedelta(days=2)
+
+    # Mbledh kandidatët nga 3 ditët
+    kandidatet = []
+    for offset in range(3):
+        data_target = (dita_premtje + timedelta(days=offset)).strftime('%Y-%m-%d')
+        try:
+            response = requests.get(
+                "https://v3.football.api-sports.io/fixtures",
+                headers=HEADERS, params={"date": data_target}, timeout=10
+            )
+            te_dhenat = response.json()
+        except:
+            continue
+
+        if "response" not in te_dhenat:
+            continue
+
+        # Merr koeficientët për këtë ditë
+        BOOKMAKERS_PRIORITY = [8, 4, 6, 2, 11]
+        odds_dite = {}
+        for bookmaker_id in BOOKMAKERS_PRIORITY:
+            try:
+                page = 1
+                while page <= 5:
+                    res_odds = requests.get(
+                        "https://v3.football.api-sports.io/odds",
+                        headers=HEADERS,
+                        params={"date": data_target, "bookmaker": bookmaker_id, "page": page},
+                        timeout=8
+                    ).json()
+                    if "response" not in res_odds or not res_odds["response"]:
+                        break
+                    for item in res_odds["response"]:
+                        fix_id = str(item["fixture"]["id"])
+                        if fix_id in odds_dite and odds_dite[fix_id]["1"]:
+                            continue
+                        try:
+                            bets = item["bookmakers"][0]["bets"]
+                            mw = next((b for b in bets if b["id"] == 1), None)
+                            if mw:
+                                v = mw["values"]
+                                k1 = next((x["odd"] for x in v if x["value"] == "Home"), None)
+                                kx = next((x["odd"] for x in v if x["value"] == "Draw"), None)
+                                k2 = next((x["odd"] for x in v if x["value"] == "Away"), None)
+                                if k1 and kx and k2:
+                                    odds_dite[fix_id] = {"1": k1, "X": kx, "2": k2}
+                        except:
+                            pass
+                    paging = res_odds.get("paging", {})
+                    if page >= paging.get("total", 1):
+                        break
+                    page += 1
+            except:
+                continue
+
+        # Analizo vetëm ndeshjet VIP
+        for n in te_dhenat["response"]:
+            emri_liges = f"{n['league']['country']} - {n['league']['name']}"
+            if not is_vip_league(emri_liges):
+                continue
+            id_ndeshja = str(n["fixture"]["id"])
+            if id_ndeshja not in odds_dite:
+                continue
+            statusi_kod = n["fixture"]["status"]["short"]
+            if statusi_kod in ["FT", "AET", "PEN"]:
+                continue  # Ka mbaruar, skip
+
+            try:
+                ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
+                ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
+                k1 = odds_dite[id_ndeshja]["1"]
+                kx = odds_dite[id_ndeshja]["X"]
+                k2 = odds_dite[id_ndeshja]["2"]
+
+                dna_1 = merr_dna_nga_db(n["teams"]["home"]["id"])
+                dna_2 = merr_dna_nga_db(n["teams"]["away"]["id"])
+
+                analiza, bes, rez_sakt, koef_str, extradb = analizo_ndeshjen_premium_master(
+                    id_ndeshja, ekipi_1, ekipi_2,
+                    n["teams"]["home"]["id"], n["teams"]["away"]["id"],
+                    k1, kx, k2, emri_liges, [], dna_1=dna_1, dna_2=dna_2
+                )
+
+                try:
+                    ora_sakte = datetime.strptime(
+                        n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S"
+                    ).strftime("%H:%M")
+                except:
+                    ora_sakte = "N/A"
+
+                kandidatet.append({
+                    "id":              id_ndeshja,
+                    "ndeshja":         f"{ekipi_1} vs {ekipi_2}",
+                    "data":            data_target,
+                    "ora":             ora_sakte,
+                    "rezultati_sakt":  rez_sakt,
+                    "koef_rez_sakt":   koef_str,
+                    "besueshmeria":    bes,
+                    "liga":            emri_liges,
+                })
+            except:
+                continue
+
+    # Rendit nga besueshmëria më e lartë
+    kandidatet.sort(key=lambda x: x["besueshmeria"], reverse=True)
+
+    # Zgjedh kombinimin që arrin total odds ≥ 10.0
+    # Strategjia: fillo me top 1, shto deri ku totali kalon 10
+    skedina_final = []
+    total_odds = 1.0
+
+    for kandidat in kandidatet:
+        if total_odds >= 10.0 and len(skedina_final) >= 3:
+            break
+        try:
+            k = float(kandidat["koef_rez_sakt"])
+            if k <= 1.0 or k > 50:
+                continue
+            skedina_final.append(kandidat)
+            total_odds *= k
+            if total_odds >= 10.0 and len(skedina_final) >= 3:
+                break
+        except:
+            continue
+        if len(skedina_final) >= 5:
+            break
+
+    # Nëse nuk arrin 10, dështoi → kthe ekran "kapital protection"
+    if total_odds < 10.0 or len(skedina_final) < 2:
+        result = {
+            "is_ready": False,
+            "mesazhi":  "Sistemi nuk gjeti kombinim me siguri të mjaftueshme këtë fundjavë.",
+            "skedina":  []
+        }
+        merr_vip_weekend._cache = (result, koha_tani)
+        return result
+
+    result = {
+        "is_ready":   True,
+        "skedina":    skedina_final,
+        "total_odds": round(total_odds, 2),
+        "mesazhi":    f"Skedina VIP gati! {len(skedina_final)} ndeshje, koef total: {round(total_odds, 2)}"
+    }
+    merr_vip_weekend._cache = (result, koha_tani)
+    return result
 
 @app.get("/api/detajet/{match_id}")
 def merr_detajet_ndeshjes(match_id: int):
