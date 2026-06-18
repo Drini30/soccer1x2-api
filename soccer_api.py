@@ -6,7 +6,65 @@ import requests
 import random
 import math
 import time
+import os
 import numpy as np
+
+# ==========================================
+# NGARKIMI I MODELEVE XGBOOST (HYBRID)
+# ==========================================
+# Modelet trajnohen JASHTË (Colab) dhe vendosen në repo si .json.
+# Nëse mungojnë ose dështojnë → fallback te formula matematikore.
+XGB_MODEL_HOME = None
+XGB_MODEL_AWAY = None
+XGB_GATI = False
+
+# Rendi EKZAKT i features siç u trajnua modeli (mos e ndrysho!)
+XGB_FEATURES = [
+    "home_forma_pts", "away_forma_pts",
+    "home_avg_scored", "away_avg_scored",
+    "home_avg_conceded", "away_avg_conceded",
+    "home_avg_scored_home", "home_avg_conceded_home",
+    "away_avg_scored_away", "away_avg_conceded_away",
+    "home_avg_yellow", "away_avg_yellow",
+    "home_avg_red", "away_avg_red",
+    "home_attack_strength", "away_attack_strength",
+    "home_defense_strength", "away_defense_strength",
+    "home_volatility", "away_volatility",
+    "home_rest_days", "away_rest_days",
+    "odd_home", "odd_draw", "odd_away",
+    "tipi_ndeshjes",
+]
+
+# Vlera mesatare (nga trajnimi) për features që s'i kemi live.
+# Përdoren si imputation — kishin rëndësi të ulët, efekt minimal.
+XGB_DEFAULTS = {
+    "home_avg_yellow": 1.75, "away_avg_yellow": 1.75,
+    "home_avg_red": 0.10, "away_avg_red": 0.10,
+    "home_volatility": 1.47, "away_volatility": 1.47,
+    "home_rest_days": 7.0, "away_rest_days": 7.0,
+}
+
+def _ngarko_modelet_xgb():
+    """Ngarkon modelet XGBoost një herë në nisje. Fail-safe."""
+    global XGB_MODEL_HOME, XGB_MODEL_AWAY, XGB_GATI
+    try:
+        import xgboost as xgb
+        rruga_home = os.path.join(os.path.dirname(__file__), "model_gola_home.json")
+        rruga_away = os.path.join(os.path.dirname(__file__), "model_gola_away.json")
+        if os.path.exists(rruga_home) and os.path.exists(rruga_away):
+            XGB_MODEL_HOME = xgb.XGBRegressor()
+            XGB_MODEL_HOME.load_model(rruga_home)
+            XGB_MODEL_AWAY = xgb.XGBRegressor()
+            XGB_MODEL_AWAY.load_model(rruga_away)
+            XGB_GATI = True
+            print("✅ Modelet XGBoost u ngarkuan — Hybrid AKTIV.")
+        else:
+            print("⚠️ Modelet XGBoost nuk u gjetën — përdoret vetëm formula matematikore.")
+    except Exception as e:
+        print(f"⚠️ XGBoost nuk u ngarkua ({e}) — fallback te formula.")
+        XGB_GATI = False
+
+_ngarko_modelet_xgb()
 
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
@@ -371,6 +429,98 @@ def llogarit_xg_te_perparuara(
     return round(xg_1_final, 3), round(xg_2_final, 3)
 
 # ==========================================
+# MODULI 3.5: HYBRID — XGBOOST + FALLBACK
+# ==========================================
+
+def llogarit_xg_hybrid(
+    forma_1: dict, forma_2: dict,
+    p1_real: float, p2_real: float,
+    k1: float, kx: float, k2: float,
+    emri_liges: str,
+    xg_math_1: float, xg_math_2: float,
+) -> tuple:
+    """
+    HYBRID: kombinon XGBoost (nëse gati) me xG matematikore.
+    - XGBoost jep golat bazë nga 26 features.
+    - Kombinohet 55% XGBoost + 45% math (XGBoost peshë më të madhe).
+    - Nëse XGBoost s'është gati → kthen vetëm math (fallback i plotë).
+    Kthen: (xg_1, xg_2, burimi)
+    """
+    if not XGB_GATI:
+        return xg_math_1, xg_math_2, "math"
+
+    try:
+        # Tipi i ndeshjes (0=ligë, 1=kupë klubesh, 2=kombëtare)
+        tipi = _percakto_tipi_ndeshjes(emri_liges)
+
+        # Forca relative (attack/defense vs mesatarja ~1.35)
+        MES = 1.35
+        h_scored = forma_1.get("avg_gola_shenuar", 1.3)
+        h_conceded = forma_1.get("avg_gola_prane", 1.3)
+        a_scored = forma_2.get("avg_gola_shenuar", 1.3)
+        a_conceded = forma_2.get("avg_gola_prane", 1.3)
+
+        # Ndërto vektorin e features në RENDIN EKZAKT të trajnimit
+        vlerat = {
+            "home_forma_pts": forma_1.get("piket_forma", 7.0),
+            "away_forma_pts": forma_2.get("piket_forma", 7.0),
+            "home_avg_scored": h_scored,
+            "away_avg_scored": a_scored,
+            "home_avg_conceded": h_conceded,
+            "away_avg_conceded": a_conceded,
+            "home_avg_scored_home": forma_1.get("avg_shenuar_home", h_scored),
+            "home_avg_conceded_home": forma_1.get("avg_prane_home", h_conceded),
+            "away_avg_scored_away": forma_2.get("avg_shenuar_away", a_scored),
+            "away_avg_conceded_away": forma_2.get("avg_prane_away", a_conceded),
+            "home_avg_yellow": XGB_DEFAULTS["home_avg_yellow"],
+            "away_avg_yellow": XGB_DEFAULTS["away_avg_yellow"],
+            "home_avg_red": XGB_DEFAULTS["home_avg_red"],
+            "away_avg_red": XGB_DEFAULTS["away_avg_red"],
+            "home_attack_strength": round(h_scored / MES, 3),
+            "away_attack_strength": round(a_scored / MES, 3),
+            "home_defense_strength": round(h_conceded / MES, 3),
+            "away_defense_strength": round(a_conceded / MES, 3),
+            "home_volatility": XGB_DEFAULTS["home_volatility"],
+            "away_volatility": XGB_DEFAULTS["away_volatility"],
+            "home_rest_days": XGB_DEFAULTS["home_rest_days"],
+            "away_rest_days": XGB_DEFAULTS["away_rest_days"],
+            "odd_home": k1, "odd_draw": kx, "odd_away": k2,
+            "tipi_ndeshjes": tipi,
+        }
+        vektori = np.array([[vlerat[f] for f in XGB_FEATURES]], dtype=float)
+
+        xgb_h = float(XGB_MODEL_HOME.predict(vektori)[0])
+        xgb_a = float(XGB_MODEL_AWAY.predict(vektori)[0])
+
+        # Kombinim: 55% XGBoost + 45% math
+        W_XGB = 0.55
+        xg_1 = W_XGB * xgb_h + (1 - W_XGB) * xg_math_1
+        xg_2 = W_XGB * xgb_a + (1 - W_XGB) * xg_math_2
+
+        xg_1 = float(np.clip(xg_1, 0.30, 4.20))
+        xg_2 = float(np.clip(xg_2, 0.30, 4.20))
+        return round(xg_1, 3), round(xg_2, 3), "hybrid"
+
+    except Exception as e:
+        # Çdo gabim → fallback i sigurt te math
+        print(f"⚠️ Hybrid dështoi ({e}) — fallback math.")
+        return xg_math_1, xg_math_2, "math"
+
+
+def _percakto_tipi_ndeshjes(emri_liges: str) -> int:
+    """0=ligë, 1=kupë klubesh, 2=kombëtare."""
+    e = emri_liges.lower()
+    kupa_klub = ["champions league", "europa league", "conference league"]
+    kombetare = ["world cup", "euro", "copa america", "nations league"]
+    for k in kupa_klub:
+        if k in e:
+            return 1
+    for k in kombetare:
+        if k in e:
+            return 2
+    return 0
+
+# ==========================================
 # MODULI 4 (V2): MONTE CARLO ME NUMPY
 # ==========================================
 
@@ -561,6 +711,13 @@ def analizo_ndeshjen_premium_master(
         forma_1, forma_2,
         elo_1 * desp_1, elo_2 * desp_2,
         p1_real, p2_real
+    )
+
+    # ── HYBRID: kombino me XGBoost (nëse gati; ndryshe mban math) ──
+    xg_1, xg_2, burimi_xg = llogarit_xg_hybrid(
+        forma_1, forma_2, p1_real, p2_real,
+        k1, kx, k2, emri_liges,
+        xg_1, xg_2
     )
 
     # Apliko clutch
