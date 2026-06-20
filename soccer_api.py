@@ -239,24 +239,17 @@ def login_perdorues(data: LoginData):
 
 @app.post("/api/update_user")
 def perditeso_perdorues(user_data: dict):
-    # ⚠️ HAPI 2: këtu do hiqen fushat monetare (isVip/portofoli/blerjet/vip_skadon_me).
-    #    Mbetet funksional TANI që rrjedha aktuale të mos prishet para rewire-it.
+    # I MBYLLUR: fushat monetare (isVip/portofoli/blerjet/vip_skadon_me) ndryshohen
+    # VETËM nga endpoint-et server-autoritare (ppm/vip/cryptomus webhook).
+    # Klienti lejohet të ndryshojë vetëm profilin jo-monetar.
     email = user_data.get("email", "").lower().strip()
-    if email:
-        is_vip_status = user_data.get("isVip", False)
-        if "isvip" in user_data:
-            is_vip_status = user_data["isvip"]
-        update_payload = {
-            "portofoli": user_data.get("portofoli", 0.0),
-            "isVip": is_vip_status,
-            "blerjet": user_data.get("blerjet", [])
-        }
-        if "vip_skadon_me" in user_data:
-            update_payload["vip_skadon_me"] = user_data["vip_skadon_me"]
-        if "auto_rinovim" in user_data:
-            update_payload["auto_rinovim"] = user_data["auto_rinovim"]
+    if not email:
+        return {"sukses": False, "mesazhi": "email mungon"}
+    LEJUARA = {"emri", "mbiemri", "auto_rinovim"}
+    payload = {k: v for k, v in user_data.items() if k in LEJUARA}
+    if payload:
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
-                       headers=SUPABASE_HEADERS, json=update_payload)
+                       headers=SUPABASE_SERVICE_HEADERS, json=payload)
     return {"sukses": True}
 
 
@@ -382,6 +375,37 @@ def ppm_blej_me_kredite(payload: dict):
     return {"sukses": True, "portofoli": portofoli_ri, "blerja": blerjet[-1]}
 
 
+# ── VIP me KREDITE (server-autoritar) ──
+@app.post("/api/vip/purchase")
+def vip_blej_me_kredite(payload: dict):
+    email = payload.get("email", "").lower().strip()
+    if not email:
+        return {"sukses": False, "mesazhi": "email mungon"}
+    ures = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,vip_skadon_me",
+                        headers=SUPABASE_SERVICE_HEADERS)
+    users = ures.json() if ures.status_code == 200 else []
+    if not users:
+        return {"sukses": False, "mesazhi": "Përdoruesi s'u gjet"}
+    portofoli = float(users[0].get("portofoli", 0) or 0)
+    if portofoli < CMIMI_VIP:
+        return {"sukses": False, "mesazhi": "Kredite të pamjaftueshme",
+                "kerkohet": CMIMI_VIP, "portofoli": round(portofoli, 2)}
+    baza = datetime.utcnow()
+    if users[0].get("vip_skadon_me"):
+        try:
+            d = datetime.strptime(str(users[0]["vip_skadon_me"])[:10], "%Y-%m-%d")
+            if d > baza:
+                baza = d
+        except Exception:
+            pass
+    skadon = (baza + timedelta(days=VIP_DITE)).strftime("%Y-%m-%d")
+    portofoli_ri = round(portofoli - CMIMI_VIP, 2)
+    requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_SERVICE_HEADERS,
+                   json={"portofoli": portofoli_ri, "isVip": True,
+                         "vip_skadon_me": skadon, "auto_rinovim": True})
+    return {"sukses": True, "portofoli": portofoli_ri, "vip_skadon_me": skadon}
+
+
 # ── CRYPTOMUS (server-autoritar; webhook → tabela users) ──
 def _crypto_sign(body_str):
     enc = base64.b64encode(body_str.encode("utf-8")).decode("utf-8")
@@ -402,7 +426,7 @@ def _crypto_info(order_id):
 def crypto_krijo_fature(payload: dict):
     email = payload.get("email", "").lower().strip()
     tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm"
-    if not email or tipi not in ("vip", "topup", "ppm"):
+    if not email or tipi not in ("vip", "topup", "ppm", "donate"):
         return {"sukses": False, "mesazhi": "Të dhëna të pavlefshme"}
 
     match_id = payload.get("match_id")
@@ -410,7 +434,7 @@ def crypto_krijo_fature(payload: dict):
 
     if tipi == "vip":
         shuma = CMIMI_VIP
-    elif tipi == "topup":
+    elif tipi in ("topup", "donate"):
         try:
             shuma = float(payload.get("shuma", 0))
         except Exception:
@@ -508,6 +532,8 @@ async def crypto_webhook(request: Request):
                 pass
         update["isVip"] = True
         update["vip_skadon_me"] = (baza + timedelta(days=VIP_DITE)).strftime("%Y-%m-%d")
+    elif tipi == "donate":
+        pass  # donacion — s'ndryshon llogarinë
     elif tipi == "ppm":
         blerjet = u.get("blerjet") or []
         if not any(str(b.get("id")) == str(po.get("match_id")) for b in blerjet):
