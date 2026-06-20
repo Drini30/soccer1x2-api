@@ -1,4 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import FastAPI, BackgroundTasks, Request, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -8,6 +8,11 @@ import math
 import time
 import os
 import numpy as np
+import bcrypt
+import json
+import base64
+import hashlib
+import secrets
 
 # ==========================================
 # NGARKIMI I MODELEVE XGBOOST (HYBRID)
@@ -76,14 +81,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# KREDENCIALET
-API_KEY = "ab4ee376aea19eca742126f9b804fbc5"
+# KREDENCIALET (nga env vars — Render → Environment)
+API_KEY = os.environ.get("API_SPORTS_KEY", "")
 HEADERS = {"x-apisports-key": API_KEY}
 
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
-SUPABASE_URL_PREDS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions"
-SUPABASE_URL_USERS = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/users"
-SUPABASE_URL_DNA   = "https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/team_dna_cache"
+SUPABASE_BASE = os.environ.get(
+    "SUPABASE_URL", "https://oqfhlyybwwkjbkvfpsxi.supabase.co"
+).rstrip("/")
+
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+# Service key për shkrime të privilegjuara (auth/admin/Cryptomus/Modulator):
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+
+SUPABASE_URL_PREDS = f"{SUPABASE_BASE}/rest/v1/predictions"
+SUPABASE_URL_USERS = f"{SUPABASE_BASE}/rest/v1/users"
+SUPABASE_URL_DNA   = f"{SUPABASE_BASE}/rest/v1/team_dna_cache"
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -91,6 +103,17 @@ SUPABASE_HEADERS = {
     "Content-Type": "application/json",
     "Prefer": "return=representation"
 }
+
+_mungojne_env = [k for k, v in {
+    "API_SPORTS_KEY": API_KEY,
+    "SUPABASE_ANON_KEY": SUPABASE_ANON_KEY,
+    "SUPABASE_SERVICE_KEY": SUPABASE_SERVICE_KEY,
+}.items() if not v]
+if _mungojne_env:
+    print(f"⚠️ KUJDES: env vars mungojnë → {_mungojne_env}. Vendosi te Render → Environment.")
+else:
+    print("✅ Kredencialet u lexuan nga env vars.")
+
 
 LIGAT_VIP_MAP = {
     39: "England - Premier League", 140: "Spain - La Liga", 135: "Italy - Serie A",
@@ -126,40 +149,89 @@ class LoginData(BaseModel):
     password: str
     name: str = ""
 
+# ── SIGURIA: helpers për hashim + service headers + admin ──
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
+
+SUPABASE_SERVICE_HEADERS = {
+    "apikey": SUPABASE_SERVICE_KEY,
+    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation",
+}
+
+def _eshte_hash(s):
+    return isinstance(s, str) and s.startswith(("$2a$", "$2b$", "$2y$"))
+
+def _hash_fjalekalimi(pw):
+    return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def _verifiko_fjalekalimi(pw, ruajtur):
+    try:
+        if _eshte_hash(ruajtur):
+            return bcrypt.checkpw(pw.encode("utf-8"), ruajtur.encode("utf-8"))
+        return pw == ruajtur   # plaintext i vjetër (do migrohet)
+    except Exception:
+        return False
+
+def _hiq_passwordin(rows):
+    for r in (rows or []):
+        if isinstance(r, dict):
+            r.pop("password", None)
+    return rows
+
+
 @app.post("/api/register")
 def regjistro_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
-    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_HEADERS)
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS)
     if res.status_code == 200 and len(res.json()) > 0:
         return {"sukses": False, "mesazhi": "ekziston"}
     emri_ndare = data.name.strip().split(" ", 1)
     emri    = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
     mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
     user_payload = {
-        "email": email_clean, "password": data.password, "emri": emri, "mbiemri": mbiemri,
+        "email": email_clean,
+        "password": _hash_fjalekalimi(data.password),   # HASH, jo plaintext
+        "emri": emri, "mbiemri": mbiemri,
         "portofoli": 20.0, "isVip": False, "vip_skadon_me": None,
         "auto_rinovim": False, "blerjet": []
     }
-    res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_HEADERS, json=user_payload)
+    res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_SERVICE_HEADERS, json=user_payload)
     if res_insert.status_code in [200, 201, 204]:
-        return {"sukses": True, "perdoruesi": user_payload}
+        u = dict(user_payload); u.pop("password", None)
+        return {"sukses": True, "perdoruesi": u}
     return {"sukses": False, "mesazhi": f"Gabim Databaze: {res_insert.text}"}
+
 
 @app.post("/api/login")
 def login_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
-    res = requests.get(
-        f"{SUPABASE_URL_USERS}?email=eq.{email_clean}&password=eq.{data.password}",
-        headers=SUPABASE_HEADERS
-    )
-    if res.status_code == 200:
-        users = res.json()
-        if len(users) > 0:
-            return {"sukses": True, "perdoruesi": users[0]}
-    return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS)
+    if res.status_code != 200:
+        return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
+    users = res.json()
+    if not users:
+        return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
+    u = users[0]
+    ruajtur = u.get("password", "")
+    if not _verifiko_fjalekalimi(data.password, ruajtur):
+        return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
+    # MIGRIM: nëse ishte plaintext, hashoje tani (pa fërkim)
+    if not _eshte_hash(ruajtur):
+        try:
+            requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}",
+                           headers=SUPABASE_SERVICE_HEADERS,
+                           json={"password": _hash_fjalekalimi(data.password)})
+        except Exception:
+            pass
+    u.pop("password", None)
+    return {"sukses": True, "perdoruesi": u}
+
 
 @app.post("/api/update_user")
 def perditeso_perdorues(user_data: dict):
+    # ⚠️ HAPI 2: këtu do hiqen fushat monetare (isVip/portofoli/blerjet/vip_skadon_me).
+    #    Mbetet funksional TANI që rrjedha aktuale të mos prishet para rewire-it.
     email = user_data.get("email", "").lower().strip()
     if email:
         is_vip_status = user_data.get("isVip", False)
@@ -174,24 +246,290 @@ def perditeso_perdorues(user_data: dict):
             update_payload["vip_skadon_me"] = user_data["vip_skadon_me"]
         if "auto_rinovim" in user_data:
             update_payload["auto_rinovim"] = user_data["auto_rinovim"]
-        requests.patch(
-            f"{SUPABASE_URL_USERS}?email=eq.{email}",
-            headers=SUPABASE_HEADERS, json=update_payload
-        )
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                       headers=SUPABASE_HEADERS, json=update_payload)
     return {"sukses": True}
+
 
 @app.get("/api/users")
 def merr_perdorues_nga_db(email: str):
     try:
-        res = requests.get(
-            f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}",
-            headers=SUPABASE_HEADERS
-        )
+        res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}",
+                           headers=SUPABASE_SERVICE_HEADERS)
         if res.status_code == 200:
-            return res.json()
+            return _hiq_passwordin(res.json())
         return []
-    except:
+    except Exception:
         return []
+
+
+# ── ADMIN (i mbrojtur me ADMIN_TOKEN) ──
+def _kontrollo_admin(token):
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="I paautorizuar")
+
+@app.post("/api/admin/add_credits")
+def admin_shto_kredite(payload: dict, x_admin_token: str = Header(None)):
+    _kontrollo_admin(x_admin_token)
+    email = payload.get("email", "").lower().strip()
+    try:
+        shuma = float(payload.get("shuma", 0))
+    except Exception:
+        return {"sukses": False, "mesazhi": "shuma e pavlefshme"}
+    if not email or shuma == 0:
+        return {"sukses": False, "mesazhi": "email ose shuma mungon"}
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli",
+                       headers=SUPABASE_SERVICE_HEADERS)
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        return {"sukses": False, "mesazhi": "perdoruesi s'u gjet"}
+    e_re = round(float(rows[0].get("portofoli", 0) or 0) + shuma, 2)
+    requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                   headers=SUPABASE_SERVICE_HEADERS, json={"portofoli": e_re})
+    return {"sukses": True, "email": email, "portofoli": e_re}
+
+@app.post("/api/admin/set_vip")
+def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
+    _kontrollo_admin(x_admin_token)
+    email = payload.get("email", "").lower().strip()
+    try:
+        dite = int(payload.get("dite", 30))
+    except Exception:
+        dite = 30
+    if not email:
+        return {"sukses": False, "mesazhi": "email mungon"}
+    skadon = (datetime.utcnow() + timedelta(days=dite)).strftime("%Y-%m-%d")
+    requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                   headers=SUPABASE_SERVICE_HEADERS,
+                   json={"isVip": True, "vip_skadon_me": skadon})
+    return {"sukses": True, "email": email, "vip_skadon_me": skadon}
+
+
+# ==========================================
+# MODULI I PAGESAVE — PPM (kredite) + CRYPTOMUS (server-autoritar)
+# Çmimet në USD (TEST — ndryshohen lehtë këtu).
+# ==========================================
+CMIMI_VIP = 69.99
+VIP_DITE  = 30
+PPM_TIER1 = 49.99   # koef < 5.0
+PPM_TIER2 = 59.99   # 5.0 - 7.9
+PPM_TIER3 = 99.99   # koef >= 8.0
+
+CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "")
+CRYPTOMUS_PAYMENT_KEY = os.environ.get("CRYPTOMUS_PAYMENT_KEY", "")
+PUBLIC_API_URL  = os.environ.get("PUBLIC_API_URL", "https://soccer1x2-api.onrender.com").rstrip("/")
+PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://soccer1x2pro.com").rstrip("/")
+SUPABASE_URL_POROSITE = f"{SUPABASE_BASE}/rest/v1/porosite"
+
+
+def _cmimi_ppm(koef):
+    try:
+        k = float(koef)
+    except Exception:
+        k = 0.0
+    if k >= 8.0:
+        return PPM_TIER3
+    if k >= 5.0:
+        return PPM_TIER2
+    return PPM_TIER1
+
+
+# ── PPM me KREDITE (serveri zbret; klienti s'e bën më vetë) ──
+@app.post("/api/ppm/purchase")
+def ppm_blej_me_kredite(payload: dict):
+    email = payload.get("email", "").lower().strip()
+    match_id = payload.get("match_id")
+    if not email or not match_id:
+        return {"sukses": False, "mesazhi": "Të dhëna mungojnë"}
+    # Çmimi nga SERVERI (jo nga klienti) — bazuar te koeficienti
+    pres = requests.get(
+        f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=id,ndeshja,rezultati_sakt,koef_rez_sakt",
+        headers=SUPABASE_SERVICE_HEADERS)
+    preds = pres.json() if pres.status_code == 200 else []
+    if not preds:
+        return {"sukses": False, "mesazhi": "Ndeshja s'u gjet"}
+    nd = preds[0]
+    cmimi = _cmimi_ppm(nd.get("koef_rez_sakt"))
+    ures = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,blerjet",
+                        headers=SUPABASE_SERVICE_HEADERS)
+    users = ures.json() if ures.status_code == 200 else []
+    if not users:
+        return {"sukses": False, "mesazhi": "Përdoruesi s'u gjet"}
+    u = users[0]
+    portofoli = float(u.get("portofoli", 0) or 0)
+    blerjet = u.get("blerjet") or []
+    if any(str(b.get("id")) == str(match_id) for b in blerjet):
+        return {"sukses": True, "mesazhi": "Tashmë e blerë", "portofoli": round(portofoli, 2)}
+    if portofoli < cmimi:
+        return {"sukses": False, "mesazhi": "Kredite të pamjaftueshme",
+                "kerkohet": cmimi, "portofoli": round(portofoli, 2)}
+    portofoli_ri = round(portofoli - cmimi, 2)
+    blerjet.append({"id": nd["id"], "ndeshja": nd.get("ndeshja"),
+                    "rezultati": nd.get("rezultati_sakt"), "koef": nd.get("koef_rez_sakt"),
+                    "cmimi": cmimi})
+    requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                   headers=SUPABASE_SERVICE_HEADERS,
+                   json={"portofoli": portofoli_ri, "blerjet": blerjet})
+    return {"sukses": True, "portofoli": portofoli_ri, "blerja": blerjet[-1]}
+
+
+# ── CRYPTOMUS (server-autoritar; webhook → tabela users) ──
+def _crypto_sign(body_str):
+    enc = base64.b64encode(body_str.encode("utf-8")).decode("utf-8")
+    return hashlib.md5((enc + CRYPTOMUS_PAYMENT_KEY).encode("utf-8")).hexdigest()
+
+def _crypto_info(order_id):
+    body_str = json.dumps({"order_id": order_id}, separators=(",", ":"))
+    try:
+        r = requests.post("https://api.cryptomus.com/v1/payment/info", data=body_str,
+                          headers={"merchant": CRYPTOMUS_MERCHANT_ID, "sign": _crypto_sign(body_str),
+                                   "Content-Type": "application/json"}, timeout=15)
+        return r.json().get("result", {}) or {}
+    except Exception:
+        return {}
+
+
+@app.post("/api/cryptomus/create-invoice")
+def crypto_krijo_fature(payload: dict):
+    email = payload.get("email", "").lower().strip()
+    tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm"
+    if not email or tipi not in ("vip", "topup", "ppm"):
+        return {"sukses": False, "mesazhi": "Të dhëna të pavlefshme"}
+
+    match_id = payload.get("match_id")
+    ndeshja = rezultati = koef = None
+
+    if tipi == "vip":
+        shuma = CMIMI_VIP
+    elif tipi == "topup":
+        try:
+            shuma = float(payload.get("shuma", 0))
+        except Exception:
+            shuma = 0.0
+        if shuma <= 0:
+            return {"sukses": False, "mesazhi": "Shuma e pavlefshme"}
+    else:  # ppm — çmimi nga serveri
+        pres = requests.get(
+            f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=ndeshja,rezultati_sakt,koef_rez_sakt",
+            headers=SUPABASE_SERVICE_HEADERS)
+        preds = pres.json() if pres.status_code == 200 else []
+        if not preds:
+            return {"sukses": False, "mesazhi": "Ndeshja s'u gjet"}
+        ndeshja = preds[0].get("ndeshja"); rezultati = preds[0].get("rezultati_sakt")
+        koef = preds[0].get("koef_rez_sakt")
+        shuma = _cmimi_ppm(koef)
+
+    order_id = f"s1x2_{secrets.token_hex(8)}"
+    cd = {
+        "amount": f"{shuma:.2f}", "currency": "USD", "order_id": order_id,
+        "url_callback": f"{PUBLIC_API_URL}/api/cryptomus/webhook",
+        "url_return": f"{PUBLIC_SITE_URL}/?pagesa=sukses",
+        "lifetime": 3600,
+    }
+    body_str = json.dumps(cd, separators=(",", ":"))
+    try:
+        r = requests.post("https://api.cryptomus.com/v1/payment", data=body_str,
+                          headers={"merchant": CRYPTOMUS_MERCHANT_ID, "sign": _crypto_sign(body_str),
+                                   "Content-Type": "application/json"}, timeout=20)
+        res = r.json()
+    except Exception as e:
+        return {"sukses": False, "mesazhi": f"Gabim Cryptomus: {e}"}
+    result = res.get("result")
+    if not result or "url" not in result:
+        return {"sukses": False, "mesazhi": "Përgjigje e papritur nga Cryptomus"}
+
+    requests.post(SUPABASE_URL_POROSITE,
+                  headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=merge-duplicates"},
+                  json={"order_id": order_id, "email": email, "tipi": tipi, "amount": f"{shuma:.2f}",
+                        "match_id": str(match_id) if match_id else None,
+                        "ndeshja": ndeshja, "rezultati": rezultati,
+                        "koef": str(koef) if koef is not None else None,
+                        "status": "wait", "krijuar": datetime.utcnow().isoformat()})
+    return {"sukses": True, "url": result["url"], "order_id": order_id}
+
+
+@app.post("/api/cryptomus/webhook")
+async def crypto_webhook(request: Request):
+    raw = await request.body()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {"state": 0}
+    order_id = data.get("order_id")
+    if not order_id:
+        return {"state": 0}
+
+    # GATE AUTORITATIV: pyet VETË Cryptomus (webhook i falsifikuar s'kalon dot)
+    info = _crypto_info(order_id)
+    status = info.get("payment_status") or data.get("status")
+    if status not in ("paid", "paid_over"):
+        return {"state": 0}
+
+    pres = requests.get(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}&select=*",
+                        headers=SUPABASE_SERVICE_HEADERS)
+    pros = pres.json() if pres.status_code == 200 else []
+    if not pros or pros[0].get("status") == "paid":
+        return {"state": 0}
+    po = pros[0]
+    email = po.get("email"); tipi = po.get("tipi")
+
+    ures = requests.get(
+        f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,isVip,vip_skadon_me,blerjet",
+        headers=SUPABASE_SERVICE_HEADERS)
+    users = ures.json() if ures.status_code == 200 else []
+    if not users:
+        return {"state": 0}
+    u = users[0]
+    update = {}
+
+    if tipi == "topup":
+        try:
+            shuma = float(po.get("amount", 0))
+        except Exception:
+            shuma = 0.0
+        update["portofoli"] = round(float(u.get("portofoli", 0) or 0) + shuma, 2)
+    elif tipi == "vip":
+        baza = datetime.utcnow()
+        if u.get("vip_skadon_me"):
+            try:
+                d = datetime.strptime(str(u["vip_skadon_me"])[:10], "%Y-%m-%d")
+                if d > baza:
+                    baza = d
+            except Exception:
+                pass
+        update["isVip"] = True
+        update["vip_skadon_me"] = (baza + timedelta(days=VIP_DITE)).strftime("%Y-%m-%d")
+    elif tipi == "ppm":
+        blerjet = u.get("blerjet") or []
+        if not any(str(b.get("id")) == str(po.get("match_id")) for b in blerjet):
+            blerjet.append({"id": po.get("match_id"), "ndeshja": po.get("ndeshja"),
+                            "rezultati": po.get("rezultati"), "koef": po.get("koef"),
+                            "cmimi": po.get("amount")})
+        update["blerjet"] = blerjet
+
+    if update:
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                       headers=SUPABASE_SERVICE_HEADERS, json=update)
+    requests.patch(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}",
+                   headers=SUPABASE_SERVICE_HEADERS,
+                   json={"status": "paid", "paguar": datetime.utcnow().isoformat()})
+    return {"state": 0}
+
+
+@app.get("/api/cryptomus/order-status")
+def crypto_order_status(order_id: str):
+    pres = requests.get(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}&select=status",
+                        headers=SUPABASE_SERVICE_HEADERS)
+    pros = pres.json() if pres.status_code == 200 else []
+    if not pros:
+        return {"status": "panjohur"}
+    st = pros[0].get("status")
+    if st != "paid":
+        info = _crypto_info(order_id)
+        if info.get("payment_status") in ("paid", "paid_over"):
+            return {"status": "paid"}
+    return {"status": st}
+
 
 # ==========================================
 # MODULI 1: ELO BAZË & VALUE BET
@@ -2247,56 +2585,4 @@ def merr_koeficientet_shtese(match_id: str):
     except:
         return {"mesazhi": "Gabim", "koeficientet": []}
 
-@app.post("/api/lemonsqueezy/webhook")
-async def lemonsqueezy_webhook(request: Request):
-    try:
-        payload = await request.json()
-        meta    = payload.get("meta", {})
-
-        if meta.get("event_name") == "order_created":
-            attributes  = payload.get("data", {}).get("attributes", {})
-            custom_data = attributes.get("custom_data") or {}
-
-            email_raw = custom_data.get("user_email") or attributes.get("user_email")
-            if not email_raw:
-                return {"status": "injoruar"}
-
-            email       = email_raw.lower().strip()
-            blerja_type = custom_data.get("type", "ppm")
-            user_res    = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_HEADERS)
-
-            if user_res.status_code == 200 and len(user_res.json()) > 0:
-                user        = user_res.json()[0]
-                update_data = {}
-
-                if blerja_type == "vip":
-                    update_data["isVip"]         = True
-                    update_data["vip_skadon_me"] = (datetime.utcnow() + timedelta(days=30)).isoformat()
-                    update_data["auto_rinovim"]  = True
-
-                elif blerja_type == "topup":
-                    shuma                  = float(custom_data.get("amount", attributes.get("total", 0) / 100.0))
-                    update_data["portofoli"] = float(user.get("portofoli", 0.0)) + shuma
-
-                elif blerja_type == "ppm":
-                    blerja_e_re = {
-                        "id":       str(custom_data.get("match_id", "N/A")),
-                        "ndeshja":  custom_data.get("ndeshja", "Ndeshje PPM"),
-                        "rezultati": custom_data.get("rezultati", "N/A"),
-                        "koef":     str(custom_data.get("koef", "N/A")),
-                        "cmimi":    float(custom_data.get("cmimi", attributes.get("total", 0) / 100.0)),
-                    }
-                    blerjet = user.get("blerjet", [])
-                    if not any(b["id"] == blerja_e_re["id"] for b in blerjet):
-                        blerjet.append(blerja_e_re)
-                        update_data["blerjet"] = blerjet
-
-                if update_data:
-                    requests.patch(
-                        f"{SUPABASE_URL_USERS}?email=eq.{email}",
-                        headers=SUPABASE_HEADERS, json=update_data
-                    )
-
-        return {"status": "sukses"}
-    except Exception as e:
-        return {"status": "gabim", "detaje": str(e)}
+# (Webhook-u LemonSqueezy u HOQ — vrimë sigurie; pagesat tani me Cryptomus.)
