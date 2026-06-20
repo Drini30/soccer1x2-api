@@ -1075,6 +1075,36 @@ TREGJET_KANDIDATE = ["1", "X", "2", "Under 1.5", "Over 2.5",
                      "Under 2.5", "Over 3.5", "GG", "NG"]
 
 
+def _best_bet_value(tregjet, odds_reale):
+    """Best bet me VALUE: midis tregjeve të sigurta (prob>=0.5) zgjedh value-n më
+    të lartë (prob_model × koef_real). Përdor odds reale ku ka, përndryshe fair."""
+    kand = []
+    for t in TREGJET_KANDIDATE:
+        if t not in (tregjet or {}):
+            continue
+        try:
+            p = float(tregjet.get(t, 0))
+        except Exception:
+            p = 0.0
+        if p <= 0:
+            continue
+        od_real = None
+        if odds_reale and t in odds_reale:
+            try:
+                od_real = float(odds_reale[t])
+            except Exception:
+                od_real = None
+        od = od_real if (od_real and od_real > 1) else round(1.0 / p, 2)
+        kand.append({"tregu": t, "prob": round(p, 4), "koef": round(od, 2),
+                     "value": round(p * od, 3), "real": bool(od_real)})
+    if not kand:
+        return None
+    confident = [k for k in kand if k["prob"] >= 0.5]
+    if confident:
+        return max(confident, key=lambda k: k["value"])
+    return max(kand, key=lambda k: k["prob"])
+
+
 def simulim_monte_carlo_v2(
     xg_1: float, xg_2: float,
     kaos_factor: float = 1.0,
@@ -1802,7 +1832,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                             "is_bllof":       extradb["is_bllof"],
                             "koef_plote":     extradb["koef_plote"],
                             "tregjet":        extradb["tregjet"],
-                            "best_bet":       extradb["best_bet"],
+                            "best_bet":       _best_bet_value(extradb["tregjet"], bet365_odds.get(id_ndeshja, {})) or extradb["best_bet"],
                         })
                         vip_kandidatet.append(base_match)
                     except Exception as eval_err:
