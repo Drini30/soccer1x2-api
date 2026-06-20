@@ -316,6 +316,7 @@ VIP_DITE  = 30
 PPM_TIER1 = 49.99   # koef < 5.0
 PPM_TIER2 = 59.99   # 5.0 - 7.9
 PPM_TIER3 = 99.99   # koef >= 8.0
+CMIMI_DITORE = 10.0   # zhbllokon Skedinën + Kombinimin e Ditës
 
 CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "")
 CRYPTOMUS_PAYMENT_KEY = os.environ.get("CRYPTOMUS_PAYMENT_KEY", "")
@@ -426,7 +427,7 @@ def _crypto_info(order_id):
 def crypto_krijo_fature(payload: dict):
     email = payload.get("email", "").lower().strip()
     tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm"
-    if not email or tipi not in ("vip", "topup", "ppm", "donate"):
+    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore"):
         return {"sukses": False, "mesazhi": "Të dhëna të pavlefshme"}
 
     match_id = payload.get("match_id")
@@ -434,6 +435,8 @@ def crypto_krijo_fature(payload: dict):
 
     if tipi == "vip":
         shuma = CMIMI_VIP
+    elif tipi == "ditore":
+        shuma = CMIMI_DITORE
     elif tipi in ("topup", "donate"):
         try:
             shuma = float(payload.get("shuma", 0))
@@ -534,6 +537,8 @@ async def crypto_webhook(request: Request):
         update["vip_skadon_me"] = (baza + timedelta(days=VIP_DITE)).strftime("%Y-%m-%d")
     elif tipi == "donate":
         pass  # donacion — s'ndryshon llogarinë
+    elif tipi == "ditore":
+        update["ditore_unlock_date"] = datetime.utcnow().strftime("%Y-%m-%d")
     elif tipi == "ppm":
         blerjet = u.get("blerjet") or []
         if not any(str(b.get("id")) == str(po.get("match_id")) for b in blerjet):
@@ -564,6 +569,141 @@ def crypto_order_status(order_id: str):
         if info.get("payment_status") in ("paid", "paid_over"):
             return {"status": "paid"}
     return {"status": st}
+
+
+# ==========================================================
+# SKEDINA E DITËS (top 4) + KOMBINIMI I DITËS (10 skedina nga top 5)
+# Lexon best_bet/tregjet e ruajtura — pa rillogaritje MC.
+# ==========================================================
+def _top2_tregje(tregjet):
+    if not tregjet:
+        return []
+    return sorted(tregjet.items(), key=lambda kv: kv[1], reverse=True)[:2]
+
+
+def _gjenero_kombinimet(top5):
+    picks = []
+    for p in top5:
+        t2 = _top2_tregje(p.get("tregjet") or {})
+        if not t2:
+            continue
+        primary = {"tregu": t2[0][0], "prob": round(float(t2[0][1]), 4)}
+        secondary = ({"tregu": t2[1][0], "prob": round(float(t2[1][1]), 4)}
+                     if len(t2) > 1 else primary)
+        picks.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"),
+                      "primary": primary, "secondary": secondary})
+    skedina_list = []
+    n = len(picks)
+    if n < 4:
+        return skedina_list
+    # C(n,4): lëmë jashtë 1 ndeshje çate; × 2 variante (primary / secondary)
+    for lere_jashte in range(n):
+        kater = [picks[i] for i in range(n) if i != lere_jashte]
+        varA = [{"ndeshja": m["ndeshja"], "tregu": m["primary"]["tregu"],
+                 "prob": m["primary"]["prob"]} for m in kater]
+        skedina_list.append({"nr": len(skedina_list) + 1, "ndeshjet": varA})
+        if len(skedina_list) >= 10:
+            break
+        varB = []
+        for idx, m in enumerate(kater):
+            pick = m["secondary"] if idx < 2 else m["primary"]
+            varB.append({"ndeshja": m["ndeshja"], "tregu": pick["tregu"], "prob": pick["prob"]})
+        skedina_list.append({"nr": len(skedina_list) + 1, "ndeshjet": varB})
+        if len(skedina_list) >= 10:
+            break
+    return skedina_list[:10]
+
+
+def _eshte_zhbllokuar_ditore(email):
+    if not email:
+        return False
+    try:
+        sot = datetime.utcnow().strftime("%Y-%m-%d")
+        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}&select=ditore_unlock_date",
+                         headers=SUPABASE_SERVICE_HEADERS)
+        u = r.json() if r.status_code == 200 else []
+        return bool(u) and str(u[0].get("ditore_unlock_date") or "")[:10] == sot
+    except Exception:
+        return False
+
+
+@app.post("/api/ditore/unlock")
+def ditore_unlock_me_kredite(payload: dict):
+    email = payload.get("email", "").lower().strip()
+    if not email:
+        return {"sukses": False, "mesazhi": "email mungon"}
+    r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,ditore_unlock_date",
+                     headers=SUPABASE_SERVICE_HEADERS)
+    u = r.json() if r.status_code == 200 else []
+    if not u:
+        return {"sukses": False, "mesazhi": "Përdoruesi s'u gjet"}
+    sot = datetime.utcnow().strftime("%Y-%m-%d")
+    portofoli = float(u[0].get("portofoli", 0) or 0)
+    if str(u[0].get("ditore_unlock_date") or "")[:10] == sot:
+        return {"sukses": True, "mesazhi": "Tashmë e zhbllokuar sot",
+                "ditore_unlock_date": sot, "portofoli": round(portofoli, 2)}
+    if portofoli < CMIMI_DITORE:
+        return {"sukses": False, "mesazhi": "Kredite të pamjaftueshme",
+                "kerkohet": CMIMI_DITORE, "portofoli": round(portofoli, 2)}
+    portofoli_ri = round(portofoli - CMIMI_DITORE, 2)
+    requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_SERVICE_HEADERS,
+                   json={"portofoli": portofoli_ri, "ditore_unlock_date": sot})
+    return {"sukses": True, "portofoli": portofoli_ri, "ditore_unlock_date": sot}
+
+
+@app.get("/api/ditore")
+def skedina_dhe_kombinimi_ditore(email: str = ""):
+    res = requests.get(
+        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data,ora,statusi,best_bet,tregjet"
+        f"&best_bet=not.is.null"
+        f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)"
+        f"&order=id.desc&limit=300",
+        headers=SUPABASE_SERVICE_HEADERS)
+    preds = res.json() if res.status_code == 200 else []
+    preds = [p for p in preds if p.get("best_bet")]
+
+    def _prob(p):
+        try:
+            return float((p.get("best_bet") or {}).get("prob", 0))
+        except Exception:
+            return 0.0
+    preds.sort(key=_prob, reverse=True)
+
+    # SKEDINA E DITËS = top 4 (një skedinë e vetme)
+    top4 = preds[:4]
+    sked = []
+    koef_total = 1.0
+    for p in top4:
+        bb = p.get("best_bet") or {}
+        koef = bb.get("koef")
+        if koef:
+            koef_total *= float(koef)
+        sked.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"),
+                     "tregu": bb.get("tregu"), "prob": bb.get("prob"), "koef": koef})
+    skedina_ditore = {"ndeshjet": sked, "koef_total": round(koef_total, 2) if sked else 0}
+
+    # KOMBINIMI I DITËS = top 5 → 10 skedina nga 4
+    kombinimi_ditore = _gjenero_kombinimet(preds[:5])
+
+    # ── GATING: kthe picks vetëm nëse përdoruesi e ka zhbllokuar sot ──
+    if _eshte_zhbllokuar_ditore(email):
+        return {
+            "unlocked": True,
+            "skedina_ditore": skedina_ditore,
+            "kombinimi_ditore": kombinimi_ditore,
+            "nr_ndeshjeve_analizuara": len(preds),
+            "perditesuar": datetime.utcnow().isoformat(),
+        }
+    # I KYÇUR: vetëm emrat e ndeshjeve (pa tregje/prob/koef) + numri i skedinave
+    sked_teaser = [{"ndeshja": x.get("ndeshja")} for x in skedina_ditore["ndeshjet"]]
+    return {
+        "unlocked": False,
+        "cmimi": CMIMI_DITORE,
+        "skedina_ditore": {"ndeshjet": sked_teaser, "nr": len(sked_teaser)},
+        "kombinimi_ditore": {"nr_skedinash": len(kombinimi_ditore)},
+        "nr_ndeshjeve_analizuara": len(preds),
+        "perditesuar": datetime.utcnow().isoformat(),
+    }
 
 
 # ==========================================
@@ -897,6 +1037,44 @@ def _percakto_tipi_ndeshjes(emri_liges: str) -> int:
 # MODULI 4 (V2): MONTE CARLO ME NUMPY
 # ==========================================
 
+def _nxirr_odds_reale(bets):
+    """Nxjerr odds reale (1X2, O/U, BTTS, Double Chance, Exact Score) nga /odds."""
+    def gjej(bid, name=None):
+        return next((b for b in bets if b.get("id") == bid or (name and b.get("name") == name)), None)
+    def val(bet, target):
+        if not bet:
+            return None
+        return next((x.get("odd") for x in bet.get("values", []) if str(x.get("value")) == target), None)
+    out = {}
+    mw = gjej(1, "Match Winner")
+    out["1"] = val(mw, "Home"); out["X"] = val(mw, "Draw"); out["2"] = val(mw, "Away")
+    ou = gjej(5, "Goals Over/Under")
+    for ln in ("1.5", "2.5", "3.5"):
+        out["Over " + ln] = val(ou, "Over " + ln)
+        out["Under " + ln] = val(ou, "Under " + ln)
+    btts = gjej(8, "Both Teams Score")
+    out["GG"] = val(btts, "Yes"); out["NG"] = val(btts, "No")
+    dc = gjej(12, "Double Chance")
+    out["1X"] = val(dc, "Home/Draw"); out["12"] = val(dc, "Home/Away"); out["X2"] = val(dc, "Draw/Away")
+    es = gjej(10, "Exact Score")
+    if es:
+        cs = {}
+        for x in es.get("values", []):
+            v = str(x.get("value", "")).replace(":", "-")
+            od = x.get("odd")
+            if v and od:
+                cs[v] = od
+        if cs:
+            out["CS"] = cs
+    return {k: v for k, v in out.items() if v is not None}
+
+
+# Tregjet kandidate për "best bet" (rendit sipas prob. më të lartë).
+# Për piket më interesante, hiq "12"/"1X"/"X2"/"Under 3.5"/"Over 1.5".
+TREGJET_KANDIDATE = ["1", "X", "2", "Under 1.5", "Over 2.5",
+                     "Under 2.5", "Over 3.5", "GG", "NG"]
+
+
 def simulim_monte_carlo_v2(
     xg_1: float, xg_2: float,
     kaos_factor: float = 1.0,
@@ -962,7 +1140,23 @@ def simulim_monte_carlo_v2(
     rez_str  = f"{rez_g1}-{rez_g2}"
     prob_max = freq_zgjedhur / iteracione
 
-    return rez_str, round(prob_max, 4), rezultatet_freq, prob_1x2
+    # ── TREGJET: probabiliteti i çdo tregu nga shpërndarja MC ──
+    total = gola_1 + gola_2
+    def _pf(mask):
+        return round(float(np.sum(mask)) / iteracione, 4)
+    tregjet = {
+        "1": prob_1x2["p1"], "X": prob_1x2["px"], "2": prob_1x2["p2"],
+        "1X": round(prob_1x2["p1"] + prob_1x2["px"], 4),
+        "X2": round(prob_1x2["px"] + prob_1x2["p2"], 4),
+        "12": round(prob_1x2["p1"] + prob_1x2["p2"], 4),
+        "Over 1.5": _pf(total >= 2), "Under 1.5": _pf(total <= 1),
+        "Over 2.5": _pf(total >= 3), "Under 2.5": _pf(total <= 2),
+        "Over 3.5": _pf(total >= 4), "Under 3.5": _pf(total <= 3),
+        "GG": _pf((gola_1 > 0) & (gola_2 > 0)),
+        "NG": _pf((gola_1 == 0) | (gola_2 == 0)),
+    }
+
+    return rez_str, round(prob_max, 4), rezultatet_freq, prob_1x2, tregjet
 
 # ==========================================
 # MODULI 5 (V2): BESUESHMËRIA ME KONSENSUS
@@ -1112,7 +1306,7 @@ def analizo_ndeshjen_premium_master(
     xg_2 = float(np.clip(xg_2, 0.30, 3.50))
 
     # ── MONTE CARLO V2 (numpy, 50k) ──
-    rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc = simulim_monte_carlo_v2(
+    rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
         xg_1, xg_2, kaosi_liges, is_derbi, iteracione=50_000
     )
 
@@ -1301,9 +1495,18 @@ def analizo_ndeshjen_premium_master(
 
     koef_rez_sakt = min(40.0, (1 / prob_rez_sakt) * 0.85) if prob_rez_sakt > 0 else 10.0
 
+    # ── BEST BET: tregu me probabilitetin më të lartë ──
+    _kand = [t for t in TREGJET_KANDIDATE if t in tregjet_mc]
+    _best_t = max(_kand, key=lambda t: tregjet_mc[t]) if _kand else "1X"
+    _best_p = float(tregjet_mc.get(_best_t, 0))
+    best_bet = {"tregu": _best_t, "prob": round(_best_p, 4),
+                "koef": round(1.0 / _best_p, 2) if _best_p > 0 else None}
+
     extradb = {
         "is_bllof":     eshte_bllof,
         "koef_plote":   f"1:{k1_str} | X:{kx_str} | 2:{k2_str}",
+        "tregjet":      tregjet_mc,
+        "best_bet":     best_bet,
         "prob_1x2_mc":  prob_1x2_mc,
         "xg_debug":     {"xg_1": round(xg_1, 3), "xg_2": round(xg_2, 3)},
         "forma_1":      {k: forma_1[k] for k in ["win_rate", "k_wins_rresht", "lodhja_factor"]},
@@ -1331,7 +1534,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         "ekipi_1", "ekipi_2", "ndeshja", "data", "ora", "ora_sakte",
         "koha_utc", "statusi", "minuta", "rezultati", "koef_1", "koef_x",
         "koef_2", "analiza_custom", "besueshmeria", "rezultati_sakt",
-        "koef_rez_sakt", "is_premium", "is_bllof", "koef_plote",
+        "koef_rez_sakt", "is_premium", "is_bllof", "koef_plote", "tregjet", "best_bet", "odds_reale",
         "liga_emri", "parashikimi_origjinal_ai"
     }
 
@@ -1473,17 +1676,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                             continue
                         try:
                             bets = item["bookmakers"][0]["bets"]
-                            mw   = next(
-                                (b for b in bets if b["id"] == 1 or b["name"] == "Match Winner"),
-                                None
-                            )
-                            if mw:
-                                v = mw["values"]
-                                k1 = next((x["odd"] for x in v if x["value"] == "Home"), None)
-                                kx = next((x["odd"] for x in v if x["value"] == "Draw"), None)
-                                k2 = next((x["odd"] for x in v if x["value"] == "Away"), None)
-                                if k1 and kx and k2:
-                                    bet365_odds[fix_id] = {"1": k1, "X": kx, "2": k2}
+                            parsed = _nxirr_odds_reale(bets)
+                            if parsed.get("1") and parsed.get("X") and parsed.get("2"):
+                                bet365_odds[fix_id] = parsed
                         except:
                             pass
 
@@ -1574,6 +1769,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                     "koef_1":         k1 or "N/A",
                     "koef_x":         kx or "N/A",
                     "koef_2":         k2 or "N/A",
+                    "odds_reale":     bet365_odds.get(id_ndeshja, {}),
                     "analiza_custom": None,
                     "besueshmeria":   0.0,
                     "rezultati_sakt": "",
@@ -1605,6 +1801,8 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                             "koef_rez_sakt":  koef_rez_sakt,
                             "is_bllof":       extradb["is_bllof"],
                             "koef_plote":     extradb["koef_plote"],
+                            "tregjet":        extradb["tregjet"],
+                            "best_bet":       extradb["best_bet"],
                         })
                         vip_kandidatet.append(base_match)
                     except Exception as eval_err:
