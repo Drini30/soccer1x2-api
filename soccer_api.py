@@ -599,7 +599,7 @@ def merr_dna_nga_db(team_id):
     try:
         res = requests.get(
             f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
-            headers=SUPABASE_HEADERS, timeout=2
+            headers=SUPABASE_SERVICE_HEADERS, timeout=2
         )
         if res.status_code == 200 and len(res.json()) > 0:
             return res.json()[0]
@@ -1322,7 +1322,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
     Dërgon VETËM kolonat që ekzistojnë në tabelën predictions.
     Ruan analiza_custom (jsonb) për historikun.
     """
-    headers = SUPABASE_HEADERS.copy()
+    headers = SUPABASE_SERVICE_HEADERS.copy()
     headers["Prefer"] = "resolution=merge-duplicates"
 
     # Kolonat e sakta që ekzistojnë në tabelën predictions
@@ -1374,7 +1374,7 @@ def task_perditeso_ppm_te_perfunduara():
     try:
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,statusi&statusi=not.in.(FT,AET,PEN,AWD,WO)",
-            headers=SUPABASE_HEADERS, timeout=8
+            headers=SUPABASE_SERVICE_HEADERS, timeout=8
         )
         if res.status_code != 200:
             return
@@ -1413,7 +1413,7 @@ def task_perditeso_ppm_te_perfunduara():
                     try:
                         requests.patch(
                             f"{SUPABASE_URL_PREDS}?id=eq.{fix_id}",
-                            headers=SUPABASE_HEADERS,
+                            headers=SUPABASE_SERVICE_HEADERS,
                             json=update_payload, timeout=5
                         )
                     except:
@@ -1706,7 +1706,7 @@ def perditeso_rezultatet_perfunduara():
         # Merr të gjitha ndeshjet që nuk kanë mbaruar
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi&statusi=not.in.(FT,AET,PEN,AWD,WO)",
-            headers=SUPABASE_HEADERS,
+            headers=SUPABASE_SERVICE_HEADERS,
             timeout=10
         )
         if res.status_code != 200:
@@ -1758,7 +1758,7 @@ def perditeso_rezultatet_perfunduara():
                     try:
                         requests.patch(
                             f"{SUPABASE_URL_PREDS}?id=eq.{fix_id}",
-                            headers=SUPABASE_HEADERS,
+                            headers=SUPABASE_SERVICE_HEADERS,
                             json=update_payload,
                             timeout=5
                         )
@@ -1926,7 +1926,7 @@ def merr_dna_status():
     try:
         res = requests.get(
             f"{SUPABASE_URL_DNA}?select=team_id,team_name,historical_power,win_rate",
-            headers=SUPABASE_HEADERS,
+            headers=SUPABASE_SERVICE_HEADERS,
             timeout=5
         )
         if res.status_code == 200:
@@ -1962,20 +1962,20 @@ def update_dna_per_skuader(team_id: int, season: int = 2025):
     try:
         res_check = requests.get(
             f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
-            headers=SUPABASE_HEADERS, timeout=5
+            headers=SUPABASE_SERVICE_HEADERS, timeout=5
         )
         ekziston = res_check.status_code == 200 and len(res_check.json()) > 0
 
         if ekziston:
             res = requests.patch(
                 f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
-                headers=SUPABASE_HEADERS, json=dna_e_re, timeout=5
+                headers=SUPABASE_SERVICE_HEADERS, json=dna_e_re, timeout=5
             )
             veprimi = "UPDATED"
         else:
             res = requests.post(
                 SUPABASE_URL_DNA,
-                headers=SUPABASE_HEADERS, json=dna_e_re, timeout=5
+                headers=SUPABASE_SERVICE_HEADERS, json=dna_e_re, timeout=5
             )
             veprimi = "INSERTED"
 
@@ -2044,19 +2044,19 @@ def seed_dna_per_ligat_vip(season: int = 2025, max_teams: int = 30, start_index:
             try:
                 res_check = requests.get(
                     f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
-                    headers=SUPABASE_HEADERS, timeout=3
+                    headers=SUPABASE_SERVICE_HEADERS, timeout=3
                 )
                 ekziston = res_check.status_code == 200 and len(res_check.json()) > 0
 
                 if ekziston:
                     requests.patch(
                         f"{SUPABASE_URL_DNA}?team_id=eq.{team_id}",
-                        headers=SUPABASE_HEADERS, json=dna, timeout=3
+                        headers=SUPABASE_SERVICE_HEADERS, json=dna, timeout=3
                     )
                 else:
                     requests.post(
                         SUPABASE_URL_DNA,
-                        headers=SUPABASE_HEADERS, json=dna, timeout=3
+                        headers=SUPABASE_SERVICE_HEADERS, json=dna, timeout=3
                     )
 
                 skuadrat_e_perpunuara.append({
@@ -2125,7 +2125,7 @@ def update_elo_midnight():
                 try:
                     requests.post(
                         SUPABASE_URL_DNA,
-                        headers=SUPABASE_HEADERS,
+                        headers=SUPABASE_SERVICE_HEADERS,
                         json=dna_e_re, timeout=3
                     )
                     dna_home = dna_e_re
@@ -2138,7 +2138,7 @@ def update_elo_midnight():
                 try:
                     requests.post(
                         SUPABASE_URL_DNA,
-                        headers=SUPABASE_HEADERS,
+                        headers=SUPABASE_SERVICE_HEADERS,
                         json=dna_e_re, timeout=3
                     )
                     dna_away = dna_e_re
@@ -2173,14 +2173,14 @@ def update_elo_midnight():
         if dna_home:
             requests.patch(
                 f"{SUPABASE_URL_DNA}?team_id=eq.{home_id}",
-                headers=SUPABASE_HEADERS,
+                headers=SUPABASE_SERVICE_HEADERS,
                 json={"historical_power": round(new_elo_home, 1)}
             )
             ekipe_te_perditesuara += 1
         if dna_away:
             requests.patch(
                 f"{SUPABASE_URL_DNA}?team_id=eq.{away_id}",
-                headers=SUPABASE_HEADERS,
+                headers=SUPABASE_SERVICE_HEADERS,
                 json={"historical_power": round(new_elo_away, 1)}
             )
             ekipe_te_perditesuara += 1
