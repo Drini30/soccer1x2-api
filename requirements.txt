@@ -7,4 +7,3 @@ joblib
 numpy
 scipy
 pandas
-bcrypt==4.2.0
