@@ -8,7 +8,8 @@ import math
 import time
 import os
 import numpy as np
-import bcrypt
+import hashlib
+import hmac
 import json
 import base64
 import hashlib
@@ -160,16 +161,24 @@ SUPABASE_SERVICE_HEADERS = {
 }
 
 def _eshte_hash(s):
-    return isinstance(s, str) and s.startswith(("$2a$", "$2b$", "$2y$"))
+    # Formati ynë: pbkdf2$<iterations>$<salt_hex>$<hash_hex>
+    return isinstance(s, str) and s.startswith("pbkdf2$")
 
 def _hash_fjalekalimi(pw):
-    return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    import os as _os
+    salt = _os.urandom(16)
+    iteracionet = 200000
+    dk = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, iteracionet)
+    return f"pbkdf2${iteracionet}${salt.hex()}${dk.hex()}"
 
 def _verifiko_fjalekalimi(pw, ruajtur):
     try:
         if _eshte_hash(ruajtur):
-            return bcrypt.checkpw(pw.encode("utf-8"), ruajtur.encode("utf-8"))
-        return pw == ruajtur   # plaintext i vjetër (do migrohet)
+            _, iter_str, salt_hex, hash_hex = ruajtur.split("$", 3)
+            dk = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"),
+                                     bytes.fromhex(salt_hex), int(iter_str))
+            return hmac.compare_digest(dk.hex(), hash_hex)
+        return pw == ruajtur   # plaintext i vjetër (do migrohet automatikisht)
     except Exception:
         return False
 
