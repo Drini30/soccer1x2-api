@@ -856,6 +856,107 @@ def skedina_dhe_kombinimi_ditore(email: str = ""):
 
 
 # ==========================================
+# HISTORIKU I SKEDINËS SË DITËS (snapshot + vlerësim + %)
+# ==========================================
+SKEDINA_HIST_URL = f"{SUPABASE_BASE}/rest/v1/skedina_historik"
+
+
+def _snapshot_skedina_ditore():
+    """Ruan Skedinën e Ditës (top-4) si snapshot ditor. Nuk e mbishkruan një ditë të finalizuar."""
+    try:
+        sot = datetime.utcnow().strftime('%Y-%m-%d')
+        rr = requests.get(f"{SKEDINA_HIST_URL}?data=eq.{sot}&select=statusi",
+                          headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+        ekz = rr.json() if rr.status_code == 200 else []
+        if ekz and ekz[0].get("statusi") in ("fituese", "humbur"):
+            return  # e finalizuar → mos e prek
+        res = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,best_bet&best_bet=not.is.null"
+            f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        preds = [p for p in (res.json() if res.status_code == 200 else []) if p.get("best_bet")]
+        preds.sort(key=lambda p: float((p.get("best_bet") or {}).get("prob", 0)), reverse=True)
+        top4 = preds[:4]
+        if len(top4) < 4:
+            return  # jo mjaft ndeshje për një skedinë të plotë
+        pikat = [{"id": p["id"], "ndeshja": p.get("ndeshja"),
+                  "tregu": (p.get("best_bet") or {}).get("tregu"),
+                  "koef": (p.get("best_bet") or {}).get("koef"),
+                  "prob": (p.get("best_bet") or {}).get("prob")} for p in top4]
+        koef_total = 1.0
+        for pk in pikat:
+            if pk.get("koef"):
+                koef_total *= float(pk["koef"])
+        headers = SUPABASE_SERVICE_HEADERS.copy()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        requests.post(SKEDINA_HIST_URL, headers=headers,
+                      json={"data": sot, "pikat": pikat,
+                            "koef_total": round(koef_total, 2),
+                            "statusi": "pezull",
+                            "krijuar": datetime.utcnow().isoformat()}, timeout=5)
+    except Exception as e:
+        print(f"[HISTORIK] snapshot gabim: {e}")
+
+
+def _vlereso_skedina_historik():
+    """Vlerëson skedinat 'pezull' kur TË GJITHA ndeshjet kanë mbaruar (fiton vetëm nëse të 4 goditen)."""
+    try:
+        r = requests.get(f"{SKEDINA_HIST_URL}?statusi=eq.pezull&select=data,pikat",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+        rows = r.json() if r.status_code == 200 else []
+        for row in rows:
+            pikat = row.get("pikat") or []
+            ids = [str(p["id"]) for p in pikat if p.get("id")]
+            if not ids:
+                continue
+            rr = requests.get(
+                f"{SUPABASE_URL_PREDS}?id=in.({','.join(ids)})&select=id,statusi,rezultati",
+                headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+            mm = {str(m["id"]): m for m in (rr.json() if rr.status_code == 200 else [])}
+            te_mbaruara = all(
+                mm.get(str(p["id"]), {}).get("statusi") in ("FT", "AET", "PEN", "AWD", "WO")
+                for p in pikat)
+            if not te_mbaruara:
+                continue
+            te_gjitha_goditen = True
+            detaje = []
+            for p in pikat:
+                m = mm.get(str(p["id"]), {})
+                rez = m.get("rezultati") or ""
+                pr = _parse_score(rez)
+                hit = bool(pr and _score_satisfies(pr[0], pr[1], p.get("tregu")))
+                if not hit:
+                    te_gjitha_goditen = False
+                detaje.append({**p, "rezultati": rez, "goditi": hit})
+            statusi = "fituese" if te_gjitha_goditen else "humbur"
+            h2 = SUPABASE_SERVICE_HEADERS.copy()
+            requests.patch(f"{SKEDINA_HIST_URL}?data=eq.{row['data']}",
+                           headers=h2, json={"statusi": statusi, "pikat": detaje}, timeout=5)
+    except Exception as e:
+        print(f"[HISTORIK] vleresim gabim: {e}")
+
+
+@app.get("/api/skedina/historik")
+def skedina_historik():
+    try:
+        r = requests.get(
+            f"{SKEDINA_HIST_URL}?select=data,pikat,koef_total,statusi&order=data.desc&limit=60",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    finalizuar = [x for x in rows if x.get("statusi") in ("fituese", "humbur")]
+    fituese = sum(1 for x in finalizuar if x.get("statusi") == "fituese")
+    total = len(finalizuar)
+    return {
+        "historik": rows,
+        "fituese": fituese,
+        "total_finalizuar": total,
+        "perqindja": round(100.0 * fituese / total, 1) if total else None,
+    }
+
+
+# ==========================================
 # MODULI 1: ELO BAZË & VALUE BET
 # ==========================================
 GIGANTET_ELO = {
@@ -1885,6 +1986,9 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
         datat = [(sot + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(3)]
     for dt in datat:
         background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, dt)
+    # pas gjenerimit: ruaj snapshot-in e Skedinës së Ditës + vlerëso skedinat e mbaruara
+    background_tasks.add_task(_snapshot_skedina_ditore)
+    background_tasks.add_task(_vlereso_skedina_historik)
     return {"mesazhi": "Gjenerimi nisi në sfond", "datat": datat}
 
 
