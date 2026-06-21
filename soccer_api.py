@@ -957,6 +957,175 @@ def skedina_historik():
 
 
 # ==========================================
+# GJENERATORI VIP "GJENERO SKEDINËN" (parametrik)
+# ==========================================
+GRUPET_GJENERATOR = {
+    "1x2": ["1", "X", "2"],
+    "dc":  ["1X", "X2", "12"],
+    "ou":  ["Over 1.5", "Under 1.5", "Over 2.5", "Under 2.5", "Over 3.5", "Under 3.5"],
+    "gg":  ["GG", "NG"],
+}
+
+
+def _eshte_vip(email):
+    if not email:
+        return False
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}&select=isVip,vip_skadon_me",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+        u = r.json() if r.status_code == 200 else []
+        if not u or not u[0].get("isVip"):
+            return False
+        skadon = u[0].get("vip_skadon_me")
+        if not skadon:
+            return True
+        return str(skadon)[:10] >= datetime.utcnow().strftime("%Y-%m-%d")
+    except Exception:
+        return False
+
+
+def _legs_gjenerator(p, grupet_lejuara):
+    """Ndërton legs nga grupet e lejuara (përfshirë rezultat të saktë me odds reale)."""
+    tregjet = p.get("tregjet") or {}
+    odds = p.get("odds_reale") or {}
+    legs = []
+    markets = []
+    for g in grupet_lejuara:
+        markets.extend(GRUPET_GJENERATOR.get(g, []))
+    for m in markets:
+        if m not in tregjet:
+            continue
+        try:
+            prob = float(tregjet.get(m, 0))
+        except Exception:
+            prob = 0.0
+        if prob <= 0:
+            continue
+        od_real = None
+        if m in odds:
+            try:
+                od_real = float(odds[m])
+            except Exception:
+                od_real = None
+        od = od_real if (od_real and od_real > 1) else round(1.0 / prob, 2)
+        legs.append({"market": m, "prob": prob, "koef": round(od, 2), "grup": _grupi_tregut(m)})
+    # Rezultat i saktë (CS)
+    if "cs" in grupet_lejuara:
+        score = (p.get("rezultati_sakt") or "").replace(" ", "")
+        if score and "-" in score:
+            dist = p.get("dist_gola") or {}
+            prob_cs = None
+            if dist:
+                try:
+                    tot = sum(float(v) for v in dist.values())
+                    fr = dist.get(score)
+                    if fr and tot > 0:
+                        prob_cs = float(fr) / tot
+                except Exception:
+                    prob_cs = None
+            if prob_cs is None:
+                try:
+                    prob_cs = 0.85 / float(p.get("koef_rez_sakt"))
+                except Exception:
+                    prob_cs = None
+            od = (odds.get("CS") or {}).get(score)
+            if od is None:
+                od = p.get("koef_rez_sakt")
+            try:
+                od = float(od)
+            except Exception:
+                od = None
+            if prob_cs and prob_cs > 0 and od and od > 1:
+                legs.append({"market": "Rezultat " + score, "prob": prob_cs,
+                             "koef": round(od, 2), "grup": "cs"})
+    return legs
+
+
+def _gjenero_skedine_target(pool, nr, koef_target, grupet_lejuara):
+    """Zgjedh nr ndeshje + tregje që e afrojnë koeficientin te koef_target, duke maksimizuar probabilitetin."""
+    matches = []
+    for p in pool:
+        legs = _legs_gjenerator(p, grupet_lejuara)
+        if not legs:
+            continue
+        legs.sort(key=lambda l: l["prob"], reverse=True)
+        matches.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"),
+                        "legs": legs, "conf": legs[0]["prob"]})
+    if len(matches) < nr:
+        return None
+    matches.sort(key=lambda m: m["conf"], reverse=True)
+    perdor = matches[:nr]
+
+    zgjedhjet = [{"m": m, "leg": m["legs"][0]} for m in perdor]
+
+    def koef_total():
+        k = 1.0
+        for z in zgjedhjet:
+            k *= z["leg"]["koef"]
+        return k
+
+    def prob_total():
+        pp = 1.0
+        for z in zgjedhjet:
+            pp *= z["leg"]["prob"]
+        return pp
+
+    # Ngji koeficientin drejt target-it: zgjedh upgrade-in që e afron më shumë totalin te target-i
+    guard = 0
+    while guard < 120:
+        guard += 1
+        kt = koef_total()
+        if kt >= koef_target * 0.97:
+            break
+        dist_tani = abs(kt - koef_target)
+        best = None; best_dist = dist_tani
+        best_prob = -1.0
+        for i, z in enumerate(zgjedhjet):
+            for cand in z["m"]["legs"]:
+                if cand["koef"] <= z["leg"]["koef"]:
+                    continue
+                new_total = kt / z["leg"]["koef"] * cand["koef"]
+                d = abs(new_total - koef_target)
+                if d < best_dist - 1e-9 or (abs(d - best_dist) < 1e-9 and cand["prob"] > best_prob):
+                    best_dist = d; best = (i, cand); best_prob = cand["prob"]
+        if not best:
+            break
+        i, cand = best
+        zgjedhjet[i]["leg"] = cand
+
+    legs_out = [{"ndeshja": z["m"]["ndeshja"], "tregu": z["leg"]["market"],
+                 "prob": round(z["leg"]["prob"], 4), "koef": z["leg"]["koef"]}
+                for z in zgjedhjet]
+    return {"ndeshjet": legs_out, "koef_total": round(koef_total(), 2),
+            "prob": round(prob_total(), 4), "nr": len(legs_out)}
+
+
+@app.get("/api/gjenero")
+def gjenero_skedine_vip(email: str = "", nr: int = 4, koef: float = 20.0, tregjet: str = "1x2,ou,gg"):
+    if not _eshte_vip(email):
+        return {"sukses": False, "arsye": "Vetëm për abonentët VIP."}
+    nr = max(2, min(8, int(nr)))
+    koef = max(2.0, min(100.0, float(koef)))
+    grupet = [g.strip().lower() for g in tregjet.split(",") if g.strip()]
+    grupet = [g for g in grupet if g in ("1x2", "dc", "ou", "gg", "cs")]
+    if not grupet:
+        grupet = ["1x2", "ou", "gg"]
+
+    res = requests.get(
+        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt,koef_rez_sakt"
+        f"&best_bet=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300",
+        headers=SUPABASE_SERVICE_HEADERS)
+    pool = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
+
+    sked = _gjenero_skedine_target(pool, nr, koef, grupet)
+    if not sked:
+        return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra. Provo më pak ndeshje."}
+    return {"sukses": True, "skedina": sked,
+            "kerkesa": {"nr": nr, "koef_target": koef, "tregjet": grupet}}
+
+
+# ==========================================
 # MODULI 1: ELO BAZË & VALUE BET
 # ==========================================
 GIGANTET_ELO = {
