@@ -1805,18 +1805,92 @@ def task_perditeso_ppm_te_perfunduara():
         pass
 
 
+# ==========================================
+# CACHE I SKEDINËS NË DB (i qëndrueshëm — mbijeton restart-et e Render)
+# ==========================================
+SKEDINA_CACHE_URL = f"{SUPABASE_BASE}/rest/v1/skedina_cache"
+
+
+def _lexo_cache_db(data_target, max_age_min=60):
+    """Kthen (payload, fresh). fresh=True nëse u përditësua brenda max_age_min minutave."""
+    try:
+        r = requests.get(
+            f"{SKEDINA_CACHE_URL}?data=eq.{data_target}&select=payload,perditesuar",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=5
+        )
+        rows = r.json()
+        if not rows:
+            return None, False
+        payload = rows[0].get("payload")
+        fresh = True
+        ts = rows[0].get("perditesuar")
+        if ts:
+            try:
+                t = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).replace(tzinfo=None)
+                fresh = (datetime.utcnow() - t).total_seconds() < max_age_min * 60
+            except Exception:
+                fresh = True
+        return payload, fresh
+    except Exception:
+        return None, False
+
+
+def _ruaj_cache_db(data_target, payload):
+    try:
+        headers = SUPABASE_SERVICE_HEADERS.copy()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        requests.post(
+            SKEDINA_CACHE_URL, headers=headers,
+            json={"data": data_target, "payload": payload,
+                  "perditesuar": datetime.utcnow().isoformat()},
+            timeout=5
+        )
+    except Exception:
+        pass
+
+
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
     koha_tani   = time.time()
 
-    # ── AUTO-REFRESH PPM TË PËRFUNDUARA (në sfond, pa bllokuar user) ──
+    # Auto-refresh PPM të përfunduara (në sfond)
     background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
 
-    # Cache 2 minuta (e ulim që përditësimet të vijnë më shpejt)
-    if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 120):
+    # 1) Cache në memorie (më i shpejti)
+    if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 600):
         return {"mesazhi": "Sukses", "skedina_grupuar": SKEDINA_CACHE[data_target]}
 
+    # 2) Cache në DB (mbijeton restart-et) — kthe MENJËHERË, pa llogaritur
+    payload, fresh = _lexo_cache_db(data_target, max_age_min=60)
+    if payload is not None:
+        SKEDINA_CACHE[data_target]       = payload
+        SKEDINA_LAST_UPDATE[data_target] = koha_tani
+        if not fresh:
+            background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, data_target)  # rifresko në sfond
+        return {"mesazhi": "Sukses", "skedina_grupuar": payload}
+
+    # 3) Asgjë në cache (hera e parë) → gjenero tani; cron-i do e parahapë më pas
+    rez = _kompjuto_dhe_ruaj_skedina(data_target)
+    return {"mesazhi": "Sukses" if rez else "Gabim", "skedina_grupuar": rez}
+
+
+@app.get("/api/cron/gjenero")
+def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
+    """Parahap skedinën në sfond (thirret nga cron çdo ~15-20 min). Kthen menjëherë."""
+    if date:
+        datat = [date]
+    else:
+        sot = datetime.utcnow()
+        datat = [(sot + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(3)]
+    for dt in datat:
+        background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, dt)
+    return {"mesazhi": "Gjenerimi nisi në sfond", "datat": datat}
+
+
+def _kompjuto_dhe_ruaj_skedina(data_target):
+    """LLOGARITJA E RËNDË: fixtures + odds + Monte Carlo + ruajtje. Kthen skedina_grupuar (listë)."""
+    koha_tani = time.time()
     try:
         response   = requests.get(
             "https://v3.football.api-sports.io/fixtures",
@@ -1824,7 +1898,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         )
         te_dhenat = response.json()
         if "errors" in te_dhenat and te_dhenat["errors"]:
-            return {"mesazhi": "Gabim", "skedina_grupuar": [], "error_msg": str(te_dhenat["errors"])}
+            return []
 
         # ── KOEFICIENTËT: paginim i plotë + multi-bookmaker fallback ──
         # Bookmakers prioritet: 8=Bet365, 4=Pinnacle, 6=1xBet, 2=Marathon, 11=William Hill
@@ -2009,9 +2083,12 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                 ndeshja["analiza_custom"] = None
             lista_e_te_gjithave.append(ndeshja)
 
-        # Ruaj vetëm 3 PPM në DB (pa manipulim)
-        if ndeshjet_premium_per_historik:
-            background_tasks.add_task(task_ruaj_skedinen_ne_db, ndeshjet_premium_per_historik)
+        # Ruaj TË GJITHA ndeshjet VIP të analizuara (për daily products + historik PPM)
+        if vip_kandidatet:
+            try:
+                task_ruaj_skedinen_ne_db(vip_kandidatet)
+            except Exception:
+                pass
 
         # Grupo sipas ligës
         ligat_grup = {}
@@ -2034,11 +2111,13 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
         SKEDINA_CACHE[data_target]       = rezultati_perfundimtar
         SKEDINA_LAST_UPDATE[data_target] = koha_tani
+        _ruaj_cache_db(data_target, rezultati_perfundimtar)
 
-        return {"mesazhi": "Sukses", "skedina_grupuar": rezultati_perfundimtar}
+        return rezultati_perfundimtar
 
     except Exception as e:
-        return {"mesazhi": "Gabim", "detaje": str(e), "skedina_grupuar": []}
+        print(f"[GJENERIM] Gabim per {data_target}: {e}")
+        return []
 
 @app.get("/")
 def root():
