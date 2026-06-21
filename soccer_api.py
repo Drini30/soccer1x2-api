@@ -990,21 +990,41 @@ GEN_DOPT_FLOOR = 0.18     # prob min për një double-option (dy tregje bashkë)
 
 
 def _legs_gjenerator(p, grupet_lejuara):
-    """Legs KOHERENTE nga grupet e lejuara (me prag probabiliteti; PA rezultat të saktë)."""
+    """Legs të PËRPUTHURA me parashikimin: VETËM ana e favorizuar e çdo tregu.
+    Kurrë kundër favoritit (s'luan 'X2' te një favorit vendas, etj.)."""
     tregjet = p.get("tregjet") or {}
     odds = p.get("odds_reale") or {}
-    legs = []
-    markets = []
-    for g in grupet_lejuara:
-        markets.extend(GRUPET_GJENERATOR.get(g, []))
-    for m in markets:
-        if m not in tregjet:
-            continue
+
+    def P(m):
         try:
-            prob = float(tregjet.get(m, 0))
+            return float(tregjet.get(m, 0) or 0)
         except Exception:
-            prob = 0.0
-        if prob < GEN_LEG_FLOOR:      # përjashto tregjet e palogjikshme (prob shumë e ulët = bast kundër favoritit)
+            return 0.0
+
+    # parashikimi 1X2 i algoritmit = ana me probabilitet më të lartë
+    fav = max([("1", P("1")), ("X", P("X")), ("2", P("2"))], key=lambda x: x[1])[0]
+    aligned = []
+    if "1x2" in grupet_lejuara and P(fav) > 0:
+        aligned.append(fav)
+    if "dc" in grupet_lejuara:                       # vetëm double-chance që PËRMBAN favoritin
+        if fav == "1":
+            aligned += ["1X", "12"]
+        elif fav == "X":
+            aligned += ["1X", "X2"]
+        else:
+            aligned += ["12", "X2"]
+    if "ou" in grupet_lejuara:                        # për çdo linjë, ana e favorizuar
+        for ln in ["1.5", "2.5", "3.5"]:
+            o, u = P("Over " + ln), P("Under " + ln)
+            if o > 0 or u > 0:
+                aligned.append("Over " + ln if o >= u else "Under " + ln)
+    if "gg" in grupet_lejuara and (P("GG") > 0 or P("NG") > 0):
+        aligned.append("GG" if P("GG") >= P("NG") else "NG")
+
+    legs = []
+    for m in aligned:
+        prob = P(m)
+        if prob <= 0:
             continue
         od_real = None
         if m in odds:
@@ -1107,9 +1127,13 @@ def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara
         if lo <= s["koef_total"] <= hi:
             ne_band.append(s)
     if ne_band:
-        return max(ne_band, key=lambda s: s["prob"])      # më e mundshmja brenda bandës
+        best = max(ne_band, key=lambda s: s["prob"])       # më e mundshmja brenda bandës
+        best["arritur"] = True
+        return best
     if te_gjitha:
-        return min(te_gjitha, key=lambda s: abs(s["koef_total"] - koef_target))  # më e afërta
+        best = min(te_gjitha, key=lambda s: abs(s["koef_total"] - koef_target))  # më e afërta
+        best["arritur"] = (lo <= best["koef_total"] <= hi)
+        return best
     return None
 
 
