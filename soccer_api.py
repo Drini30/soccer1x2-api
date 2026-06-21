@@ -985,8 +985,12 @@ def _eshte_vip(email):
         return False
 
 
+GEN_LEG_FLOOR  = 0.25     # prob min për një leg të vetëm (përjashton baste kundër favoritit, p.sh. barazim te favoriti)
+GEN_DOPT_FLOOR = 0.18     # prob min për një double-option (dy tregje bashkë)
+
+
 def _legs_gjenerator(p, grupet_lejuara):
-    """Ndërton legs nga grupet e lejuara (përfshirë rezultat të saktë me odds reale)."""
+    """Legs KOHERENTE nga grupet e lejuara (me prag probabiliteti; PA rezultat të saktë)."""
     tregjet = p.get("tregjet") or {}
     odds = p.get("odds_reale") or {}
     legs = []
@@ -1000,7 +1004,7 @@ def _legs_gjenerator(p, grupet_lejuara):
             prob = float(tregjet.get(m, 0))
         except Exception:
             prob = 0.0
-        if prob <= 0:
+        if prob < GEN_LEG_FLOOR:      # përjashto tregjet e palogjikshme (prob shumë e ulët = bast kundër favoritit)
             continue
         od_real = None
         if m in odds:
@@ -1010,119 +1014,129 @@ def _legs_gjenerator(p, grupet_lejuara):
                 od_real = None
         od = od_real if (od_real and od_real > 1) else round(1.0 / prob, 2)
         legs.append({"market": m, "prob": prob, "koef": round(od, 2), "grup": _grupi_tregut(m)})
-    # Rezultat i saktë (CS)
-    if "cs" in grupet_lejuara:
-        score = (p.get("rezultati_sakt") or "").replace(" ", "")
-        if score and "-" in score:
-            dist = p.get("dist_gola") or {}
-            prob_cs = None
-            if dist:
-                try:
-                    tot = sum(float(v) for v in dist.values())
-                    fr = dist.get(score)
-                    if fr and tot > 0:
-                        prob_cs = float(fr) / tot
-                except Exception:
-                    prob_cs = None
-            if prob_cs is None:
-                try:
-                    prob_cs = 0.85 / float(p.get("koef_rez_sakt"))
-                except Exception:
-                    prob_cs = None
-            od = (odds.get("CS") or {}).get(score)
-            if od is None:
-                od = p.get("koef_rez_sakt")
-            try:
-                od = float(od)
-            except Exception:
-                od = None
-            if prob_cs and prob_cs > 0 and od and od > 1:
-                legs.append({"market": "Rezultat " + score, "prob": prob_cs,
-                             "koef": round(od, 2), "grup": "cs"})
     return legs
 
 
-def _gjenero_skedine_target(pool, nr, koef_target, grupet_lejuara):
-    """Zgjedh nr ndeshje + tregje që e afrojnë koeficientin te koef_target, duke maksimizuar probabilitetin."""
+def _opsionet_ndeshje(p, grupet_lejuara):
+    """Opsionet për një ndeshje: legs të vetme + double-options (cross-group, korrelacion real nga dist_gola)."""
+    legs = _legs_gjenerator(p, grupet_lejuara)
+    if not legs:
+        return []
+    dist = p.get("dist_gola") or {}
+    opsionet = [{"pjeset": [l["market"]], "prob": l["prob"], "koef": l["koef"]} for l in legs]
+    for i in range(len(legs)):
+        for j in range(i + 1, len(legs)):
+            a, b = legs[i], legs[j]
+            if a["grup"] == b["grup"]:
+                continue   # vetëm cross-group (rezultat + O/U + GG)
+            jp = _joint_prob(dist, [a["market"], b["market"]])
+            if jp is None:
+                jp = a["prob"] * b["prob"]
+            if jp < GEN_DOPT_FLOOR:
+                continue
+            opsionet.append({"pjeset": [a["market"], b["market"]],
+                             "prob": round(jp, 4), "koef": round(a["koef"] * b["koef"], 2)})
+    return opsionet
+
+
+def _gjenero_target_v2(pool, nr, koef_target, grupet_lejuara, tol=0.06):
+    """nr ndeshje; përdor legs + double-options për të rënë në bandën [target±tol], duke maksimizuar probabilitetin."""
     matches = []
     for p in pool:
-        legs = _legs_gjenerator(p, grupet_lejuara)
-        if not legs:
+        ops = _opsionet_ndeshje(p, grupet_lejuara)
+        if not ops:
             continue
-        legs.sort(key=lambda l: l["prob"], reverse=True)
-        matches.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"),
-                        "legs": legs, "conf": legs[0]["prob"]})
+        ops.sort(key=lambda o: o["prob"], reverse=True)
+        matches.append({"ndeshja": p.get("ndeshja"), "id": p.get("id"), "ops": ops, "conf": ops[0]["prob"]})
     if len(matches) < nr:
         return None
     matches.sort(key=lambda m: m["conf"], reverse=True)
-    perdor = matches[:nr]
+    zgj = [{"m": m, "op": m["ops"][0]} for m in matches[:nr]]
 
-    zgjedhjet = [{"m": m, "leg": m["legs"][0]} for m in perdor]
-
-    def koef_total():
+    def ktot():
         k = 1.0
-        for z in zgjedhjet:
-            k *= z["leg"]["koef"]
+        for z in zgj:
+            k *= z["op"]["koef"]
         return k
 
-    def prob_total():
+    def ptot():
         pp = 1.0
-        for z in zgjedhjet:
-            pp *= z["leg"]["prob"]
+        for z in zgj:
+            pp *= z["op"]["prob"]
         return pp
 
-    # Ngji koeficientin drejt target-it: zgjedh upgrade-in që e afron më shumë totalin te target-i
+    lo, hi = koef_target * (1 - tol), koef_target * (1 + tol)
     guard = 0
-    while guard < 120:
+    while guard < 300:
         guard += 1
-        kt = koef_total()
-        if kt >= koef_target * 0.97:
+        kt = ktot()
+        if lo <= kt <= hi:
             break
-        dist_tani = abs(kt - koef_target)
-        best = None; best_dist = dist_tani
-        best_prob = -1.0
-        for i, z in enumerate(zgjedhjet):
-            for cand in z["m"]["legs"]:
-                if cand["koef"] <= z["leg"]["koef"]:
+        d_tani = abs(kt - koef_target)
+        best = None; best_d = d_tani; best_p = -1.0
+        for idx, z in enumerate(zgj):
+            for op in z["m"]["ops"]:
+                if op is z["op"]:
                     continue
-                new_total = kt / z["leg"]["koef"] * cand["koef"]
+                new_total = kt / z["op"]["koef"] * op["koef"]
                 d = abs(new_total - koef_target)
-                if d < best_dist - 1e-9 or (abs(d - best_dist) < 1e-9 and cand["prob"] > best_prob):
-                    best_dist = d; best = (i, cand); best_prob = cand["prob"]
-        if not best:
+                if d < best_d - 1e-9 or (abs(d - best_d) < 1e-9 and op["prob"] > best_p):
+                    best_d = d; best = (idx, op); best_p = op["prob"]
+        if not best or best_d >= d_tani - 1e-9:
             break
-        i, cand = best
-        zgjedhjet[i]["leg"] = cand
+        zgj[best[0]]["op"] = best[1]
 
-    legs_out = [{"ndeshja": z["m"]["ndeshja"], "tregu": z["leg"]["market"],
-                 "prob": round(z["leg"]["prob"], 4), "koef": z["leg"]["koef"]}
-                for z in zgjedhjet]
-    return {"ndeshjet": legs_out, "koef_total": round(koef_total(), 2),
-            "prob": round(prob_total(), 4), "nr": len(legs_out)}
+    return {"ndeshjet": [{"ndeshja": z["m"]["ndeshja"], "tregu": " + ".join(z["op"]["pjeset"]),
+                          "prob": round(z["op"]["prob"], 4), "koef": z["op"]["koef"]} for z in zgj],
+            "koef_total": round(ktot(), 2), "prob": round(ptot(), 4), "nr": len(zgj)}
+
+
+def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara, tol=0.06):
+    """Provon çdo numër ndeshjesh; kthen skedinën NË BANDË me probabilitetin më të lartë (ose më të afërtën)."""
+    e_mundur = len([p for p in pool if _opsionet_ndeshje(p, grupet_lejuara)])
+    nr_max = min(nr_max, e_mundur)
+    if nr_max < nr_min:
+        return None
+    lo, hi = koef_target * (1 - tol), koef_target * (1 + tol)
+    ne_band = []; te_gjitha = []
+    for n in range(nr_min, nr_max + 1):
+        s = _gjenero_target_v2(pool, n, koef_target, grupet_lejuara, tol)
+        if not s:
+            continue
+        te_gjitha.append(s)
+        if lo <= s["koef_total"] <= hi:
+            ne_band.append(s)
+    if ne_band:
+        return max(ne_band, key=lambda s: s["prob"])      # më e mundshmja brenda bandës
+    if te_gjitha:
+        return min(te_gjitha, key=lambda s: abs(s["koef_total"] - koef_target))  # më e afërta
+    return None
 
 
 @app.get("/api/gjenero")
-def gjenero_skedine_vip(email: str = "", nr: int = 4, koef: float = 20.0, tregjet: str = "1x2,ou,gg"):
+def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg"):
     if not _eshte_vip(email):
         return {"sukses": False, "arsye": "Vetëm për abonentët VIP."}
-    nr = max(2, min(8, int(nr)))
+    nr = max(2, min(15, int(nr)))
+    nr_max = int(nr_max) if nr_max else nr
+    nr_max = max(nr, min(15, nr_max))
     koef = max(2.0, min(100.0, float(koef)))
     grupet = [g.strip().lower() for g in tregjet.split(",") if g.strip()]
-    grupet = [g for g in grupet if g in ("1x2", "dc", "ou", "gg", "cs")]
+    grupet = [g for g in grupet if g in ("1x2", "dc", "ou", "gg")]   # PA rezultat të saktë
     if not grupet:
         grupet = ["1x2", "ou", "gg"]
 
     res = requests.get(
-        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt,koef_rez_sakt"
+        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,best_bet,tregjet,odds_reale,dist_gola"
         f"&best_bet=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300",
         headers=SUPABASE_SERVICE_HEADERS)
     pool = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
 
-    sked = _gjenero_skedine_target(pool, nr, koef, grupet)
+    sked = _gjenero_skedine_fleksibel(pool, nr, nr_max, koef, grupet)
     if not sked:
-        return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra. Provo më pak ndeshje."}
+        return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
     return {"sukses": True, "skedina": sked,
-            "kerkesa": {"nr": nr, "koef_target": koef, "tregjet": grupet}}
+            "kerkesa": {"nr_min": nr, "nr_max": nr_max, "koef_target": koef, "tregjet": grupet}}
 
 
 # ==========================================
