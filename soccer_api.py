@@ -581,37 +581,186 @@ def _top2_tregje(tregjet):
     return sorted(tregjet.items(), key=lambda kv: kv[1], reverse=True)[:2]
 
 
-def _gjenero_kombinimet(top5):
-    picks = []
-    for p in top5:
-        t2 = _top2_tregje(p.get("tregjet") or {})
-        if not t2:
+# ── Motori i kombinimeve (banker+hedge, korrelacion real, koef>=10, 6 skedina) ──
+COMBO_MARKETS  = ["1", "X", "2", "Over 1.5", "Under 1.5", "Over 2.5",
+                  "Under 2.5", "Over 3.5", "Under 3.5", "GG", "NG"]
+DOUBLE_MARKETS = COMBO_MARKETS + ["1X", "X2", "12"]
+KOEF_MIN_SKEDINE = 10.0
+KOEF_MIN_BAZE    = 1.40   # shmang piket trivialë si bazë
+
+
+def _parse_score(s):
+    try:
+        a, b = str(s).replace(" ", "").split("-")
+        return int(a), int(b)
+    except Exception:
+        return None
+
+
+def _score_satisfies(gh, ga, market):
+    tot = gh + ga
+    if market == "1": return gh > ga
+    if market == "X": return gh == ga
+    if market == "2": return gh < ga
+    if market == "1X": return gh >= ga
+    if market == "X2": return gh <= ga
+    if market == "12": return gh != ga
+    if market == "Over 1.5": return tot >= 2
+    if market == "Under 1.5": return tot <= 1
+    if market == "Over 2.5": return tot >= 3
+    if market == "Under 2.5": return tot <= 2
+    if market == "Over 3.5": return tot >= 4
+    if market == "Under 3.5": return tot <= 3
+    if market == "GG": return gh > 0 and ga > 0
+    if market == "NG": return gh == 0 or ga == 0
+    return False
+
+
+def _joint_prob(dist_gola, markets):
+    if not dist_gola:
+        return None
+    total = 0.0; hit = 0.0
+    for sc, freq in dist_gola.items():
+        try:
+            f = float(freq)
+        except Exception:
             continue
-        primary = {"tregu": t2[0][0], "prob": round(float(t2[0][1]), 4)}
-        secondary = ({"tregu": t2[1][0], "prob": round(float(t2[1][1]), 4)}
-                     if len(t2) > 1 else primary)
-        picks.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"),
-                      "primary": primary, "secondary": secondary})
-    skedina_list = []
-    n = len(picks)
-    if n < 4:
-        return skedina_list
-    # C(n,4): lëmë jashtë 1 ndeshje çate; × 2 variante (primary / secondary)
-    for lere_jashte in range(n):
-        kater = [picks[i] for i in range(n) if i != lere_jashte]
-        varA = [{"ndeshja": m["ndeshja"], "tregu": m["primary"]["tregu"],
-                 "prob": m["primary"]["prob"]} for m in kater]
-        skedina_list.append({"nr": len(skedina_list) + 1, "ndeshjet": varA})
-        if len(skedina_list) >= 10:
+        total += f
+        pr = _parse_score(sc)
+        if pr and all(_score_satisfies(pr[0], pr[1], m) for m in markets):
+            hit += f
+    return (hit / total) if total > 0 else None
+
+
+def _legs_per_match(p, market_set):
+    tregjet = p.get("tregjet") or {}
+    odds = p.get("odds_reale") or {}
+    legs = []
+    for m in market_set:
+        if m not in tregjet:
+            continue
+        try:
+            prob = float(tregjet[m])
+        except Exception:
+            continue
+        if prob <= 0:
+            continue
+        od_real = None
+        if m in odds:
+            try:
+                od_real = float(odds[m])
+            except Exception:
+                od_real = None
+        od = od_real if (od_real and od_real > 1) else round(1.0 / prob, 2)
+        legs.append({"market": m, "prob": prob, "koef": round(od, 2), "real": bool(od_real)})
+    return legs
+
+
+def _grupi_tregut(m):
+    if m in ("1", "X", "2", "1X", "X2", "12"):
+        return "rezultat"
+    if m.startswith("Over") or m.startswith("Under"):
+        return "ou"
+    if m in ("GG", "NG"):
+        return "btts"
+    return "tjeter"
+
+
+def _baza_leg(legs):
+    me_koef = [l for l in legs if l["koef"] >= KOEF_MIN_BAZE]
+    pool = me_koef if me_koef else legs
+    return max(pool, key=lambda l: l["prob"]) if pool else None
+
+
+def _shto_double_options(rendit, legs_out, koef_total, prob_total):
+    """Shton leg të dytë te ndeshjet e sigurta, duke zgjedhur atë me KORRELACION
+    pozitiv + boost koef-i (maksimizon jp × koef), derisa koef >= 10."""
+    for pos, m in enumerate(rendit):
+        if koef_total >= KOEF_MIN_SKEDINE:
             break
-        varB = []
-        for idx, m in enumerate(kater):
-            pick = m["secondary"] if idx < 2 else m["primary"]
-            varB.append({"ndeshja": m["ndeshja"], "tregu": pick["tregu"], "prob": pick["prob"]})
-        skedina_list.append({"nr": len(skedina_list) + 1, "ndeshjet": varB})
-        if len(skedina_list) >= 10:
-            break
-    return skedina_list[:10]
+        baza = legs_out[pos]
+        if len(baza["pjeset"]) >= 2:
+            continue
+        market_baza = baza["pjeset"][0]
+        best = None; best_score = -1.0
+        grupi_baza = _grupi_tregut(market_baza)
+        for k in m["legs_full"]:
+            if k["market"] == market_baza or k["koef"] < 1.30:
+                continue
+            if _grupi_tregut(k["market"]) == grupi_baza:
+                continue   # mos kombino brenda të njëjtit grup (p.sh. dy Over/Under)
+            jp = _joint_prob(m["dist"], [market_baza, k["market"]])
+            if jp is None:
+                jp = baza["prob"] * k["prob"]
+            if jp <= 0.05:
+                continue
+            score = jp * k["koef"]          # EV e shtuar
+            if score > best_score:
+                best_score = score; best = (k, jp)
+        if not best:
+            continue
+        k, jp = best
+        koef_total *= k["koef"]
+        if baza["prob"] > 0:
+            prob_total = prob_total / baza["prob"] * jp
+        baza["koef"] = round(baza["koef"] * k["koef"], 2)
+        baza["prob"] = round(jp, 4)
+        baza["pjeset"].append(k["market"])
+    return koef_total, prob_total
+
+
+def _ndderto_skedine(kater, varianti=0):
+    rendit = sorted(kater, key=lambda mm: mm["conf"], reverse=True)
+    legs_out = []; koef_total = 1.0; prob_total = 1.0
+    for pos, m in enumerate(rendit):
+        legs = m["legs"]
+        if not legs:
+            return None
+        if pos < 2:
+            zgjedhja = _baza_leg(legs)
+        else:
+            top2 = sorted([l for l in legs if l["koef"] >= KOEF_MIN_BAZE] or legs,
+                          key=lambda l: l["prob"], reverse=True)[:2]
+            zgjedhja = top2[min(varianti % 2, len(top2) - 1)] if top2 else None
+        if not zgjedhja:
+            return None
+        legs_out.append({"ndeshja": m["ndeshja"], "pjeset": [zgjedhja["market"]],
+                         "prob": zgjedhja["prob"], "koef": zgjedhja["koef"]})
+        koef_total *= zgjedhja["koef"]; prob_total *= zgjedhja["prob"]
+    if koef_total < KOEF_MIN_SKEDINE:
+        koef_total, prob_total = _shto_double_options(rendit, legs_out, koef_total, prob_total)
+    return {"ndeshjet": legs_out, "koef_total": round(koef_total, 2), "prob": round(prob_total, 4)}
+
+
+def _gjenero_kombinimet(top5):
+    mature = []
+    for p in top5:
+        legs = _legs_per_match(p, COMBO_MARKETS)
+        if not legs:
+            continue
+        legs.sort(key=lambda l: l["prob"], reverse=True)
+        mature.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"),
+                       "dist": p.get("dist_gola") or {}, "legs": legs,
+                       "legs_full": _legs_per_match(p, DOUBLE_MARKETS),
+                       "conf": legs[0]["prob"]})
+    if len(mature) < 4:
+        return []
+    mature.sort(key=lambda mm: mm["conf"], reverse=True)
+    n = len(mature)
+    plan = []
+    if n >= 5:
+        for i in range(5):
+            plan.append([m for j, m in enumerate(mature) if j != i])
+        plan.append(mature[:4])
+    else:
+        for _ in range(6):
+            plan.append(mature[:4])
+    out = []
+    for idx, kater in enumerate(plan[:6]):
+        sked = _ndderto_skedine(kater, varianti=idx)
+        if sked:
+            out.append({"nr": len(out) + 1, **sked})
+    return out[:6]
 
 
 def _eshte_zhbllokuar_ditore(email):
@@ -654,7 +803,7 @@ def ditore_unlock_me_kredite(payload: dict):
 @app.get("/api/ditore")
 def skedina_dhe_kombinimi_ditore(email: str = ""):
     res = requests.get(
-        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data,ora,statusi,best_bet,tregjet"
+        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data,ora,statusi,best_bet,tregjet,odds_reale,dist_gola"
         f"&best_bet=not.is.null"
         f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)"
         f"&order=id.desc&limit=300",
@@ -1536,6 +1685,7 @@ def analizo_ndeshjen_premium_master(
         "is_bllof":     eshte_bllof,
         "koef_plote":   f"1:{k1_str} | X:{kx_str} | 2:{k2_str}",
         "tregjet":      tregjet_mc,
+        "dist_gola":    rezultatet_freq,
         "best_bet":     best_bet,
         "prob_1x2_mc":  prob_1x2_mc,
         "xg_debug":     {"xg_1": round(xg_1, 3), "xg_2": round(xg_2, 3)},
@@ -1564,7 +1714,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         "ekipi_1", "ekipi_2", "ndeshja", "data", "ora", "ora_sakte",
         "koha_utc", "statusi", "minuta", "rezultati", "koef_1", "koef_x",
         "koef_2", "analiza_custom", "besueshmeria", "rezultati_sakt",
-        "koef_rez_sakt", "is_premium", "is_bllof", "koef_plote", "tregjet", "best_bet", "odds_reale",
+        "koef_rez_sakt", "is_premium", "is_bllof", "koef_plote", "tregjet", "best_bet", "odds_reale", "dist_gola",
         "liga_emri", "parashikimi_origjinal_ai"
     }
 
@@ -1832,6 +1982,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
                             "is_bllof":       extradb["is_bllof"],
                             "koef_plote":     extradb["koef_plote"],
                             "tregjet":        extradb["tregjet"],
+                            "dist_gola":      extradb["dist_gola"],
                             "best_bet":       _best_bet_value(extradb["tregjet"], bet365_odds.get(id_ndeshja, {})) or extradb["best_bet"],
                         })
                         vip_kandidatet.append(base_match)
