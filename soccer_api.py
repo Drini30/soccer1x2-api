@@ -766,6 +766,8 @@ def _gjenero_kombinimet(top5):
 def _eshte_zhbllokuar_ditore(email):
     if not email:
         return False
+    if _eshte_vip(email):          # VIP = akses i plotë (përfshin produktet ditore)
+        return True
     try:
         sot = datetime.utcnow().strftime("%Y-%m-%d")
         r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}&select=ditore_unlock_date",
@@ -990,21 +992,41 @@ GEN_DOPT_FLOOR = 0.18     # prob min për një double-option (dy tregje bashkë)
 
 
 def _legs_gjenerator(p, grupet_lejuara):
-    """Legs KOHERENTE nga grupet e lejuara (me prag probabiliteti; PA rezultat të saktë)."""
+    """Legs të PËRPUTHURA me parashikimin: VETËM ana e favorizuar e çdo tregu.
+    Kurrë kundër favoritit (s'luan 'X2' te një favorit vendas, etj.)."""
     tregjet = p.get("tregjet") or {}
     odds = p.get("odds_reale") or {}
-    legs = []
-    markets = []
-    for g in grupet_lejuara:
-        markets.extend(GRUPET_GJENERATOR.get(g, []))
-    for m in markets:
-        if m not in tregjet:
-            continue
+
+    def P(m):
         try:
-            prob = float(tregjet.get(m, 0))
+            return float(tregjet.get(m, 0) or 0)
         except Exception:
-            prob = 0.0
-        if prob < GEN_LEG_FLOOR:      # përjashto tregjet e palogjikshme (prob shumë e ulët = bast kundër favoritit)
+            return 0.0
+
+    # parashikimi 1X2 i algoritmit = ana me probabilitet më të lartë
+    fav = max([("1", P("1")), ("X", P("X")), ("2", P("2"))], key=lambda x: x[1])[0]
+    aligned = []
+    if "1x2" in grupet_lejuara and P(fav) > 0:
+        aligned.append(fav)
+    if "dc" in grupet_lejuara:                       # vetëm double-chance që PËRMBAN favoritin
+        if fav == "1":
+            aligned += ["1X", "12"]
+        elif fav == "X":
+            aligned += ["1X", "X2"]
+        else:
+            aligned += ["12", "X2"]
+    if "ou" in grupet_lejuara:                        # për çdo linjë, ana e favorizuar
+        for ln in ["1.5", "2.5", "3.5"]:
+            o, u = P("Over " + ln), P("Under " + ln)
+            if o > 0 or u > 0:
+                aligned.append("Over " + ln if o >= u else "Under " + ln)
+    if "gg" in grupet_lejuara and (P("GG") > 0 or P("NG") > 0):
+        aligned.append("GG" if P("GG") >= P("NG") else "NG")
+
+    legs = []
+    for m in aligned:
+        prob = P(m)
+        if prob <= 0:
             continue
         od_real = None
         if m in odds:
@@ -1040,55 +1062,58 @@ def _opsionet_ndeshje(p, grupet_lejuara):
 
 
 def _gjenero_target_v2(pool, nr, koef_target, grupet_lejuara, tol=0.06):
-    """nr ndeshje; përdor legs + double-options për të rënë në bandën [target±tol], duke maksimizuar probabilitetin."""
+    """nr ndeshje; DP që MAKSIMIZON probabilitetin total me produkt koeficienti në bandën [target±tol].
+    Shpërndarje e drejtë (jo një leg i vetëm i rrezikshëm), gjithmonë anë e favorizuar."""
     matches = []
     for p in pool:
         ops = _opsionet_ndeshje(p, grupet_lejuara)
         if not ops:
             continue
         ops.sort(key=lambda o: o["prob"], reverse=True)
-        matches.append({"ndeshja": p.get("ndeshja"), "id": p.get("id"), "ops": ops, "conf": ops[0]["prob"]})
+        ops = ops[:24]   # kufizo për shpejtësi
+        matches.append({"ndeshja": p.get("ndeshja"), "parashikimi": p.get("rezultati_sakt"),
+                        "ops": ops, "conf": ops[0]["prob"]})
     if len(matches) < nr:
         return None
     matches.sort(key=lambda m: m["conf"], reverse=True)
-    zgj = [{"m": m, "op": m["ops"][0]} for m in matches[:nr]]
-
-    def ktot():
-        k = 1.0
-        for z in zgj:
-            k *= z["op"]["koef"]
-        return k
-
-    def ptot():
-        pp = 1.0
-        for z in zgj:
-            pp *= z["op"]["prob"]
-        return pp
+    perdor = matches[:nr]
 
     lo, hi = koef_target * (1 - tol), koef_target * (1 + tol)
-    guard = 0
-    while guard < 300:
-        guard += 1
-        kt = ktot()
-        if lo <= kt <= hi:
-            break
-        d_tani = abs(kt - koef_target)
-        best = None; best_d = d_tani; best_p = -1.0
-        for idx, z in enumerate(zgj):
-            for op in z["m"]["ops"]:
-                if op is z["op"]:
-                    continue
-                new_total = kt / z["op"]["koef"] * op["koef"]
-                d = abs(new_total - koef_target)
-                if d < best_d - 1e-9 or (abs(d - best_d) < 1e-9 and op["prob"] > best_p):
-                    best_d = d; best = (idx, op); best_p = op["prob"]
-        if not best or best_d >= d_tani - 1e-9:
-            break
-        zgj[best[0]]["op"] = best[1]
+    W = 0.03   # gjerësia e bucket-it në hapësirën log të koeficientit
+    # DP: bucket(log-koef) -> (logprob_max, rruga e indekseve të opsioneve)
+    dp = {0: (0.0, [])}
+    for m in perdor:
+        ndp = {}
+        for b, (lp, path) in dp.items():
+            for oi, op in enumerate(m["ops"]):
+                nb = b + int(round(math.log(op["koef"]) / W))
+                nlp = lp + math.log(max(op["prob"], 1e-9))
+                cur = ndp.get(nb)
+                if cur is None or nlp > cur[0]:
+                    ndp[nb] = (nlp, path + [oi])
+        dp = ndp
+        if len(dp) > 4000:   # prune: mbaj bucket-et më të mira
+            top = sorted(dp.items(), key=lambda kv: kv[1][0], reverse=True)[:4000]
+            dp = dict(top)
 
-    return {"ndeshjet": [{"ndeshja": z["m"]["ndeshja"], "tregu": " + ".join(z["op"]["pjeset"]),
-                          "prob": round(z["op"]["prob"], 4), "koef": z["op"]["koef"]} for z in zgj],
-            "koef_total": round(ktot(), 2), "prob": round(ptot(), 4), "nr": len(zgj)}
+    lo_b, hi_b = math.log(lo) / W, math.log(hi) / W
+    ne_bande = [(lp, path) for b, (lp, path) in dp.items() if lo_b - 0.5 <= b <= hi_b + 0.5]
+    if ne_bande:
+        _, path = max(ne_bande, key=lambda x: x[0])
+    else:
+        tb = math.log(koef_target) / W
+        b = min(dp.keys(), key=lambda x: abs(x - tb))
+        path = dp[b][1]
+
+    ndeshjet = []; ktot = 1.0; ptot = 1.0
+    for m, oi in zip(perdor, path):
+        op = m["ops"][oi]
+        ktot *= op["koef"]; ptot *= op["prob"]
+        ndeshjet.append({"ndeshja": m["ndeshja"], "tregu": " + ".join(op["pjeset"]),
+                         "parashikimi": m.get("parashikimi"),
+                         "prob": round(op["prob"], 4), "koef": op["koef"]})
+    return {"ndeshjet": ndeshjet, "koef_total": round(ktot, 2),
+            "prob": round(ptot, 4), "nr": len(ndeshjet)}
 
 
 def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara, tol=0.06):
@@ -1107,9 +1132,13 @@ def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara
         if lo <= s["koef_total"] <= hi:
             ne_band.append(s)
     if ne_band:
-        return max(ne_band, key=lambda s: s["prob"])      # më e mundshmja brenda bandës
+        best = max(ne_band, key=lambda s: s["prob"])       # më e mundshmja brenda bandës
+        best["arritur"] = True
+        return best
     if te_gjitha:
-        return min(te_gjitha, key=lambda s: abs(s["koef_total"] - koef_target))  # më e afërta
+        best = min(te_gjitha, key=lambda s: abs(s["koef_total"] - koef_target))  # më e afërta
+        best["arritur"] = (lo <= best["koef_total"] <= hi)
+        return best
     return None
 
 
@@ -1127,7 +1156,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         grupet = ["1x2", "ou", "gg"]
 
     res = requests.get(
-        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,best_bet,tregjet,odds_reale,dist_gola"
+        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt"
         f"&best_bet=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300",
         headers=SUPABASE_SERVICE_HEADERS)
     pool = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
@@ -2367,7 +2396,7 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
             else:
                 ndeshja["is_premium"] = False
                 ndeshja["is_motd"]    = False
-                ndeshja["analiza_custom"] = None
+                # analiza_custom MBAHET për të gjitha ndeshjet e analizuara (jo vetëm top-3)
             lista_e_te_gjithave.append(ndeshja)
 
         # Ruaj TË GJITHA ndeshjet VIP të analizuara (për daily products + historik PPM)
