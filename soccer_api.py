@@ -85,6 +85,7 @@ app.add_middleware(
 # KREDENCIALET (nga env vars — Render → Environment)
 API_KEY = os.environ.get("API_SPORTS_KEY", "")
 HEADERS = {"x-apisports-key": API_KEY}
+_ngjyra_live_cache = {}
 
 SUPABASE_BASE = os.environ.get(
     "SUPABASE_URL", "https://oqfhlyybwwkjbkvfpsxi.supabase.co"
@@ -313,9 +314,9 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
 # ==========================================
 CMIMI_VIP = 69.99
 VIP_DITE  = 30
-PPM_TIER1 = 49.99   # koef < 5.0
-PPM_TIER2 = 59.99   # 5.0 - 7.9
-PPM_TIER3 = 99.99   # koef >= 8.0
+PPM_TIER1 = 20.0    # çmim FIKS $20 për ndeshje
+PPM_TIER2 = 20.0
+PPM_TIER3 = 20.0
 CMIMI_DITORE = 10.0   # zhbllokon Skedinën + Kombinimin e Ditës
 
 CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "")
@@ -1166,6 +1167,84 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
     return {"sukses": True, "skedina": sked,
             "kerkesa": {"nr_min": nr, "nr_max": nr_max, "koef_target": koef, "tregjet": grupet}}
+
+
+@app.get("/api/live/stats")
+def live_stats(fixture: str = ""):
+    """Statistikat live për një ndeshje: posedimi, gjuajtjet, këndet, rezultati, minuta, ngjyrat e skuadrave."""
+    if not fixture or not API_KEY:
+        return {"sukses": False, "arsye": "Mungon fixture ose API key."}
+    base = "https://v3.football.api-sports.io"
+    try:
+        rf = requests.get(f"{base}/fixtures?id={fixture}", headers=HEADERS, timeout=12)
+        fxr = rf.json().get("response", []) if rf.status_code == 200 else []
+        if not fxr:
+            return {"sukses": False, "arsye": "Ndeshja s'u gjet."}
+        fx = fxr[0]
+        teams = fx.get("teams", {}) or {}
+        goals = fx.get("goals", {}) or {}
+        status = (fx.get("fixture", {}) or {}).get("status", {}) or {}
+        idA = teams.get("home", {}).get("id"); idB = teams.get("away", {}).get("id")
+        emriA = teams.get("home", {}).get("name"); emriB = teams.get("away", {}).get("name")
+
+        rs = requests.get(f"{base}/fixtures/statistics?fixture={fixture}", headers=HEADERS, timeout=12)
+        st = rs.json().get("response", []) if rs.status_code == 200 else []
+
+        def stat_dict(team_id):
+            for e in st:
+                if (e.get("team", {}) or {}).get("id") == team_id:
+                    return {s.get("type"): s.get("value") for s in (e.get("statistics", []) or [])}
+            return {}
+        sA, sB = stat_dict(idA), stat_dict(idB)
+
+        def n(d, k):
+            v = d.get(k)
+            try:
+                return int(v) if v is not None else 0
+            except Exception:
+                return 0
+
+        def poss(d):
+            v = d.get("Ball Possession")
+            try:
+                return int(str(v).replace("%", "").strip()) if v else None
+            except Exception:
+                return None
+        possA = poss(sA); possB = poss(sB)
+        if possA is None and possB is None:
+            possA = 50
+        elif possA is None:
+            possA = 100 - (possB or 50)
+
+        ng = _ngjyra_live_cache.get(str(fixture))
+        if not ng:
+            ng = {"A": None, "B": None}
+            try:
+                rl = requests.get(f"{base}/fixtures/lineups?fixture={fixture}", headers=HEADERS, timeout=12)
+                lu = rl.json().get("response", []) if rl.status_code == 200 else []
+                for e in lu:
+                    tid = (e.get("team", {}) or {}).get("id")
+                    prim = (((e.get("team", {}) or {}).get("colors", {}) or {}).get("player", {}) or {}).get("primary")
+                    if prim:
+                        hexc = prim if str(prim).startswith("#") else "#" + str(prim)
+                        if tid == idA: ng["A"] = hexc
+                        elif tid == idB: ng["B"] = hexc
+                if lu:
+                    _ngjyra_live_cache[str(fixture)] = ng
+            except Exception:
+                pass
+
+        return {"sukses": True, "emriA": emriA, "emriB": emriB,
+                "golA": goals.get("home"), "golB": goals.get("away"),
+                "minuta": status.get("elapsed"), "statusi": status.get("short"),
+                "ngjyraA": ng.get("A") or "#e23b3b", "ngjyraB": ng.get("B") or "#3b6fe2",
+                "possA": possA, "possB": 100 - possA,
+                "gjuajtjeA": n(sA, "Total Shots"), "gjuajtjeB": n(sB, "Total Shots"),
+                "neporteA": n(sA, "Shots on Goal"), "neporteB": n(sB, "Shots on Goal"),
+                "kenderA": n(sA, "Corner Kicks"), "kenderB": n(sB, "Corner Kicks"),
+                "faullA": n(sA, "Fouls"), "faullB": n(sB, "Fouls")}
+    except Exception as e:
+        return {"sukses": False, "arsye": str(e)}
 
 
 # ==========================================
