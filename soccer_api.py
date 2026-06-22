@@ -1388,6 +1388,99 @@ def telegram_dergo(key: str = "", date: str = None):
     return {"sukses": bool(ok), "info": info, "pick": pick}
 
 
+# ===================== VIP COMBO (vetëm VIP) — 2 ndeshje × 4 rezultate të sakta =====================
+def _top_rezultate_sakta(p, n=4):
+    """Top-n rezultatet më të mundshme nga dist_gola (Monte Carlo + Poisson),
+    duke përfshirë gjithmonë rezultati_sakt të algoritmit."""
+    dist = p.get("dist_gola") or {}
+    rez_sakt = p.get("rezultati_sakt")
+    if not dist:
+        return []
+    try:
+        total = sum(float(v) for v in dist.values())
+    except Exception:
+        total = 0.0
+    if total <= 0:
+        return []
+    items = sorted(dist.items(), key=lambda kv: float(kv[1]), reverse=True)
+    zgjedhur, seen = [], set()
+
+    def shto(k, v):
+        prob = float(v) / total
+        zgjedhur.append({"skor": k, "prob": round(prob, 4),
+                         "koef": round(1.0 / prob, 2) if prob > 0 else 0})
+        seen.add(k)
+
+    # 1) sigurohu që rezultati_sakt është brenda
+    if rez_sakt:
+        rs = str(rez_sakt).replace(" ", "")
+        for k, v in items:
+            if str(k).replace(" ", "") == rs:
+                shto(k, v); break
+    # 2) mbush me më të mundshmet
+    for k, v in items:
+        if len(zgjedhur) >= n:
+            break
+        if k in seen:
+            continue
+        shto(k, v)
+    return zgjedhur[:n]
+
+
+@app.get("/api/vip-combo")
+def vip_combo(email: str = "", nr: int = 2, rez: int = 4):
+    """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
+    if not email or not _eshte_vip(email):
+        return {"sukses": False, "arsye": "VIP-only. Bëhu VIP për të hapur VIP Combo."}
+    nr = 3 if int(nr) == 3 else 2
+    rez = 3 if int(rez) == 3 else 4
+    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    r = requests.get(
+        f"{SUPABASE_URL_PREDS}?select=ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola"
+        f"&data=eq.{dt}&dist_gola=not.is.null&rezultati_sakt=not.is.null"
+        f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20",
+        headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+    rows = r.json() if r.status_code == 200 else []
+    ndeshjet = []
+    for p in rows:
+        topr = _top_rezultate_sakta(p, rez)
+        if len(topr) >= rez:
+            ndeshjet.append({"ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
+                             "liga": p.get("liga_emri"), "rezultatet": topr})
+        if len(ndeshjet) >= nr:
+            break
+    if len(ndeshjet) < nr:
+        return {"sukses": False, "arsye": f"Nuk ka {nr} ndeshje me rezultate të sakta sot."}
+
+    ndeshjet = ndeshjet[:nr]
+    # prodhimi kartezian i rezultateve (rez^nr skedina)
+    def prodhim(listat):
+        rez_list = [[]]
+        for lst in listat:
+            rez_list = [r + [x] for r in rez_list for x in lst]
+        return rez_list
+
+    listat = [n["rezultatet"] for n in ndeshjet]
+    kombinimet = []
+    for kombo in prodhim(listat):
+        jp = 1.0; kt = 1.0
+        skedina = []
+        for i, rr in enumerate(kombo):
+            jp *= (rr["prob"] or 0)
+            kt *= (rr["koef"] or 1)
+            skedina.append({"ndeshja": ndeshjet[i]["ndeshja"], "skor": rr["skor"], "koef": rr["koef"]})
+        kombinimet.append({"skedina": skedina, "prob": round(jp, 5), "koef_total": round(kt, 2)})
+    kombinimet.sort(key=lambda k: k["prob"], reverse=True)
+
+    mbulim = 1.0
+    for n in ndeshjet:
+        mbulim *= sum(x["prob"] for x in n["rezultatet"])
+    return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez,
+            "ndeshjet": ndeshjet, "kombinimet": kombinimet,
+            "nr_kombinimesh": len(kombinimet),
+            "mbulimi_perqind": round(mbulim * 100, 1)}
+
+
 # ==========================================
 # MODULI 1: ELO BAZË & VALUE BET
 # ==========================================
