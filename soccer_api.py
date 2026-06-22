@@ -729,7 +729,7 @@ def _ndderto_skedine(kater, varianti=0):
             zgjedhja = top2[min(varianti % 2, len(top2) - 1)] if top2 else None
         if not zgjedhja:
             return None
-        legs_out.append({"ndeshja": m["ndeshja"], "pjeset": [zgjedhja["market"]],
+        legs_out.append({"ndeshja": m["ndeshja"], "liga": m.get("liga_emri"), "pjeset": [zgjedhja["market"]],
                          "prob": zgjedhja["prob"], "koef": zgjedhja["koef"]})
         koef_total *= zgjedhja["koef"]; prob_total *= zgjedhja["prob"]
     if koef_total < KOEF_MIN_SKEDINE:
@@ -1161,7 +1161,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         grupet = ["1x2", "ou", "gg"]
 
     res = requests.get(
-        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt"
+        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt"
         f"&best_bet=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300",
         headers=SUPABASE_SERVICE_HEADERS)
     pool = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
@@ -2475,6 +2475,50 @@ def _ruaj_cache_db(data_target, payload):
         pass
 
 
+_LIVE_STATUSES_SET = {"1H","HT","2H","ET","BT","P","SUSP","INT","LIVE"}
+_LIVE_REFRESH_TS = {}
+
+def _me_live_fresh(payload, data_target):
+    """Rifreskon statusin/minuten/rezultatin e ndeshjeve LIVE direkt nga API-Sports,
+    sepse cache-i mund t'i mbajë 'live minuta 1' edhe pasi kanë mbaruar."""
+    try:
+        if not payload or data_target != datetime.utcnow().strftime('%Y-%m-%d'):
+            return payload
+        ref = {}
+        for liga in payload:
+            for nd in liga.get("ndeshjet", []):
+                if nd.get("statusi") in _LIVE_STATUSES_SET:
+                    ref[str(nd.get("id"))] = nd
+        if not ref:
+            return payload
+        now = time.time()
+        if now - _LIVE_REFRESH_TS.get(data_target, 0) < 25:
+            return payload  # u rifreskua së fundmi
+        _LIVE_REFRESH_TS[data_target] = now
+        live_ids = list(ref.keys())
+        for i in range(0, len(live_ids), 20):
+            batch = live_ids[i:i+20]
+            try:
+                api = requests.get("https://v3.football.api-sports.io/fixtures",
+                                   headers=HEADERS, params={"ids": "-".join(batch)}, timeout=8)
+                fixtures = api.json().get("response", [])
+            except Exception:
+                continue
+            for fx in fixtures:
+                nd = ref.get(str(fx["fixture"]["id"]))
+                if not nd:
+                    continue
+                st = fx["fixture"]["status"]
+                nd["statusi"] = st.get("short") or nd.get("statusi")
+                nd["minuta"]  = st.get("elapsed") or 0
+                gh = fx["goals"]["home"]; ga = fx["goals"]["away"]
+                if gh is not None and ga is not None:
+                    nd["rezultati"] = f"{gh} - {ga}"
+        return payload
+    except Exception:
+        return payload
+
+
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
@@ -2485,7 +2529,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
     # 1) Cache në memorie (më i shpejti)
     if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 600):
-        return {"mesazhi": "Sukses", "skedina_grupuar": SKEDINA_CACHE[data_target]}
+        return {"mesazhi": "Sukses", "skedina_grupuar": _me_live_fresh(SKEDINA_CACHE[data_target], data_target)}
 
     # 2) Cache në DB (mbijeton restart-et) — kthe MENJËHERË, pa llogaritur
     payload, fresh = _lexo_cache_db(data_target, max_age_min=60)
@@ -2494,7 +2538,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         SKEDINA_LAST_UPDATE[data_target] = koha_tani
         if not fresh:
             background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, data_target)  # rifresko në sfond
-        return {"mesazhi": "Sukses", "skedina_grupuar": payload}
+        return {"mesazhi": "Sukses", "skedina_grupuar": _me_live_fresh(payload, data_target)}
 
     # 3) Asgjë në cache (hera e parë) → gjenero tani; cron-i do e parahapë më pas
     rez = _kompjuto_dhe_ruaj_skedina(data_target)
