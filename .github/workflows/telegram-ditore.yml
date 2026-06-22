@@ -1,0 +1,27 @@
+name: Ndeshja e Ditës (Telegram)
+
+on:
+  schedule:
+    - cron: '0 9 * * *'      # çdo ditë në 09:00 UTC (ndrysho orën sipas dëshirës)
+  workflow_dispatch:          # lejon edhe nisje manuale nga GitHub
+
+jobs:
+  dergo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalo varësitë
+        run: pip install pyTelegramBotAPI requests
+
+      - name: Dërgo mesazhin
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python telegram_bot_ditore.py
