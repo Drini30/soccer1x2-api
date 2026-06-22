@@ -96,6 +96,7 @@ SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 SUPABASE_URL_PREDS = f"{SUPABASE_BASE}/rest/v1/predictions"
+SUPABASE_URL_TRAINING = f"{SUPABASE_BASE}/rest/v1/training_results"
 SUPABASE_URL_USERS = f"{SUPABASE_BASE}/rest/v1/users"
 SUPABASE_URL_DNA   = f"{SUPABASE_BASE}/rest/v1/team_dna_cache"
 
@@ -1247,6 +1248,30 @@ def live_stats(fixture: str = ""):
         return {"sukses": False, "arsye": str(e)}
 
 
+@app.get("/api/training/accuracy")
+def training_accuracy():
+    """Saktësia kumulative nga training_results (rritet me kohën)."""
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_TRAINING}?select=hit_rezultat,hit_1x2,hit_ou25",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        rows = r.json() if r.status_code == 200 else []
+        ntot = len(rows)
+        if ntot == 0:
+            return {"sukses": True, "total": 0, "mesazh": "Ende pa të dhëna të mbledhura."}
+
+        def pct(k):
+            c = sum(1 for x in rows if x.get(k))
+            return {"sakte": c, "perqindja": round(c / ntot * 100, 1)}
+
+        return {"sukses": True, "total": ntot,
+                "rezultat_sakte": pct("hit_rezultat"),
+                "fituesi_1x2": pct("hit_1x2"),
+                "over_under_25": pct("hit_ou25")}
+    except Exception as e:
+        return {"sukses": False, "arsye": str(e)}
+
+
 # ==========================================
 # MODULI 1: ELO BAZË & VALUE BET
 # ==========================================
@@ -2267,6 +2292,84 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     return {"mesazhi": "Sukses" if rez else "Gabim", "skedina_grupuar": rez}
 
 
+def _parse_skor(s):
+    """'1 - 3' / '1-3' → (1, 3); ndryshe (None, None)."""
+    try:
+        if not s:
+            return (None, None)
+        p = str(s).replace("\u2013", "-").split("-")
+        if len(p) != 2:
+            return (None, None)
+        return (int(p[0].strip()), int(p[1].strip()))
+    except Exception:
+        return (None, None)
+
+
+def _regjistro_rezultatet_training():
+    """Regjistron çdo ndeshje të mbaruar (parashikim vs real) në training_results.
+    Përdoret për monitorim saktësie dhe si burim për ritrajnimin e ardhshëm."""
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data,liga_emri,tregjet,rezultati_sakt,rezultati"
+            f"&statusi=in.(FT,AET,PEN,AWD,WO)&tregjet=not.is.null&rezultati=not.is.null"
+            f"&order=id.desc&limit=500",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        preds = r.json() if r.status_code == 200 else []
+        if not preds:
+            return
+        ids = [str(p["id"]) for p in preds]
+        rex = requests.get(
+            f"{SUPABASE_URL_TRAINING}?fixture_id=in.({','.join(ids)})&select=fixture_id",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        ekzistues = {x["fixture_id"] for x in (rex.json() if rex.status_code == 200 else [])}
+
+        rreshta = []
+        for p in preds:
+            fid = str(p["id"])
+            if fid in ekzistues:
+                continue
+            rh, ra = _parse_skor(p.get("rezultati"))
+            if rh is None:
+                continue
+            ph, pa = _parse_skor(p.get("rezultati_sakt"))
+            tg = p.get("tregjet") or {}
+
+            def fl(k):
+                try:
+                    return float(tg.get(k, 0) or 0)
+                except Exception:
+                    return 0.0
+
+            p1, px, p2 = fl("1"), fl("X"), fl("2")
+            pred_1x2 = "1" if (p1 >= px and p1 >= p2) else ("X" if px >= p2 else "2")
+            pred_ou25 = "Over" if fl("Over 2.5") >= fl("Under 2.5") else "Under"
+            real_1x2 = "1" if rh > ra else ("X" if rh == ra else "2")
+            real_ou25 = "Over" if (rh + ra) >= 3 else "Under"
+
+            rreshta.append({
+                "fixture_id": fid, "ndeshja": p.get("ndeshja"),
+                "liga": p.get("liga_emri"), "data": p.get("data"),
+                "pred_gola_home": ph, "pred_gola_away": pa,
+                "pred_rezultat": p.get("rezultati_sakt"),
+                "pred_1x2": pred_1x2, "pred_ou25": pred_ou25,
+                "real_gola_home": rh, "real_gola_away": ra,
+                "real_rezultat": p.get("rezultati"),
+                "real_1x2": real_1x2, "real_ou25": real_ou25,
+                "hit_rezultat": (ph is not None and ph == rh and pa == ra),
+                "hit_1x2": (pred_1x2 == real_1x2),
+                "hit_ou25": (pred_ou25 == real_ou25),
+            })
+
+        if rreshta:
+            requests.post(
+                f"{SUPABASE_URL_TRAINING}?on_conflict=fixture_id",
+                headers={**SUPABASE_SERVICE_HEADERS,
+                         "Prefer": "resolution=ignore-duplicates,return=minimal"},
+                json=rreshta, timeout=20)
+    except Exception:
+        pass
+
+
 @app.get("/api/cron/gjenero")
 def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     """Parahap skedinën në sfond (thirret nga cron çdo ~15-20 min). Kthen menjëherë."""
@@ -2280,6 +2383,7 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     # pas gjenerimit: ruaj snapshot-in e Skedinës së Ditës + vlerëso skedinat e mbaruara
     background_tasks.add_task(_snapshot_skedina_ditore)
     background_tasks.add_task(_vlereso_skedina_historik)
+    background_tasks.add_task(_regjistro_rezultatet_training)
     return {"mesazhi": "Gjenerimi nisi në sfond", "datat": datat}
 
 
