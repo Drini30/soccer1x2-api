@@ -84,6 +84,9 @@ app.add_middleware(
 
 # KREDENCIALET (nga env vars — Render → Environment)
 API_KEY = os.environ.get("API_SPORTS_KEY", "")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+TELEGRAM_CRON_KEY = os.environ.get("TELEGRAM_CRON_KEY", "")
 HEADERS = {"x-apisports-key": API_KEY}
 _ngjyra_live_cache = {}
 
@@ -1270,6 +1273,119 @@ def training_accuracy():
                 "over_under_25": pct("hit_ou25")}
     except Exception as e:
         return {"sukses": False, "arsye": str(e)}
+
+
+# ===================== TELEGRAM — NDESHJA E DITËS =====================
+PICK_MARKETS = ["1", "X", "2", "Over 1.5", "Under 1.5", "Over 2.5",
+                "Under 2.5", "Over 3.5", "Under 3.5", "GG", "NG"]
+
+
+def _emri_tregut(m, ndeshja):
+    home = away = ""
+    if " - " in (ndeshja or ""):
+        home, away = ndeshja.split(" - ", 1)
+    harta = {"1": ("Fiton " + home).strip(), "X": "Barazim",
+             "2": ("Fiton " + away).strip(),
+             "GG": "Të dyja shënojnë (GG)", "NG": "Nuk shënojnë të dyja (NG)"}
+    if m in harta:
+        return harta[m]
+    if m.startswith("Over"):
+        return "Mbi " + m.split()[1] + " gola"
+    if m.startswith("Under"):
+        return "Nën " + m.split()[1] + " gola"
+    return m
+
+
+def _zgjidh_pick_ditor(data_str):
+    """Gjen pick-un me besueshmërinë më të lartë (jo trivial) për një datë."""
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=ndeshja,ora,liga_emri,tregjet,odds_reale,rezultati_sakt"
+            f"&data=eq.{data_str}&tregjet=not.is.null"
+            f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        rows = r.json() if r.status_code == 200 else []
+        best = None
+        for p in rows:
+            tg_ = p.get("tregjet") or {}
+            od = p.get("odds_reale") or {}
+            for m in PICK_MARKETS:
+                try:
+                    prob = float(tg_.get(m, 0) or 0)
+                except Exception:
+                    prob = 0.0
+                if prob <= 0 or prob > 0.90:   # përjashto trivialet (gati 100%)
+                    continue
+                if best is None or prob > best["prob"]:
+                    try:
+                        koef = float(od.get(m, 0) or 0)
+                    except Exception:
+                        koef = 0.0
+                    if koef <= 1.0:
+                        koef = round(1 / prob, 2)
+                    best = {"ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
+                            "liga": p.get("liga_emri"), "tregu": m,
+                            "tregu_emri": _emri_tregut(m, p.get("ndeshja")),
+                            "prob": prob, "koef": koef,
+                            "parashikimi": p.get("rezultati_sakt")}
+        return best
+    except Exception:
+        return None
+
+
+def _ndertoMesazhTelegram(p):
+    return ("🎁 <b>NDESHJA DHURATË E DITËS</b> — SOCCER1X2 PRO\n\n"
+            f"🏆 {p.get('liga','')}\n"
+            f"🆚 <b>{p['ndeshja']}</b>\n"
+            f"🕐 Ora: {p.get('ora','')}\n\n"
+            f"🎯 Parashikimi: <b>{p['tregu_emri']}</b>\n"
+            f"💰 Koeficienti: <b>{p['koef']}</b>\n\n"
+            "✅ <b>Siguri e lartë</b> — dhuratë nga ekipi ynë.\n\n"
+            "Maksimizo fitimin: luaj me <b>KOMBINIME</b>, zhblloko <b>Skedinën e Ditës</b> dhe bëhu <b>VIP</b>.\n"
+            "👉 https://soccer1x2pro.com\n\n"
+            "💎 Skedinë ditore me kombinim fitues\n"
+            "💎 Akses VIP me parashikime premium\n"
+            "💎 Maksimizim i fitimit\n\n"
+            "📈 <b>With us, you invest.</b>\n\n"
+            "⚠️ 18+ • Luaj me përgjegjësi")
+
+
+def _dergo_telegram(text, chat_id=None):
+    if not TELEGRAM_BOT_TOKEN:
+        return False, "Mungon TELEGRAM_BOT_TOKEN"
+    cid = chat_id or TELEGRAM_CHAT_ID
+    if not cid:
+        return False, "Mungon TELEGRAM_CHAT_ID"
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": cid, "text": text, "parse_mode": "HTML",
+                  "disable_web_page_preview": False}, timeout=15)
+        j = r.json() if r.status_code == 200 else {}
+        return bool(j.get("ok")), (j if j else r.text)
+    except Exception as e:
+        return False, str(e)
+
+
+@app.get("/api/telegram/top")
+def telegram_top(date: str = None):
+    dt = date or datetime.utcnow().strftime("%Y-%m-%d")
+    pick = _zgjidh_pick_ditor(dt)
+    if not pick:
+        return {"sukses": False, "arsye": "S'ka ndeshje me parashikim për këtë datë."}
+    return {"sukses": True, "pick": pick, "mesazhi": _ndertoMesazhTelegram(pick)}
+
+
+@app.get("/api/telegram/dergo")
+def telegram_dergo(key: str = "", date: str = None):
+    if not TELEGRAM_CRON_KEY or key != TELEGRAM_CRON_KEY:
+        return {"sukses": False, "arsye": "Çelës i pavlefshëm."}
+    dt = date or datetime.utcnow().strftime("%Y-%m-%d")
+    pick = _zgjidh_pick_ditor(dt)
+    if not pick:
+        return {"sukses": False, "arsye": "S'ka ndeshje për këtë datë."}
+    ok, info = _dergo_telegram(_ndertoMesazhTelegram(pick))
+    return {"sukses": bool(ok), "info": info, "pick": pick}
 
 
 # ==========================================
