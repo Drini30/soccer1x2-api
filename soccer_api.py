@@ -1529,6 +1529,123 @@ def ligat_disponueshme():
 
 VIP_COMBO_HIST_URL = f"{SUPABASE_BASE}/rest/v1/vip_combo_historik"
 
+# ===================== PROVABLY FAIR (commit-reveal) =====================
+PF_URL = f"{SUPABASE_BASE}/rest/v1/provably_fair"
+
+def _pf_hash(ndeshja, parashikimi, seed):
+    """Hash publik = sha256(ndeshja | parashikimi | server_seed)."""
+    msg = f"{ndeshja}|{parashikimi}|{seed}"
+    return hashlib.sha256(msg.encode("utf-8")).hexdigest()
+
+def _gjenero_pf():
+    """Krijon 'commitment' (hash i kyçur) për ndeshjet premium të sotme që s'e kanë ende."""
+    dt = datetime.utcnow().strftime('%Y-%m-%d')
+    fund = "FT,AET,PEN,AWD,WO,CANC,PST,ABD"
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=ndeshja,liga_emri,ora,data,rezultati_sakt,ekipi_1_id,ekipi_2_id"
+            f"&data=eq.{dt}&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.({fund})"
+            f"&order=koef_rez_sakt.asc&limit=8",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    for p in rows:
+        nd = p.get("ndeshja"); par = p.get("rezultati_sakt")
+        if not nd or not par:
+            continue
+        seed = secrets.token_hex(8)
+        rec = {"ndeshja": nd, "liga_emri": p.get("liga_emri"), "data": p.get("data"),
+               "ora": p.get("ora"), "parashikimi": par, "server_seed": seed,
+               "hash_publik": _pf_hash(nd, par, seed), "statusi": "kycur",
+               "ekipi_1_id": p.get("ekipi_1_id"), "ekipi_2_id": p.get("ekipi_2_id")}
+        try:
+            requests.post(PF_URL,
+                headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=ignore-duplicates"},
+                json=rec, timeout=8)
+        except Exception:
+            pass
+
+def _zbulo_pf():
+    """Zbulon parashikimet e kyçura sapo ndeshja të mbarojë me rezultat real."""
+    fund = "FT,AET,PEN,AWD,WO"
+    try:
+        r = requests.get(f"{PF_URL}?select=id,ndeshja,data&statusi=eq.kycur",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        locked = r.json() if r.status_code == 200 else []
+    except Exception:
+        locked = []
+    for pf_row in locked:
+        nd = pf_row.get("ndeshja"); dt = pf_row.get("data")
+        if not nd:
+            continue
+        try:
+            url = (f"{SUPABASE_URL_PREDS}?select=rezultati,statusi"
+                   f"&ndeshja=eq.{requests.utils.quote(nd, safe='')}"
+                   + (f"&data=eq.{dt}" if dt else "")
+                   + f"&statusi=in.({fund})&rezultati=not.is.null&limit=1")
+            rr = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+            mm = rr.json() if rr.status_code == 200 else []
+        except Exception:
+            mm = []
+        if mm:
+            try:
+                requests.patch(f"{PF_URL}?id=eq.{pf_row['id']}",
+                    headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
+                    json={"statusi": "zbuluar", "rezultati_real": mm[0].get("rezultati"),
+                          "zbuluar_me": datetime.utcnow().isoformat()}, timeout=8)
+            except Exception:
+                pass
+
+@app.get("/api/pf/list")
+def pf_list():
+    """Lista e ndeshjeve me hash. Të kyçurat NUK e tregojnë parashikimin; të zbuluarat po."""
+    _gjenero_pf(); _zbulo_pf()
+    try:
+        r = requests.get(f"{PF_URL}?select=*&order=krijuar.desc&limit=20",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    out = []
+    for pf_row in rows:
+        item = {"id": pf_row.get("id"), "ndeshja": pf_row.get("ndeshja"),
+                "liga_emri": pf_row.get("liga_emri"), "ora": pf_row.get("ora"),
+                "data": pf_row.get("data"), "hash_publik": pf_row.get("hash_publik"),
+                "statusi": pf_row.get("statusi"), "ekipi_1_id": pf_row.get("ekipi_1_id"),
+                "ekipi_2_id": pf_row.get("ekipi_2_id")}
+        if pf_row.get("statusi") == "zbuluar":
+            item["parashikimi"] = pf_row.get("parashikimi")
+            item["server_seed"] = pf_row.get("server_seed")
+            item["rezultati_real"] = pf_row.get("rezultati_real")
+        out.append(item)
+    return {"pikat": out}
+
+@app.get("/api/pf/verify")
+def pf_verify(id: int):
+    """Verifikim transparent: rikalkulon hash-in nga parashikimi+fara e zbuluar."""
+    try:
+        r = requests.get(f"{PF_URL}?select=*&id=eq.{id}&limit=1",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    if not rows:
+        return {"ok": False, "mesazh": "Nuk u gjet"}
+    pf_row = rows[0]
+    if pf_row.get("statusi") != "zbuluar":
+        return {"ok": False, "statusi": "kycur", "hash_publik": pf_row.get("hash_publik"),
+                "formula": "sha256(ndeshja | parashikimi | server_seed)",
+                "mesazh": "Parashikimi eshte ende i kycur. Hash-i u publikua para ndeshjes dhe zbulohet pas saj."}
+    nd = pf_row.get("ndeshja"); par = pf_row.get("parashikimi"); seed = pf_row.get("server_seed")
+    rikalk = _pf_hash(nd, par, seed)
+    return {"ok": True, "statusi": "zbuluar", "ndeshja": nd, "parashikimi": par,
+            "server_seed": seed, "hash_publik": pf_row.get("hash_publik"),
+            "hash_rikalkuluar": rikalk, "vlefshem": (rikalk == pf_row.get("hash_publik")),
+            "formula": "sha256(ndeshja | parashikimi | server_seed)",
+            "rezultati_real": pf_row.get("rezultati_real")}
+
+
 def _ruaj_vip_combo(dt, nr, rez, ndeshjet):
     """Ruan përkufizimin e VIP Combo-s (një herë/ditë për çdo konfigurim) për vlerësim të mëvonshëm."""
     try:

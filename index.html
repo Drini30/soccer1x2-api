@@ -247,7 +247,7 @@
         .gen-opt.active { background: #d4af37; color: #000; border-color: #d4af37; }
 
         /* ============ TEMA PREMIUM LIGHT (body.light) ============ */
-        body.light { background-color: #eef1f5; color: #1c2128; }
+        body.light { background: linear-gradient(180deg,#eaf4ff 0%,#dbe8f7 100%) fixed; color: #1c2128; }
         body.light #app-container { background: #ffffff; border-color: #e3e7ec; box-shadow: 0 0 24px rgba(140,149,159,0.18); }
         body.light .sticky-zone { background-color: #ffffff; box-shadow: 0 2px 10px rgba(140,149,159,0.12); }
         body.light .top-header { background: linear-gradient(180deg, #0a1c3a 0%, #163460 55%, #27497f 100%); border-bottom: 1px solid #2c4f86; }
@@ -286,9 +286,9 @@
         /* Tabet & butonat e produkteve — vetëm hije/nuancë */
         body.light .filter-btn { background: transparent; border-color: #e3e7ec; color: #5a6470; }
         body.light .filter-btn.active { background: rgba(9,105,218,0.08); color: #0969da; border-color: rgba(9,105,218,0.28); }
-        body.light .prod-btn { background: rgba(184,134,11,0.06); border-color: rgba(184,134,11,0.28); color: #9a6700; }
+        body.light .prod-btn { background: #ffffff; border-color: #ddc680; color: #9a6700; box-shadow: 0 1px 5px rgba(20,40,80,0.08); }
         body.light .prod-btn:hover { background: rgba(184,134,11,0.15); color: #7d4e00; }
-        body.light .prod-btn.prod-vip { background: rgba(9,105,218,0.06); border-color: rgba(9,105,218,0.28); color: #0969da; }
+        body.light .prod-btn.prod-vip { background: #ffffff; border-color: #bcd6f7; color: #0969da; box-shadow: 0 1px 5px rgba(20,40,80,0.08); }
         body.light .prod-btn.prod-vip:hover { background: rgba(9,105,218,0.15); color: #0550ae; }
         body.light .btn-ppm-badge { background: rgba(184,134,11,0.08); color: #9a6700; border-color: rgba(184,134,11,0.3); }
         /* Sidebar / ligat / ndeshjet */
@@ -341,23 +341,23 @@
         body.light .auth-or { color: #bcd0ee; }
 
         /* ============ BANNER VIP (kurorë premium) ============ */
-        .vip-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 16px; position: relative; overflow: hidden;
-            background: linear-gradient(100deg,#7a5c00 0%,#b8860b 18%,#ffd700 40%,#fff7c2 50%,#ffd700 60%,#b8860b 82%,#7a5c00 100%);
-            background-size: 220% 100%; animation: vipShimmer 5s linear infinite;
-            border-top: 2px solid #fff3b0; border-bottom: 2px solid #8a6500; box-shadow: 0 2px 16px rgba(212,175,55,0.55); }
+        .vip-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 16px; position: relative; overflow: hidden;
+            background: radial-gradient(ellipse at 50% 50%, #060606 0%, #161616 48%, #2a2a2a 100%);
+            border-top: 1px solid #3d3d3d; border-bottom: 1px solid #000;
+            box-shadow: inset 0 3px 16px rgba(0,0,0,0.9), inset 0 -2px 9px rgba(0,0,0,0.65), 0 2px 10px rgba(0,0,0,0.45); }
         @keyframes vipShimmer { 0%{background-position:0% 0;} 100%{background-position:220% 0;} }
         .vip-banner-content { display: flex; align-items: center; gap: 10px; flex: 1; flex-wrap: wrap; z-index: 1; }
-        .vip-crown { font-size: 24px; color: #5a3e00; filter: drop-shadow(0 1px 1px rgba(255,255,255,0.7)); }
-        .vip-banner-text { color: #2a1c00; font-size: 13px; font-weight: bold; text-shadow: 0 1px 0 rgba(255,255,255,0.45); }
-        .vip-banner-text b { color: #120c00; letter-spacing: 1.5px; }
-        .vip-banner-cta { background: linear-gradient(180deg,#241800,#3f2c00); color: #ffd700; border: 2px solid #fff3b0; padding: 7px 18px; border-radius: 9px; font-weight: 900; font-size: 12px; cursor: pointer; text-transform: uppercase; white-space: nowrap; z-index: 1;
+        .vip-crown { font-size: 24px; color: #ffd24a; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7)); }
+        .vip-banner-text { color: #ffd24a; font-size: 13px; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.85); }
+        .vip-banner-text b { color: #ffe680; letter-spacing: 1.5px; }
+        .vip-banner-cta { background: linear-gradient(180deg,#ffe066,#c79a1e); color: #1a1200; border: 2px solid #fff3b0; padding: 7px 18px; border-radius: 9px; font-weight: 900; font-size: 12px; cursor: pointer; text-transform: uppercase; white-space: nowrap; z-index: 1;
             box-shadow: 0 0 10px rgba(255,215,0,0.6); animation: ctaGlow 1.6s ease-in-out infinite alternate; }
         @keyframes ctaGlow { from{box-shadow:0 0 6px rgba(255,215,0,0.5);} to{box-shadow:0 0 18px rgba(255,215,0,0.95), 0 0 5px #fff3b0;} }
         .vip-banner-cta:hover { transform: scale(1.06); }
-        .vip-banner-close { background: none; border: none; color: #4a3300; font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; flex-shrink: 0; z-index: 1; }
-        body.light .vip-banner-text { color: #2a1c00; }
-        body.light .vip-banner-text b { color: #120c00; }
-        body.light .vip-banner-close { color: #4a3300; }
+        .vip-banner-close { background: none; border: none; color: #b8a25a; font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; flex-shrink: 0; z-index: 1; }
+        body.light .vip-banner-text { color: #ffd24a; }
+        body.light .vip-banner-text b { color: #ffe680; }
+        body.light .vip-banner-close { color: #b8a25a; }
         .filtra-actions-right i { font-size: 22px; }
         .team-logo { width: 18px; height: 18px; object-fit: contain; vertical-align: middle; margin-right: 5px; flex-shrink: 0; }
         .liga-logo { width: 20px; height: 20px; object-fit: contain; vertical-align: middle; margin-right: 7px; flex-shrink: 0; }
@@ -1218,7 +1218,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0623G','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0623I','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2195,40 +2195,95 @@ if (!gjuhaAktuale) {
         setInterval(sinkronizoHeshtur, 5000);
         window.addEventListener('focus', sinkronizoHeshtur);
     
+        /* ===== TOPI MBI FAQE — fizikë reale, kthim manual + auto pas 30s ===== */
         (function(){
             function initBall(){
-                var ball = document.getElementById('logoBall');
-                if(!ball){ return; }
-                var rot=0, vel=0, dragging=false, lastX=0, moved=false, raf=null;
-                function apply(scale){ ball.style.transform='translate(-50%,-50%) rotate('+rot+'deg) scale('+scale+')'; }
-                function down(e){
-                    e.stopPropagation(); if(e.cancelable) e.preventDefault();
-                    dragging=true; moved=false; ball.classList.add('grabbing');
-                    lastX=(e.touches?e.touches[0]:e).clientX;
-                    if(raf){ cancelAnimationFrame(raf); raf=null; }
-                    apply(1.3);
+                var img = document.getElementById('logoBall');
+                if(!img) return;
+                var cv = document.createElement('canvas'); cv.id='ballLayer';
+                cv.style.cssText='position:fixed;inset:0;z-index:9998;pointer-events:none';
+                document.body.appendChild(cv);
+                var ctx = cv.getContext('2d');
+                var btn = document.createElement('button'); btn.id='ballHome'; btn.innerHTML='\u21A9';
+                btn.title='Kthe topin në logo';
+                btn.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;display:none;width:42px;height:42px;border-radius:50%;border:none;background:#1559c7;color:#fff;font-size:20px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4)';
+                document.body.appendChild(btn);
+
+                var W,H,R=16, GRAV=0.55, AIR=0.992, REST=0.8, FRIC=0.86;
+                var mode='home', ret=false, idleT=null;
+                var ball={x:0,y:0,vx:0,vy:0,ang:0,av:0,sx:1,sy:1};
+                var grab={on:false,dx:0,dy:0,vx:0,vy:0};
+
+                function fit(){ W=cv.width=innerWidth; H=cv.height=innerHeight; }
+                addEventListener('resize', fit); fit();
+                function home(){ var r=img.getBoundingClientRect();
+                    R=Math.max(r.width/2,14); return {x:r.left+r.width/2, y:r.top+r.height/2}; }
+
+                function activate(p){ var hp=home(); mode='active'; ret=false;
+                    img.style.visibility='hidden'; btn.style.display='block';
+                    ball.x=hp.x; ball.y=hp.y; ball.vx=ball.vy=ball.av=0; ball.sx=ball.sy=1;
+                    grab.on=true; grab.dx=ball.x-p.x; grab.dy=ball.y-p.y; grab.vx=grab.vy=0;
+                    clearTimeout(idleT);
                 }
-                function move(e){
-                    if(!dragging) return;
-                    var x=(e.touches?e.touches[0]:e).clientX;
-                    var dx=x-lastX; lastX=x;
-                    if(Math.abs(dx)>1) moved=true;
-                    vel=dx*0.9; rot+=vel; apply(1.3);
+                function kthe(){ ret=true; clearTimeout(idleT); }      // kthim manual/auto
+                btn.addEventListener('click', kthe);
+
+                function P(e){ var t=e.touches?e.touches[0]:e; return {x:t.clientX,y:t.clientY}; }
+                function onDown(e){ var p=P(e);
+                    if(mode==='home'){ var r=img.getBoundingClientRect();
+                        if(p.x>=r.left-6 && p.x<=r.right+6 && p.y>=r.top-6 && p.y<=r.bottom+6){
+                            e.stopPropagation(); if(e.cancelable)e.preventDefault(); activate(p); }
+                    } else {
+                        if(Math.hypot(p.x-ball.x,p.y-ball.y)<=R*1.7){
+                            e.stopPropagation(); if(e.cancelable)e.preventDefault();
+                            grab.on=true; grab.dx=ball.x-p.x; grab.dy=ball.y-p.y; grab.vx=grab.vy=0;
+                            ball.vx=ball.vy=0; ret=false; clearTimeout(idleT);
+                        }
+                    }
                 }
-                function up(){
-                    if(!dragging) return;
-                    dragging=false; ball.classList.remove('grabbing');
-                    (function spin(){ rot+=vel; vel*=0.95; apply(1.0);
-                        if(Math.abs(vel)>0.15){ raf=requestAnimationFrame(spin); } else { raf=null; } })();
+                function onMove(e){ if(!grab.on) return; var p=P(e);
+                    var nx=Math.max(R,Math.min(W-R,p.x+grab.dx)), ny=Math.max(R,Math.min(H-R,p.y+grab.dy));
+                    grab.vx=grab.vx*0.5+(nx-ball.x)*0.5; grab.vy=grab.vy*0.5+(ny-ball.y)*0.5;
+                    ball.x=nx; ball.y=ny; ball.av=grab.vx*0.02; if(e.cancelable)e.preventDefault();
                 }
-                ball.addEventListener('mousedown',down);
-                window.addEventListener('mousemove',move);
-                window.addEventListener('mouseup',up);
-                ball.addEventListener('touchstart',down,{passive:false});
-                window.addEventListener('touchmove',move,{passive:false});
-                window.addEventListener('touchend',up);
-                // klikimi mbi top NUK bën refresh (vetëm teksti i logos bën)
-                ball.addEventListener('click',function(e){ e.stopPropagation(); });
+                function onUp(){ if(!grab.on) return; grab.on=false;
+                    ball.vx=grab.vx*1.2; ball.vy=grab.vy*1.2; ball.av=ball.vx*0.012;
+                    clearTimeout(idleT); idleT=setTimeout(kthe, 30000);   // auto-kthim pas 30s
+                }
+                addEventListener('mousedown',onDown,true); addEventListener('mousemove',onMove); addEventListener('mouseup',onUp);
+                addEventListener('touchstart',onDown,{passive:false,capture:true}); addEventListener('touchmove',onMove,{passive:false}); addEventListener('touchend',onUp);
+                img.addEventListener('dblclick', function(e){ e.preventDefault(); });
+                cv.addEventListener('dblclick', kthe);
+
+                function step(){
+                    if(mode!=='active') return;
+                    if(ret){ var hp=home(); ball.x+=(hp.x-ball.x)*0.18; ball.y+=(hp.y-ball.y)*0.18;
+                        ball.av*=0.8; ball.sx+=(1-ball.sx)*0.2; ball.sy+=(1-ball.sy)*0.2;
+                        if(Math.hypot(hp.x-ball.x,hp.y-ball.y)<2){ mode='home'; ret=false; img.style.visibility='visible'; btn.style.display='none'; }
+                        return; }
+                    if(grab.on){ return; }
+                    ball.vy+=GRAV; ball.vx*=AIR; ball.vy*=AIR;
+                    ball.x+=ball.vx; ball.y+=ball.vy; ball.ang+=ball.av;
+                    var hit=0,floor=0;
+                    if(ball.x<R){ball.x=R;ball.vx=-ball.vx*REST;ball.vy*=FRIC;hit=1;}
+                    if(ball.x>W-R){ball.x=W-R;ball.vx=-ball.vx*REST;ball.vy*=FRIC;hit=1;}
+                    if(ball.y<R){ball.y=R;ball.vy=-ball.vy*REST;ball.vx*=FRIC;hit=1;}
+                    if(ball.y>H-R){ball.y=H-R;ball.vy=-ball.vy*REST;ball.vx*=FRIC;ball.av=ball.vx*0.02;hit=1;floor=1;
+                        if(Math.abs(ball.vy)<1.2)ball.vy=0;}
+                    if(hit){ var sp=Math.min(Math.hypot(ball.vx,ball.vy)/22,0.45);
+                        if(floor){ball.sx=1+sp;ball.sy=1-sp;}else{ball.sx=1-sp;ball.sy=1+sp;} }
+                    ball.sx+=(1-ball.sx)*0.2; ball.sy+=(1-ball.sy)*0.2; ball.av*=0.99;
+                }
+                function loop(){ step();
+                    ctx.clearRect(0,0,W,H);
+                    if(mode==='active'){
+                        ctx.save(); ctx.translate(ball.x,ball.y); ctx.rotate(ball.ang); ctx.scale(ball.sx,ball.sy);
+                        try{ ctx.drawImage(img, -R,-R, 2*R,2*R); }catch(e){}
+                        ctx.restore();
+                    }
+                    requestAnimationFrame(loop);
+                }
+                loop();
             }
             if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',initBall); } else { initBall(); }
         })();
@@ -2393,6 +2448,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623G</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623I</div>
 </body>
 </html>
