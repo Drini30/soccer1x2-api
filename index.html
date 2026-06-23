@@ -853,21 +853,22 @@ if (!gjuhaAktuale) {
         }
 
         function hapKomunitetin() {
+            const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
             document.getElementById('modalContainerSize').style.maxWidth = '450px';
             document.getElementById('modalOverlay').style.display = 'flex';
-            document.getElementById('modalTitle').innerText = "💬 KOMUNITETI ZYRTAR";
+            document.getElementById('modalTitle').innerText = _ux.commTitle;
             document.getElementById('modalTitle').style.color = "#0088cc";
             let linkuTelegram = "https://t.me/soccer1X2pro"; 
             
             document.getElementById('modalBody').innerHTML = `
                 <div style="text-align:center; padding: 10px;">
                     <i class="fa-brands fa-telegram" style="font-size:60px; color:#0088cc; margin-bottom:15px;"></i>
-                    <h3 style="color:#fff; margin-top:0;">Bashkohu me Anëtarët e Tjerë</h3>
+                    <h3 style="color:#fff; margin-top:0;">${_ux.commJoin}</h3>
                     <div style="color:#c9d1d9; font-size:14px; line-height:1.6; margin-bottom: 20px;">
-                        Për të ruajtur shpejtësinë e aplikacionit, të gjitha diskutimet bëhen në komunitetin tonë në Telegram.
+                        ${_ux.commDesc}
                     </div>
                     <button class="ppm-btn-buy" style="background:#0088cc; color:#fff; width:100%; font-size:16px; font-weight:bold; padding:15px;" onclick="window.open('${linkuTelegram}', '_blank'); mbyllModal();">
-                        <i class="fa-brands fa-telegram"></i> Hyr në Grupin e Telegram
+                        <i class="fa-brands fa-telegram"></i> ${_ux.commBtn}
                     </button>
                 </div>`;
         }
@@ -1143,11 +1144,11 @@ if (!gjuhaAktuale) {
         setTimeout(kontrolloNjoftimet, 1000);
 
         var uiExtra = {
-            en: {renewActive:"Active",renewCancelled:"Cancelled",cancelSub:"Cancel Subscription",vipSubLabel:"VIP SUBSCRIPTION",expiresOn:"Expires on:",autoRenew:"Auto-Renewal:",addCredits:"Add Credits",analyzing:"System is analyzing the data...",dataLocked:"Data is locked",premiumFridayOnly:"The system generates the Premium Ticket only on Fridays.",comeBackFriday:"Come back Friday morning!",connFailed:"Connection failed. Try again!",notifOptimal:"System is optimal.",notifWeekend:"🔥 The new Weekend Ticket is published! Check the VIP section.",notifAnalyzing:"⏳ The system is analyzing upcoming matches. The VIP ticket is published every Friday!",notifTitle:"NOTIFICATIONS",genLeague:"League",allLeagues:"All leagues"},
-            sq: {renewActive:"Aktiv",renewCancelled:"Anuluar",cancelSub:"Anulo Abonimin",vipSubLabel:"ABONIMI VIP",expiresOn:"Skadon më:",autoRenew:"Auto-Rinovimi:",addCredits:"Shto Kredite",analyzing:"Sistemi po analizon të dhënat...",dataLocked:"Të dhënat janë të mbyllura",premiumFridayOnly:"Sistemi e gjeneron Skedinën Premium vetëm të Premten.",comeBackFriday:"Kthehuni të Premten në mëngjes!",connFailed:"Lidhja dështoi. Provo përsëri!",notifOptimal:"Sistemi është optimal.",notifWeekend:"🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.",notifAnalyzing:"⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!",notifTitle:"NJOFTIMET",genLeague:"Liga",allLeagues:"Të gjitha ligat"},
-            de: {renewActive:"Aktiv",renewCancelled:"Storniert",cancelSub:"Abo kündigen",vipSubLabel:"VIP-ABO",expiresOn:"Läuft ab am:",autoRenew:"Auto-Verlängerung:",addCredits:"Guthaben aufladen",analyzing:"System analysiert die Daten...",dataLocked:"Daten sind gesperrt",premiumFridayOnly:"Das System erstellt den Premium-Tipp nur freitags.",comeBackFriday:"Komm Freitagmorgen wieder!",connFailed:"Verbindung fehlgeschlagen. Erneut versuchen!",notifOptimal:"System ist optimal.",notifWeekend:"🔥 Der neue Wochenend-Tipp ist da! Siehe VIP-Bereich.",notifAnalyzing:"⏳ Das System analysiert die kommenden Spiele. Der VIP-Tipp erscheint jeden Freitag!",notifTitle:"BENACHRICHTIGUNGEN",genLeague:"Liga",allLeagues:"Alle Ligen"},
-            fr: {renewActive:"Actif",renewCancelled:"Annulé",cancelSub:"Annuler l'abonnement",vipSubLabel:"ABONNEMENT VIP",expiresOn:"Expire le :",autoRenew:"Renouvellement auto :",addCredits:"Ajouter des crédits",analyzing:"Le système analyse les données...",dataLocked:"Les données sont verrouillées",premiumFridayOnly:"Le système génère le Ticket Premium uniquement le vendredi.",comeBackFriday:"Revenez vendredi matin !",connFailed:"Échec de connexion. Réessayez !",notifOptimal:"Le système est optimal.",notifWeekend:"🔥 Le nouveau Ticket du Week-end est publié ! Voir la section VIP.",notifAnalyzing:"⏳ Le système analyse les prochains matchs. Le ticket VIP est publié chaque vendredi !",notifTitle:"NOTIFICATIONS",genLeague:"Ligue",allLeagues:"Toutes les ligues"},
-            it: {renewActive:"Attivo",renewCancelled:"Annullato",cancelSub:"Annulla abbonamento",vipSubLabel:"ABBONAMENTO VIP",expiresOn:"Scade il:",autoRenew:"Rinnovo automatico:",addCredits:"Aggiungi crediti",analyzing:"Il sistema sta analizzando i dati...",dataLocked:"I dati sono bloccati",premiumFridayOnly:"Il sistema genera la Schedina Premium solo il venerdì.",comeBackFriday:"Torna venerdì mattina!",connFailed:"Connessione fallita. Riprova!",notifOptimal:"Il sistema è ottimale.",notifWeekend:"🔥 La nuova Schedina del Weekend è pubblicata! Vedi la sezione VIP.",notifAnalyzing:"⏳ Il sistema sta analizzando le prossime partite. La schedina VIP esce ogni venerdì!",notifTitle:"NOTIFICHE",genLeague:"Lega",allLeagues:"Tutte le leghe"}
+            en: {renewActive:"Active",renewCancelled:"Cancelled",cancelSub:"Cancel Subscription",vipSubLabel:"VIP SUBSCRIPTION",expiresOn:"Expires on:",autoRenew:"Auto-Renewal:",addCredits:"Add Credits",analyzing:"System is analyzing the data...",dataLocked:"Data is locked",premiumFridayOnly:"The system generates the Premium Ticket only on Fridays.",comeBackFriday:"Come back Friday morning!",connFailed:"Connection failed. Try again!",notifOptimal:"System is optimal.",notifWeekend:"🔥 The new Weekend Ticket is published! Check the VIP section.",notifAnalyzing:"⏳ The system is analyzing upcoming matches. The VIP ticket is published every Friday!",notifTitle:"NOTIFICATIONS",genLeague:"League",allLeagues:"All leagues",commTitle:"💬 OFFICIAL COMMUNITY",commJoin:"Join the Other Members",commDesc:"To keep the app fast, all discussions happen in our Telegram community.",commBtn:"Join the Telegram Group"},
+            sq: {renewActive:"Aktiv",renewCancelled:"Anuluar",cancelSub:"Anulo Abonimin",vipSubLabel:"ABONIMI VIP",expiresOn:"Skadon më:",autoRenew:"Auto-Rinovimi:",addCredits:"Shto Kredite",analyzing:"Sistemi po analizon të dhënat...",dataLocked:"Të dhënat janë të mbyllura",premiumFridayOnly:"Sistemi e gjeneron Skedinën Premium vetëm të Premten.",comeBackFriday:"Kthehuni të Premten në mëngjes!",connFailed:"Lidhja dështoi. Provo përsëri!",notifOptimal:"Sistemi është optimal.",notifWeekend:"🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.",notifAnalyzing:"⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!",notifTitle:"NJOFTIMET",genLeague:"Liga",allLeagues:"Të gjitha ligat",commTitle:"💬 KOMUNITETI ZYRTAR",commJoin:"Bashkohu me Anëtarët e Tjerë",commDesc:"Për të ruajtur shpejtësinë e aplikacionit, të gjitha diskutimet bëhen në komunitetin tonë në Telegram.",commBtn:"Hyr në Grupin e Telegram"},
+            de: {renewActive:"Aktiv",renewCancelled:"Storniert",cancelSub:"Abo kündigen",vipSubLabel:"VIP-ABO",expiresOn:"Läuft ab am:",autoRenew:"Auto-Verlängerung:",addCredits:"Guthaben aufladen",analyzing:"System analysiert die Daten...",dataLocked:"Daten sind gesperrt",premiumFridayOnly:"Das System erstellt den Premium-Tipp nur freitags.",comeBackFriday:"Komm Freitagmorgen wieder!",connFailed:"Verbindung fehlgeschlagen. Erneut versuchen!",notifOptimal:"System ist optimal.",notifWeekend:"🔥 Der neue Wochenend-Tipp ist da! Siehe VIP-Bereich.",notifAnalyzing:"⏳ Das System analysiert die kommenden Spiele. Der VIP-Tipp erscheint jeden Freitag!",notifTitle:"BENACHRICHTIGUNGEN",genLeague:"Liga",allLeagues:"Alle Ligen",commTitle:"💬 OFFIZIELLE COMMUNITY",commJoin:"Werde Mitglied",commDesc:"Um die App schnell zu halten, finden alle Diskussionen in unserer Telegram-Community statt.",commBtn:"Telegram-Gruppe beitreten"},
+            fr: {renewActive:"Actif",renewCancelled:"Annulé",cancelSub:"Annuler l'abonnement",vipSubLabel:"ABONNEMENT VIP",expiresOn:"Expire le :",autoRenew:"Renouvellement auto :",addCredits:"Ajouter des crédits",analyzing:"Le système analyse les données...",dataLocked:"Les données sont verrouillées",premiumFridayOnly:"Le système génère le Ticket Premium uniquement le vendredi.",comeBackFriday:"Revenez vendredi matin !",connFailed:"Échec de connexion. Réessayez !",notifOptimal:"Le système est optimal.",notifWeekend:"🔥 Le nouveau Ticket du Week-end est publié ! Voir la section VIP.",notifAnalyzing:"⏳ Le système analyse les prochains matchs. Le ticket VIP est publié chaque vendredi !",notifTitle:"NOTIFICATIONS",genLeague:"Ligue",allLeagues:"Toutes les ligues",commTitle:"💬 COMMUNAUTÉ OFFICIELLE",commJoin:"Rejoignez les autres membres",commDesc:"Pour garder une appli rapide, toutes les discussions se font dans notre communauté Telegram.",commBtn:"Rejoindre le groupe Telegram"},
+            it: {renewActive:"Attivo",renewCancelled:"Annullato",cancelSub:"Annulla abbonamento",vipSubLabel:"ABBONAMENTO VIP",expiresOn:"Scade il:",autoRenew:"Rinnovo automatico:",addCredits:"Aggiungi crediti",analyzing:"Il sistema sta analizzando i dati...",dataLocked:"I dati sono bloccati",premiumFridayOnly:"Il sistema genera la Schedina Premium solo il venerdì.",comeBackFriday:"Torna venerdì mattina!",connFailed:"Connessione fallita. Riprova!",notifOptimal:"Il sistema è ottimale.",notifWeekend:"🔥 La nuova Schedina del Weekend è pubblicata! Vedi la sezione VIP.",notifAnalyzing:"⏳ Il sistema sta analizzando le prossime partite. La schedina VIP esce ogni venerdì!",notifTitle:"NOTIFICHE",genLeague:"Lega",allLeagues:"Tutte le leghe",commTitle:"💬 COMUNITÀ UFFICIALE",commJoin:"Unisciti agli altri membri",commDesc:"Per mantenere una app veloce, tutte le discussioni avvengono nella nostra community Telegram.",commBtn:"Entra nel gruppo Telegram"}
         };
         function hapNjoftimet() { 
             const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
@@ -1217,7 +1218,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0623F','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0623G','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2392,6 +2393,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623F</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623G</div>
 </body>
 </html>

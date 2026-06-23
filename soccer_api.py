@@ -1399,9 +1399,20 @@ def telegram_dergo(key: str = "", date: str = None):
 
 
 # ===================== VIP COMBO (vetëm VIP) — 2 ndeshje × 4 rezultate të sakta =====================
+def _tip_rezultati(skor):
+    h, a = _parse_score(skor)
+    if h is None:
+        return "?"
+    return "1" if h > a else ("2" if a > h else "X")
+
+
 def _top_rezultate_sakta(p, n=4):
-    """Top-n rezultatet më të mundshme nga dist_gola (Monte Carlo + Poisson),
-    duke përfshirë gjithmonë rezultati_sakt të algoritmit."""
+    """MBULIM I ZGJERUAR (jo thjesht top-N më të mundshmet, që dalin gjithë X-0):
+       1) rezultati_sakt (spina e algoritmit),
+       2) rezultatet më të mundshme në linjë,
+       3) 1 slot 'underdog shënon' (thyen modelin X-0),
+       4) për n>=4, 1 slot 'surprizë/bllof' me tip 1X2 të ndryshëm.
+       Kapja e bllofeve rritet pa humbur rezultatin kryesor."""
     dist = p.get("dist_gola") or {}
     rez_sakt = p.get("rezultati_sakt")
     if not dist:
@@ -1415,19 +1426,79 @@ def _top_rezultate_sakta(p, n=4):
     items = sorted(dist.items(), key=lambda kv: float(kv[1]), reverse=True)
     zgjedhur, seen = [], set()
 
-    def shto(k, v):
-        prob = float(v) / total
-        zgjedhur.append({"skor": k, "prob": round(prob, 4),
-                         "koef": round(1.0 / prob, 2) if prob > 0 else 0})
-        seen.add(k)
+    def mk(k, v=None):
+        if v is None:
+            v = dist.get(k, dist.get(str(k).replace(" ", ""), 0))
+        prob = (float(v) / total) if total else 0.0
+        return {"skor": k, "prob": round(prob, 4), "koef": round(1.0 / prob, 2) if prob > 0 else 0}
 
-    # 1) sigurohu që rezultati_sakt është brenda
+    def shto(k, v=None):
+        zgjedhur.append(mk(k, v)); seen.add(k)
+
+    # 1) ANCHOR
+    anchor = None
     if rez_sakt:
         rs = str(rez_sakt).replace(" ", "")
         for k, v in items:
             if str(k).replace(" ", "") == rs:
-                shto(k, v); break
-    # 2) mbush me më të mundshmet
+                shto(k, v); anchor = k; break
+        if anchor is None:
+            shto(rez_sakt, dist.get(rez_sakt, 1)); anchor = rez_sakt
+    pred_tip = _tip_rezultati(anchor) if anchor else "?"
+    ah, aa = _parse_score(anchor) if anchor else (None, None)
+
+    n_div = 1 if n <= 3 else 2
+
+    # 2) IN-LINE (lëmë vend për slotet e diversitetit)
+    for k, v in items:
+        if len(zgjedhur) >= (n - n_div):
+            break
+        if k in seen:
+            continue
+        shto(k, v)
+
+    # 3) DIVERSITET #1: 'underdog shënon' (thyen X-0)
+    div1 = None
+    if ah is not None:
+        for k, v in items:
+            if k in seen:
+                continue
+            kh, ka = _parse_score(k)
+            if kh is None:
+                continue
+            if pred_tip == "1" and ka >= 1:
+                div1 = (k, v); break
+            if pred_tip == "2" and kh >= 1:
+                div1 = (k, v); break
+            if pred_tip == "X" and kh != ka:
+                div1 = (k, v); break
+        if div1 is None:
+            if pred_tip == "1":   alt = f"{ah}-{aa + 1}"
+            elif pred_tip == "2": alt = f"{ah + 1}-{aa}"
+            else:                 alt = f"{ah + 1}-{aa}"
+            if alt not in seen:
+                div1 = (alt, dist.get(alt, max(1.0, total * 0.02)))
+    if div1 and len(zgjedhur) < n and div1[0] not in seen:
+        shto(div1[0], div1[1])
+
+    # 4) DIVERSITET #2 (n>=4): bllof me tip 1X2 të ndryshëm
+    if n_div == 2 and ah is not None:
+        div2 = None
+        for k, v in items:
+            if k in seen:
+                continue
+            if _tip_rezultati(k) != pred_tip:
+                div2 = (k, v); break
+        if div2 is None:
+            if pred_tip == "1":   alt = f"{ah}-{ah}"
+            elif pred_tip == "2": alt = f"{aa}-{aa}"
+            else:                 alt = f"{ah + 1}-{aa}"
+            if alt not in seen:
+                div2 = (alt, dist.get(alt, max(1.0, total * 0.015)))
+        if div2 and len(zgjedhur) < n and div2[0] not in seen:
+            shto(div2[0], div2[1])
+
+    # 5) MBUSH nëse mungojnë
     for k, v in items:
         if len(zgjedhur) >= n:
             break
