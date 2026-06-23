@@ -77,6 +77,25 @@
         .sidebar-ligat::-webkit-scrollbar { width: 4px; }
         .sidebar-ligat::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
         .sidebar-title { font-size: 12px; color: #8b949e; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #30363d; padding-bottom: 4px;}
+        .pf-box{background:linear-gradient(180deg,#13294f,#0c1d3c);border-radius:12px;padding:11px;margin-bottom:12px;color:#fff;box-shadow:0 6px 18px rgba(10,25,60,.25)}
+        .pf-bonus{background:linear-gradient(135deg,#ff8a2b,#e8611a);border-radius:10px;padding:10px;text-align:center;box-shadow:0 5px 14px rgba(232,97,26,.4);border:2px solid #ffd0a3;position:relative;overflow:hidden;margin-bottom:11px}
+        .pf-bonus::before{content:"BONUS";position:absolute;top:6px;right:-28px;background:#fff;color:#e8611a;font-size:9px;font-weight:900;letter-spacing:1px;padding:2px 30px;transform:rotate(35deg)}
+        .pf-bonus-big{font-size:15px;font-weight:900;line-height:1.1}
+        .pf-bonus-sm{font-size:10px;opacity:.95;margin-top:2px}
+        .pf-head{display:flex;align-items:center;gap:7px;font-weight:900;font-size:12px;letter-spacing:.5px;color:#ffd24a;margin-bottom:8px}
+        .pf-scroll{max-height:300px;overflow-y:auto;padding-right:3px}
+        .pf-scroll::-webkit-scrollbar{width:5px}
+        .pf-scroll::-webkit-scrollbar-thumb{background:rgba(255,210,74,.4);border-radius:5px}
+        .pf-match{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px;margin-bottom:9px;text-align:center}
+        .pf-teams{font-size:13px;font-weight:800;color:#fff}
+        .pf-teams span{color:#9fb0cc;font-weight:600}
+        .pf-locked{display:inline-flex;align-items:center;gap:7px;margin-top:8px;background:rgba(0,0,0,.3);border:1px dashed rgba(255,210,74,.5);border-radius:8px;padding:4px 12px}
+        .pf-locked i{color:#ffd24a;font-size:12px}
+        .pf-scr{filter:blur(5px);font-weight:900;font-size:15px;letter-spacing:3px;color:#ffe17a;user-select:none}
+        .pf-scr-open{font-weight:900;font-size:15px;color:#7ee08a}
+        .pf-real{font-size:10px;color:#9fb0cc;margin-top:5px}
+        .pf-proof{width:100%;margin-top:8px;background:rgba(255,210,74,.14);border:1px solid rgba(255,210,74,.5);color:#ffd24a;border-radius:8px;padding:6px;font-size:11px;font-weight:800;cursor:pointer}
+        .pf-proof:hover{background:rgba(255,210,74,.24)}
         .liga-nav-item { padding: 6px 8px; color: #fff; font-weight: bold; cursor: pointer; border-radius: 4px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .liga-nav-item:hover { background-color: #21262d; color: #58a6ff; }
         .matches-area { flex-grow: 1; padding: 0 5px; width: 100%; }
@@ -1189,6 +1208,7 @@ if (!gjuhaAktuale) {
                     vizatoNdeshjet(); 
                 } else {
                     document.getElementById('rezultati').innerHTML = `<div style="text-align:center; padding: 40px; width:100%; color:#8ba898;">${ui[gjuhaAktuale].empty}</div>`;
+            try{ mbushPFHash(); }catch(e){}
                 }
             }).catch(err => {
                 document.getElementById('rezultati').innerHTML = `<div class="error-panel" style="width:100%;"><h3 style="color:#ff7b72; margin-top:0;">🚨 ${ui[gjuhaAktuale].errApi}</h3><button class="filter-btn active" style="margin-top:10px;" onclick="location.reload()">${ui[gjuhaAktuale].btnReload}</button></div>`;
@@ -1218,7 +1238,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0623I','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0623J','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -1956,6 +1976,61 @@ if (!gjuhaAktuale) {
         function genSelect(el) { el.parentElement.querySelectorAll('.gen-opt').forEach(b => b.classList.remove('active')); el.classList.add('active'); genNrMin = parseInt(el.dataset.min); genNrMax = parseInt(el.dataset.max); }
         function genToggle(el) { el.classList.toggle('active'); }
 
+        /* ===== PROVABLY FAIR — kolona blu hash ===== */
+        let _pfCache=null, _pfTs=0;
+        async function mbushPFHash(force){
+            const box=document.getElementById('pfHashBox'); if(!box) return;
+            const now=Date.now();
+            if(force || !_pfCache || (now-_pfTs)>300000){
+                try{ const r=await fetch(API_BASE+'/api/pf/list'); const d=await r.json(); _pfCache=d.pikat||[]; _pfTs=now; }
+                catch(e){ if(!_pfCache) _pfCache=[]; }
+            }
+            renderPFHash(box);
+        }
+        function renderPFHash(box){
+            let html='<div class="pf-bonus"><div class="pf-bonus-big">\u{1F6E1}\uFE0F 100% CREDIT BACK</div><div class="pf-bonus-sm">Premium humbet \u2192 kredite kthehen</div></div>';
+            const picks=_pfCache||[];
+            if(picks.length){
+                html+='<div class="pf-head">\u{1F512} PREMIUM PICKS (HASH)</div><div class="pf-scroll">';
+                picks.forEach(function(p){
+                    const zb=p.statusi==='zbuluar';
+                    const nd=(p.ndeshja||'').replace(' vs ',' <span>vs</span> ');
+                    const sc=zb?('<span class="pf-scr-open">'+(p.parashikimi||'?')+'</span>'):'<span class="pf-scr">0:0</span>';
+                    html+='<div class="pf-match"><div class="pf-teams">'+nd+'</div>'
+                        +'<div class="pf-locked"><i class="fa-solid fa-'+(zb?'lock-open':'lock')+'"></i> '+sc+'</div>'
+                        +(zb&&p.rezultati_real?('<div class="pf-real">Real: '+p.rezultati_real+'</div>'):'')
+                        +'<button class="pf-proof" onclick="verifikoPF('+p.id+')"><i class="fa-solid fa-fingerprint"></i> Proof / Hash</button></div>';
+                });
+                html+='</div>';
+            }
+            box.innerHTML=html;
+        }
+        function verifikoPF(id){
+            fetch(API_BASE+'/api/pf/verify?id='+id).then(function(r){return r.json();}).then(function(d){
+                let html;
+                if(d.statusi==='kycur'){
+                    html='<div style="text-align:center"><div style="font-size:34px">\u{1F512}</div>'
+                        +'<p style="margin:8px 0;font-weight:700">Parashikimi eshte ende i kycur</p>'
+                        +'<p style="font-size:12px;color:#8b949e">Hash-i u publikua PARA ndeshjes dhe zbulohet pas saj:</p>'
+                        +'<code style="display:block;word-break:break-all;background:rgba(0,0,0,.25);padding:8px;border-radius:8px;font-size:11px;margin:8px 0">'+(d.hash_publik||'')+'</code>'
+                        +'<p style="font-size:11px;color:#8b949e">Formula: '+(d.formula||'')+'</p></div>';
+                } else if(d.ok){
+                    const ok=d.vlefshem;
+                    html='<div><div style="text-align:center;font-size:30px">'+(ok?'\u2705':'\u274C')+'</div>'
+                        +'<p style="text-align:center;font-weight:800;color:'+(ok?'#3fb950':'#f85149')+'">'+(ok?'I VERIFIKUAR \u2014 hash-i perputhet':'NUK perputhet')+'</p>'
+                        +'<table style="width:100%;font-size:12px;border-collapse:collapse">'
+                        +'<tr><td style="color:#8b949e;padding:3px">Ndeshja</td><td style="padding:3px"><b>'+(d.ndeshja||'')+'</b></td></tr>'
+                        +'<tr><td style="color:#8b949e;padding:3px">Parashikimi</td><td style="padding:3px"><b>'+(d.parashikimi||'')+'</b></td></tr>'
+                        +'<tr><td style="color:#8b949e;padding:3px">Rezultati real</td><td style="padding:3px"><b>'+(d.rezultati_real||'-')+'</b></td></tr>'
+                        +'<tr><td style="color:#8b949e;padding:3px">Server seed</td><td style="padding:3px;word-break:break-all">'+(d.server_seed||'')+'</td></tr></table>'
+                        +'<p style="font-size:11px;color:#8b949e;margin-top:8px">Hash publik:</p><code style="display:block;word-break:break-all;background:rgba(0,0,0,.25);padding:7px;border-radius:8px;font-size:11px">'+(d.hash_publik||'')+'</code>'
+                        +'<p style="font-size:11px;color:#8b949e;margin-top:6px">Rikalkuluar:</p><code style="display:block;word-break:break-all;background:rgba(0,0,0,.25);padding:7px;border-radius:8px;font-size:11px">'+(d.hash_rikalkuluar||'')+'</code>'
+                        +'<p style="font-size:11px;color:#8b949e;margin-top:8px">'+(d.formula||'')+'</p></div>';
+                } else { html='<p style="text-align:center">Nuk u gjet.</p>'; }
+                _modalHap('\u{1F510} Provably Fair', '#d4af37', html, '440px');
+            }).catch(function(e){});
+        }
+
         async function mbushLigat(selId, tip) {
             try {
                 const r = await fetch(API_BASE + '/api/ligat-disponueshme');
@@ -2050,7 +2125,7 @@ if (!gjuhaAktuale) {
             
             uniqueLeagues.sort((a, b) => { let rankA = LIGAT_KRYESORE_SORT.findIndex(liga_top => a.includes(liga_top)); let rankB = LIGAT_KRYESORE_SORT.findIndex(liga_top => b.includes(liga_top)); if (rankA === -1) rankA = 999; if (rankB === -1) rankB = 999; return rankA - rankB; });
 
-            let sidebarHtml = `<div class="sidebar-ligat"><h4 class="sidebar-title">${ui[gjuhaAktuale].leagues}</h4>`;
+            let sidebarHtml = `<div class="sidebar-ligat"><div id="pfHashBox" class="pf-box"></div><h4 class="sidebar-title">${ui[gjuhaAktuale].leagues}</h4>`;
             uniqueLeagues.forEach(league => { const lg = teDhenatGlobale.find(l => l.liga === league); const lgId = (lg && lg.ndeshjet && lg.ndeshjet[0]) ? lg.ndeshjet[0].liga_id : ''; sidebarHtml += `<div class="liga-nav-item" onclick="scrollToLeague('${league.replace(/[^a-z0-9]/gi, '-')}')" title="${league}">${lgId ? `<img src="https://media.api-sports.io/football/leagues/${lgId}.png" class="liga-logo" style="width:16px;height:16px;margin-right:6px;" loading="lazy" onerror="this.style.display='none'">` : ''}${league}</div>`; });
             sidebarHtml += `</div><div class="matches-area">`;
 
@@ -2448,6 +2523,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623I</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623J</div>
 </body>
 </html>
