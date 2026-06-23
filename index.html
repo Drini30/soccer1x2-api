@@ -276,6 +276,8 @@
         .m-darkbox { background: #0d1117; border: 1px solid #30363d; }
         body.light .m-darkbox { background: #f6f8fa; border-color: #d0d7de; }
         .m-lighttext { color: #c9d1d9; }
+        .gen-select { width: 100%; padding: 8px 10px; border-radius: 6px; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; font-size: 13px; margin-top: 4px; }
+        body.light .gen-select { background: #fff; color: #1c2128; border-color: #d0d7de; }
         body.light .m-lighttext { color: #24292f; }
         body.light #datePicker { color: #1c2128; }
         body.light #datePicker::-webkit-calendar-picker-indicator { filter: none; }
@@ -1141,11 +1143,11 @@ if (!gjuhaAktuale) {
         setTimeout(kontrolloNjoftimet, 1000);
 
         var uiExtra = {
-            en: {renewActive:"Active",renewCancelled:"Cancelled",cancelSub:"Cancel Subscription",vipSubLabel:"VIP SUBSCRIPTION",expiresOn:"Expires on:",autoRenew:"Auto-Renewal:",addCredits:"Add Credits",analyzing:"System is analyzing the data...",dataLocked:"Data is locked",premiumFridayOnly:"The system generates the Premium Ticket only on Fridays.",comeBackFriday:"Come back Friday morning!",connFailed:"Connection failed. Try again!",notifOptimal:"System is optimal.",notifWeekend:"🔥 The new Weekend Ticket is published! Check the VIP section.",notifAnalyzing:"⏳ The system is analyzing upcoming matches. The VIP ticket is published every Friday!",notifTitle:"NOTIFICATIONS"},
-            sq: {renewActive:"Aktiv",renewCancelled:"Anuluar",cancelSub:"Anulo Abonimin",vipSubLabel:"ABONIMI VIP",expiresOn:"Skadon më:",autoRenew:"Auto-Rinovimi:",addCredits:"Shto Kredite",analyzing:"Sistemi po analizon të dhënat...",dataLocked:"Të dhënat janë të mbyllura",premiumFridayOnly:"Sistemi e gjeneron Skedinën Premium vetëm të Premten.",comeBackFriday:"Kthehuni të Premten në mëngjes!",connFailed:"Lidhja dështoi. Provo përsëri!",notifOptimal:"Sistemi është optimal.",notifWeekend:"🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.",notifAnalyzing:"⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!",notifTitle:"NJOFTIMET"},
-            de: {renewActive:"Aktiv",renewCancelled:"Storniert",cancelSub:"Abo kündigen",vipSubLabel:"VIP-ABO",expiresOn:"Läuft ab am:",autoRenew:"Auto-Verlängerung:",addCredits:"Guthaben aufladen",analyzing:"System analysiert die Daten...",dataLocked:"Daten sind gesperrt",premiumFridayOnly:"Das System erstellt den Premium-Tipp nur freitags.",comeBackFriday:"Komm Freitagmorgen wieder!",connFailed:"Verbindung fehlgeschlagen. Erneut versuchen!",notifOptimal:"System ist optimal.",notifWeekend:"🔥 Der neue Wochenend-Tipp ist da! Siehe VIP-Bereich.",notifAnalyzing:"⏳ Das System analysiert die kommenden Spiele. Der VIP-Tipp erscheint jeden Freitag!",notifTitle:"BENACHRICHTIGUNGEN"},
-            fr: {renewActive:"Actif",renewCancelled:"Annulé",cancelSub:"Annuler l'abonnement",vipSubLabel:"ABONNEMENT VIP",expiresOn:"Expire le :",autoRenew:"Renouvellement auto :",addCredits:"Ajouter des crédits",analyzing:"Le système analyse les données...",dataLocked:"Les données sont verrouillées",premiumFridayOnly:"Le système génère le Ticket Premium uniquement le vendredi.",comeBackFriday:"Revenez vendredi matin !",connFailed:"Échec de connexion. Réessayez !",notifOptimal:"Le système est optimal.",notifWeekend:"🔥 Le nouveau Ticket du Week-end est publié ! Voir la section VIP.",notifAnalyzing:"⏳ Le système analyse les prochains matchs. Le ticket VIP est publié chaque vendredi !",notifTitle:"NOTIFICATIONS"},
-            it: {renewActive:"Attivo",renewCancelled:"Annullato",cancelSub:"Annulla abbonamento",vipSubLabel:"ABBONAMENTO VIP",expiresOn:"Scade il:",autoRenew:"Rinnovo automatico:",addCredits:"Aggiungi crediti",analyzing:"Il sistema sta analizzando i dati...",dataLocked:"I dati sono bloccati",premiumFridayOnly:"Il sistema genera la Schedina Premium solo il venerdì.",comeBackFriday:"Torna venerdì mattina!",connFailed:"Connessione fallita. Riprova!",notifOptimal:"Il sistema è ottimale.",notifWeekend:"🔥 La nuova Schedina del Weekend è pubblicata! Vedi la sezione VIP.",notifAnalyzing:"⏳ Il sistema sta analizzando le prossime partite. La schedina VIP esce ogni venerdì!",notifTitle:"NOTIFICHE"}
+            en: {renewActive:"Active",renewCancelled:"Cancelled",cancelSub:"Cancel Subscription",vipSubLabel:"VIP SUBSCRIPTION",expiresOn:"Expires on:",autoRenew:"Auto-Renewal:",addCredits:"Add Credits",analyzing:"System is analyzing the data...",dataLocked:"Data is locked",premiumFridayOnly:"The system generates the Premium Ticket only on Fridays.",comeBackFriday:"Come back Friday morning!",connFailed:"Connection failed. Try again!",notifOptimal:"System is optimal.",notifWeekend:"🔥 The new Weekend Ticket is published! Check the VIP section.",notifAnalyzing:"⏳ The system is analyzing upcoming matches. The VIP ticket is published every Friday!",notifTitle:"NOTIFICATIONS",genLeague:"League",allLeagues:"All leagues"},
+            sq: {renewActive:"Aktiv",renewCancelled:"Anuluar",cancelSub:"Anulo Abonimin",vipSubLabel:"ABONIMI VIP",expiresOn:"Skadon më:",autoRenew:"Auto-Rinovimi:",addCredits:"Shto Kredite",analyzing:"Sistemi po analizon të dhënat...",dataLocked:"Të dhënat janë të mbyllura",premiumFridayOnly:"Sistemi e gjeneron Skedinën Premium vetëm të Premten.",comeBackFriday:"Kthehuni të Premten në mëngjes!",connFailed:"Lidhja dështoi. Provo përsëri!",notifOptimal:"Sistemi është optimal.",notifWeekend:"🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.",notifAnalyzing:"⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!",notifTitle:"NJOFTIMET",genLeague:"Liga",allLeagues:"Të gjitha ligat"},
+            de: {renewActive:"Aktiv",renewCancelled:"Storniert",cancelSub:"Abo kündigen",vipSubLabel:"VIP-ABO",expiresOn:"Läuft ab am:",autoRenew:"Auto-Verlängerung:",addCredits:"Guthaben aufladen",analyzing:"System analysiert die Daten...",dataLocked:"Daten sind gesperrt",premiumFridayOnly:"Das System erstellt den Premium-Tipp nur freitags.",comeBackFriday:"Komm Freitagmorgen wieder!",connFailed:"Verbindung fehlgeschlagen. Erneut versuchen!",notifOptimal:"System ist optimal.",notifWeekend:"🔥 Der neue Wochenend-Tipp ist da! Siehe VIP-Bereich.",notifAnalyzing:"⏳ Das System analysiert die kommenden Spiele. Der VIP-Tipp erscheint jeden Freitag!",notifTitle:"BENACHRICHTIGUNGEN",genLeague:"Liga",allLeagues:"Alle Ligen"},
+            fr: {renewActive:"Actif",renewCancelled:"Annulé",cancelSub:"Annuler l'abonnement",vipSubLabel:"ABONNEMENT VIP",expiresOn:"Expire le :",autoRenew:"Renouvellement auto :",addCredits:"Ajouter des crédits",analyzing:"Le système analyse les données...",dataLocked:"Les données sont verrouillées",premiumFridayOnly:"Le système génère le Ticket Premium uniquement le vendredi.",comeBackFriday:"Revenez vendredi matin !",connFailed:"Échec de connexion. Réessayez !",notifOptimal:"Le système est optimal.",notifWeekend:"🔥 Le nouveau Ticket du Week-end est publié ! Voir la section VIP.",notifAnalyzing:"⏳ Le système analyse les prochains matchs. Le ticket VIP est publié chaque vendredi !",notifTitle:"NOTIFICATIONS",genLeague:"Ligue",allLeagues:"Toutes les ligues"},
+            it: {renewActive:"Attivo",renewCancelled:"Annullato",cancelSub:"Annulla abbonamento",vipSubLabel:"ABBONAMENTO VIP",expiresOn:"Scade il:",autoRenew:"Rinnovo automatico:",addCredits:"Aggiungi crediti",analyzing:"Il sistema sta analizzando i dati...",dataLocked:"I dati sono bloccati",premiumFridayOnly:"Il sistema genera la Schedina Premium solo il venerdì.",comeBackFriday:"Torna venerdì mattina!",connFailed:"Connessione fallita. Riprova!",notifOptimal:"Il sistema è ottimale.",notifWeekend:"🔥 La nuova Schedina del Weekend è pubblicata! Vedi la sezione VIP.",notifAnalyzing:"⏳ Il sistema sta analizzando le prossime partite. La schedina VIP esce ogni venerdì!",notifTitle:"NOTIFICHE",genLeague:"Lega",allLeagues:"Tutte le leghe"}
         };
         function hapNjoftimet() { 
             const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
@@ -1213,6 +1215,9 @@ if (!gjuhaAktuale) {
             else b.style.display='flex';
         }
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
+        // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
+        try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
+        console.log('%cSOCCER1X2 PRO — build 0623F','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -1928,7 +1933,7 @@ if (!gjuhaAktuale) {
                 let rows = (d.historik||[]).map(hh => {
                     let badge = hh.statusi === 'fituese' ? `<span class="hist-badge win">${T.win}</span>` : hh.statusi === 'humbur' ? `<span class="hist-badge loss">${T.loss}</span>` : `<span class="hist-badge pend">${T.pending}</span>`;
                     let legs = (hh.pikat||[]).map(p => { let cls = p.goditi === true ? 'ok' : (p.goditi === false ? 'no' : ''); return `<div class="hist-leg ${cls}">${p.ndeshja} · ${p.tregu}${p.rezultati?` (${p.rezultati})`:''}</div>`; }).join('');
-                    return `<div class="hist-row ${hh.statusi==='fituese'?'win':(hh.statusi==='humbur'?'loss':'pend')}"><div class="hist-row-head"><b>${hh.data} · ${T.totalKoef.toLowerCase()} ${hh.koef_total||'—'}</b> ${badge}</div>${legs}</div>`;
+                    return `<div class="hist-row ${hh.statusi==='fituese'?'win':(hh.statusi==='humbur'?'loss':'pend')}"><div class="hist-row-head"><b>${hh.krijuar ? new Date(hh.krijuar).toLocaleString() : hh.data} · ${T.totalKoef.toLowerCase()} ${hh.koef_total||'—'}</b> ${badge}</div>${legs}</div>`;
                 }).join('');
                 let vipHtml = '';
                 if ((d.vip_combo||[]).length > 0) {
@@ -1950,6 +1955,18 @@ if (!gjuhaAktuale) {
         function genSelect(el) { el.parentElement.querySelectorAll('.gen-opt').forEach(b => b.classList.remove('active')); el.classList.add('active'); genNrMin = parseInt(el.dataset.min); genNrMax = parseInt(el.dataset.max); }
         function genToggle(el) { el.classList.toggle('active'); }
 
+        async function mbushLigat(selId, tip) {
+            try {
+                const r = await fetch(API_BASE + '/api/ligat-disponueshme');
+                const d = await r.json();
+                const list = d[tip] || [];
+                const sel = document.getElementById(selId);
+                if (!sel) return;
+                const _ux = uiExtra[gjuhaAktuale] || uiExtra.en;
+                sel.innerHTML = `<option value="">${_ux.allLeagues}</option>` + list.map(l => `<option value="${l.replace(/"/g,'&quot;')}">${l}</option>`).join('');
+            } catch(e) {}
+        }
+
         function hapGjeneratorin() {
             const T = _T();
             if (!perdoruesi.isVip) {
@@ -1957,6 +1974,8 @@ if (!gjuhaAktuale) {
                 return;
             }
             genNrMin = 2; genNrMax = 4;
+            const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
+            let ligaOpts = `<option value="">${_ux.allLeagues}</option>`;
             _modalHap('⚙️ ' + T.prodGjenero, '#58a6ff', `
                 <div class="gen-form">
                     <label class="gen-label">${T.genNr}</label>
@@ -1974,9 +1993,12 @@ if (!gjuhaAktuale) {
                         <button class="gen-opt active" data-g="gg" onclick="genToggle(this)">GG/NG</button>
                         <button class="gen-opt" data-g="dc" onclick="genToggle(this)">${T.mktDC}</button>
                     </div>
+                    <label class="gen-label">${_ux.genLeague}</label>
+                    <select id="genLiga" class="gen-select">${ligaOpts}</select>
                     <button class="ppm-btn-buy" style="width:100%; margin-top:16px; background:#58a6ff; color:#fff;" onclick="gjeneroSkedine()">⚙️ ${T.genBtn}</button>
                     <div id="genResult" style="margin-top:16px;"></div>
                 </div>`);
+            mbushLigat('genLiga','gjenerator');
         }
 
         async function gjeneroSkedine() {
@@ -1986,7 +2008,8 @@ if (!gjuhaAktuale) {
             if (!grupet.length) { document.getElementById('genResult').innerHTML = `<p style="color:#f85149;">${T.pickMarket}</p>`; return; }
             document.getElementById('genResult').innerHTML = _loadingHtml(T.generating);
             try {
-                const url = `${API_BASE}/api/gjenero?email=${encodeURIComponent(perdoruesi.email)}&nr=${genNrMin}&nr_max=${genNrMax}&koef=${koef}&tregjet=${grupet.join(',')}`;
+                const ligaSel = (document.getElementById('genLiga')||{}).value || '';
+                const url = `${API_BASE}/api/gjenero?email=${encodeURIComponent(perdoruesi.email)}&nr=${genNrMin}&nr_max=${genNrMax}&koef=${koef}&tregjet=${grupet.join(',')}&liga=${encodeURIComponent(ligaSel)}`;
                 const r = await fetch(url);
                 const d = await r.json();
                 if (!d.sukses) { document.getElementById('genResult').innerHTML = `<p style="color:#f85149;text-align:center;">${d.arsye||T.loadErr}</p>`; return; }
@@ -2120,9 +2143,11 @@ if (!gjuhaAktuale) {
                     let historyBadge = isWin ? `<div class="history-badge-win">✅ ${ui[gjuhaAktuale].won} (${ui[gjuhaAktuale].prediction}: ${paraSakt})</div>` : (rezReal ? `<div class="history-badge-loss">❌ ${ui[gjuhaAktuale].lost} (${ui[gjuhaAktuale].prediction}: ${paraSakt} | ${ui[gjuhaAktuale].real}: ${rezReal})</div>` : `<div style="color:#8ba898; font-size:12px; margin-top:5px;">${ui[gjuhaAktuale].pendingResult}</div>`);
                     
                     let txtAnaliza = n.analiza_custom ? (n.analiza_custom[gjuhaAktuale] || n.analiza_custom.en) : "";
+                    let tsPPM = n.koha_utc ? new Date(n.koha_utc).toLocaleString() : ((n.data||'') + (n.ora_sakte ? ' ' + n.ora_sakte : ''));
                     
                     h += `<div class="ndeshje-box" style="margin-bottom:15px;">
                             <div style="font-weight:bold; color:#fff; font-size:14px; margin-bottom:5px;">${n.ndeshja}</div>
+                            <div style="color:#8ba898; font-size:11px; margin-bottom:6px;">🕐 ${tsPPM}</div>
                             <div style="color:#58a6ff; font-size:12px; margin-bottom:8px;">${ui[gjuhaAktuale].odds}: <b style="color:#f2cc60;">${n.koef_rez_sakt}</b></div>
                             <div class="ai-prediction-bar">📊 ${txtAnaliza}</div>
                             ${historyBadge}
@@ -2320,6 +2345,7 @@ if (!gjuhaAktuale) {
 
         function hapVipCombo(){
             const T=_T();
+            const _ux=uiExtra[gjuhaAktuale]||uiExtra.en;
             if(!perdoruesi.isVip){
                 _modalHap('<i class="fa-solid fa-crown"></i> VIP Combo', '#d4af37',
                   '<div class="prod-lock-box" style="border-color:#d4af37;"><p>👑 VIP Combo është ekskluzivisht për anëtarët VIP. Kombinime me rezultate të sakta nga modeli.</p><button class="ppm-btn-buy" style="width:100%; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900;" onclick="hapVipAbonim()">'+T.beVip+'</button></div>');
@@ -2338,16 +2364,20 @@ if (!gjuhaAktuale) {
               +'<button class="gen-opt vc-rez" data-v="3" onclick="vipSelectRez(this)">3 rezultate</button>'
               +'<button class="gen-opt vc-rez active" data-v="4" onclick="vipSelectRez(this)">4 rezultate</button>'
               +'</div>'
+              +'<label class="gen-label" style="margin-top:12px;">'+_ux.genLeague+'</label>'
+              +'<select id="vcLiga" class="gen-select"><option value="">'+_ux.allLeagues+'</option></select>'
               +'<button class="gen-opt" style="width:100%; margin-top:16px; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900; border:none;" onclick="gjeneroVipCombo()">👑 Gjenero VIP Combo</button>'
               +'<div id="vipComboRez" style="margin-top:14px;"></div>'
               +'</div>');
+            mbushLigat('vcLiga','vip_combo');
         }
 
         async function gjeneroVipCombo(){
             const box=document.getElementById('vipComboRez');
             box.innerHTML='<p style="text-align:center; color:#8b949e;">Duke gjeneruar...</p>';
             try{
-                const r=await fetch(API_BASE+'/api/vip-combo?email='+encodeURIComponent(perdoruesi.email)+'&nr='+vipNr+'&rez='+vipRez);
+                const _vcL=(document.getElementById('vcLiga')||{}).value||'';
+                const r=await fetch(API_BASE+'/api/vip-combo?email='+encodeURIComponent(perdoruesi.email)+'&nr='+vipNr+'&rez='+vipRez+'&liga='+encodeURIComponent(_vcL));
                 const d=await r.json();
                 if(!d.sukses){ box.innerHTML='<p style="text-align:center; color:#ff7b72;">'+(d.arsye||'Gabim')+'</p>'; return; }
                 let html='<div style="font-size:12px; color:#8b949e; margin-bottom:10px; text-align:center;">'+d.nr_kombinimesh+' skedina • mbulimi ~'+d.mbulimi_perqind+'%</div>';
@@ -2362,5 +2392,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623F</div>
 </body>
 </html>

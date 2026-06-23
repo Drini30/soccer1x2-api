@@ -947,7 +947,7 @@ def _vlereso_skedina_historik():
 def skedina_historik():
     try:
         r = requests.get(
-            f"{SKEDINA_HIST_URL}?select=data,pikat,koef_total,statusi&order=data.desc&limit=60",
+            f"{SKEDINA_HIST_URL}?select=data,pikat,koef_total,statusi,krijuar&order=data.desc&limit=60",
             headers=SUPABASE_SERVICE_HEADERS, timeout=5)
         rows = r.json() if r.status_code == 200 else []
     except Exception:
@@ -1157,7 +1157,7 @@ def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara
 
 
 @app.get("/api/gjenero")
-def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg"):
+def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = ""):
     if not _eshte_vip(email):
         return {"sukses": False, "arsye": "Vetëm për abonentët VIP."}
     nr = max(2, min(15, int(nr)))
@@ -1169,10 +1169,11 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if not grupet:
         grupet = ["1x2", "ou", "gg"]
 
-    res = requests.get(
-        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt"
-        f"&best_bet=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300",
-        headers=SUPABASE_SERVICE_HEADERS)
+    gen_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt"
+               f"&best_bet=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300")
+    if liga and liga.strip():
+        gen_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
+    res = requests.get(gen_url, headers=SUPABASE_SERVICE_HEADERS)
     pool = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
 
     sked = _gjenero_skedine_fleksibel(pool, nr, nr_max, koef, grupet)
@@ -1436,6 +1437,25 @@ def _top_rezultate_sakta(p, n=4):
     return zgjedhur[:n]
 
 
+@app.get("/api/ligat-disponueshme")
+def ligat_disponueshme():
+    """Kthen vetëm ligat që kanë vërtet ndeshje të gjenerueshme (gjenerator) ose VIP Combo."""
+    fund = "FT,AET,PEN,AWD,WO,CANC,PST,ABD"
+    def distinct(url):
+        try:
+            r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+            rows = r.json() if r.status_code == 200 else []
+            return sorted({(x.get("liga_emri") or "").strip() for x in rows if x.get("liga_emri")})
+        except Exception:
+            return []
+    gen = distinct(f"{SUPABASE_URL_PREDS}?select=liga_emri&best_bet=not.is.null"
+                   f"&statusi=not.in.({fund})&order=id.desc&limit=400")
+    dt = datetime.utcnow().strftime('%Y-%m-%d')
+    vc = distinct(f"{SUPABASE_URL_PREDS}?select=liga_emri&data=eq.{dt}"
+                  f"&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.({fund})&limit=400")
+    return {"gjenerator": gen, "vip_combo": vc}
+
+
 VIP_COMBO_HIST_URL = f"{SUPABASE_BASE}/rest/v1/vip_combo_historik"
 
 def _ruaj_vip_combo(dt, nr, rez, ndeshjet):
@@ -1498,18 +1518,19 @@ def _vleso_vip_combot():
 
 
 @app.get("/api/vip-combo")
-def vip_combo(email: str = "", nr: int = 2, rez: int = 4):
+def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = ""):
     """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
     if not email or not _eshte_vip(email):
         return {"sukses": False, "arsye": "VIP-only. Bëhu VIP për të hapur VIP Combo."}
     nr = 3 if int(nr) == 3 else 2
     rez = 3 if int(rez) == 3 else 4
     dt = datetime.utcnow().strftime("%Y-%m-%d")
-    r = requests.get(
-        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola"
-        f"&data=eq.{dt}&dist_gola=not.is.null&rezultati_sakt=not.is.null"
-        f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20",
-        headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+    vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola"
+              f"&data=eq.{dt}&dist_gola=not.is.null&rezultati_sakt=not.is.null"
+              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20")
+    if liga and liga.strip():
+        vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
+    r = requests.get(vc_url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
     rows = r.json() if r.status_code == 200 else []
     ndeshjet = []
     for p in rows:
