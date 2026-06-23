@@ -955,11 +955,20 @@ def skedina_historik():
     finalizuar = [x for x in rows if x.get("statusi") in ("fituese", "humbur")]
     fituese = sum(1 for x in finalizuar if x.get("statusi") == "fituese")
     total = len(finalizuar)
+    try:
+        vc = requests.get(
+            f"{VIP_COMBO_HIST_URL}?select=data,nr,rez,statusi,fituesi,krijuar"
+            f"&statusi=in.(fituese,humbur)&order=krijuar.desc&limit=30",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+        vip_combo = vc.json() if vc.status_code == 200 else []
+    except Exception:
+        vip_combo = []
     return {
         "historik": rows,
         "fituese": fituese,
         "total_finalizuar": total,
         "perqindja": round(100.0 * fituese / total, 1) if total else None,
+        "vip_combo": vip_combo,
     }
 
 
@@ -1334,20 +1343,20 @@ def _zgjidh_pick_ditor(data_str):
 
 
 def _ndertoMesazhTelegram(p):
-    return ("🎁 <b>NDESHJA DHURATË E DITËS</b> — SOCCER1X2 PRO\n\n"
+    return ("🎁 <b>FREE PICK OF THE DAY</b> — SOCCER1X2 PRO\n\n"
             f"🏆 {p.get('liga','')}\n"
             f"🆚 <b>{p['ndeshja']}</b>\n"
-            f"🕐 Ora: {p.get('ora','')}\n\n"
-            f"🎯 Parashikimi: <b>{p['tregu_emri']}</b>\n"
-            f"💰 Koeficienti: <b>{p['koef']}</b>\n\n"
-            "✅ <b>Siguri e lartë</b> — dhuratë nga ekipi ynë.\n\n"
-            "Maksimizo fitimin: luaj me <b>KOMBINIME</b>, zhblloko <b>Skedinën e Ditës</b> dhe bëhu <b>VIP</b>.\n"
+            f"🕐 Time: {p.get('ora','')}\n\n"
+            f"🎯 Prediction: <b>{p['tregu_emri']}</b>\n"
+            f"💰 Odds: <b>{p['koef']}</b>\n\n"
+            "✅ <b>High confidence</b> — a gift from our team.\n\n"
+            "Maximize your profit: play with <b>COMBOS</b>, unlock the <b>Daily Ticket</b> and become <b>VIP</b>.\n"
             "👉 https://soccer1x2pro.com\n\n"
-            "💎 Skedinë ditore me kombinim fitues\n"
-            "💎 Akses VIP me parashikime premium\n"
-            "💎 Maksimizim i fitimit\n\n"
+            "💎 Daily ticket with a winning combo\n"
+            "💎 VIP access with premium predictions\n"
+            "💎 Profit maximization\n\n"
             "📈 <b>With us, you invest.</b>\n\n"
-            "⚠️ 18+ • Luaj me përgjegjësi")
+            "⚠️ 18+ • Play responsibly")
 
 
 def _dergo_telegram(text, chat_id=None):
@@ -1427,6 +1436,67 @@ def _top_rezultate_sakta(p, n=4):
     return zgjedhur[:n]
 
 
+VIP_COMBO_HIST_URL = f"{SUPABASE_BASE}/rest/v1/vip_combo_historik"
+
+def _ruaj_vip_combo(dt, nr, rez, ndeshjet):
+    """Ruan përkufizimin e VIP Combo-s (një herë/ditë për çdo konfigurim) për vlerësim të mëvonshëm."""
+    try:
+        trim = [{"id": n.get("id"), "ndeshja": n.get("ndeshja"), "liga": n.get("liga"),
+                 "rezultati_sakt": n.get("rezultati_sakt"),
+                 "rezultatet": [{"skor": x.get("skor"), "koef": x.get("koef")} for x in (n.get("rezultatet") or [])]}
+                for n in ndeshjet]
+        hdr = dict(SUPABASE_SERVICE_HEADERS)
+        hdr["Prefer"] = "resolution=ignore-duplicates"
+        requests.post(VIP_COMBO_HIST_URL, headers=hdr,
+                      json={"data": dt, "nr": nr, "rez": rez, "ndeshjet": trim, "statusi": "pezull"},
+                      timeout=6)
+    except Exception:
+        pass
+
+
+def _vleso_vip_combot():
+    """Pas FT të të gjitha ndeshjeve: cakton kombon fituese ose, nëse s'ka, skedinën me më shumë ndeshje të kapura."""
+    try:
+        r = requests.get(f"{VIP_COMBO_HIST_URL}?statusi=eq.pezull&select=id,ndeshjet",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rows = r.json() if r.status_code == 200 else []
+        fund = ("FT", "AET", "PEN", "AWD", "WO")
+        for rec in rows:
+            ndeshjet = rec.get("ndeshjet") or []
+            ids = [str(n.get("id")) for n in ndeshjet if n.get("id")]
+            if not ids:
+                continue
+            pr = requests.get(f"{SUPABASE_URL_PREDS}?id=in.({','.join(ids)})&select=id,statusi,rezultati",
+                              headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+            preds = {str(p["id"]): p for p in (pr.json() if pr.status_code == 200 else [])}
+            if not all(preds.get(i, {}).get("statusi") in fund for i in ids):
+                continue  # ende jo të gjitha kanë mbaruar
+            rreshtat = []; korrekte = 0
+            for n in ndeshjet:
+                pid = str(n.get("id"))
+                rh, ra = _parse_skor(preds.get(pid, {}).get("rezultati"))
+                real_norm = f"{rh}-{ra}" if rh is not None else None
+                real_shf = real_norm or "—"
+                matched = None
+                for s in (n.get("rezultatet") or []):
+                    if str(s.get("skor", "")).replace(" ", "") == (real_norm or "__nomatch__"):
+                        matched = s.get("skor"); break
+                if matched:
+                    korrekte += 1
+                    rreshtat.append({"ndeshja": n.get("ndeshja"), "liga": n.get("liga"),
+                                     "parashikim": matched, "real": real_shf, "goditi": True})
+                else:
+                    rreshtat.append({"ndeshja": n.get("ndeshja"), "liga": n.get("liga"),
+                                     "parashikim": n.get("rezultati_sakt"), "real": real_shf, "goditi": False})
+            statusi = "fituese" if korrekte == len(ndeshjet) else "humbur"
+            fituesi = {"rreshtat": rreshtat, "korrekte": korrekte, "total": len(ndeshjet)}
+            requests.patch(f"{VIP_COMBO_HIST_URL}?id=eq.{rec['id']}",
+                           headers=SUPABASE_SERVICE_HEADERS,
+                           json={"statusi": statusi, "fituesi": fituesi}, timeout=6)
+    except Exception:
+        pass
+
+
 @app.get("/api/vip-combo")
 def vip_combo(email: str = "", nr: int = 2, rez: int = 4):
     """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
@@ -1436,7 +1506,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4):
     rez = 3 if int(rez) == 3 else 4
     dt = datetime.utcnow().strftime("%Y-%m-%d")
     r = requests.get(
-        f"{SUPABASE_URL_PREDS}?select=ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola"
+        f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola"
         f"&data=eq.{dt}&dist_gola=not.is.null&rezultati_sakt=not.is.null"
         f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20",
         headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -1445,8 +1515,9 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4):
     for p in rows:
         topr = _top_rezultate_sakta(p, rez)
         if len(topr) >= rez:
-            ndeshjet.append({"ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
-                             "liga": p.get("liga_emri"), "rezultatet": topr})
+            ndeshjet.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
+                             "liga": p.get("liga_emri"), "rezultati_sakt": p.get("rezultati_sakt"),
+                             "rezultatet": topr})
         if len(ndeshjet) >= nr:
             break
     if len(ndeshjet) < nr:
@@ -1475,6 +1546,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4):
     mbulim = 1.0
     for n in ndeshjet:
         mbulim *= sum(x["prob"] for x in n["rezultatet"])
+    _ruaj_vip_combo(dt, nr, rez, ndeshjet)
     return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet,
             "nr_kombinimesh": len(kombinimet),
@@ -2526,6 +2598,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
     # Auto-refresh PPM të përfunduara (në sfond)
     background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
+    background_tasks.add_task(_vleso_vip_combot)
 
     # 1) Cache në memorie (më i shpejti)
     if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 600):

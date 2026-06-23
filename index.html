@@ -332,6 +332,7 @@
         body.light .gen-label { color: #1c2128; }
         body.light .renditja-table th { background: #f3f5f8; color: #5a6470; border-bottom-color: #e3e7ec; }
         body.light .treg-box, body.light .profile-card { background: #fafbfc; border-color: #e3e7ec; }
+        body.light .history-item { background: #eef1f4; color: #1c2128; border-left-color: #2da44e; }
         body.light .wallet-card { background: linear-gradient(135deg,#fff8e1,#ffffff); border-color: #d4af37; }
         body.light .footer-links a { color: #5a6470; }
         body.light .action-sub-icon { color: #8a929c; }
@@ -1139,18 +1140,26 @@ if (!gjuhaAktuale) {
         }
         setTimeout(kontrolloNjoftimet, 1000);
 
+        var uiExtra = {
+            en: {renewActive:"Active",renewCancelled:"Cancelled",cancelSub:"Cancel Subscription",vipSubLabel:"VIP SUBSCRIPTION",expiresOn:"Expires on:",autoRenew:"Auto-Renewal:",addCredits:"Add Credits",analyzing:"System is analyzing the data...",dataLocked:"Data is locked",premiumFridayOnly:"The system generates the Premium Ticket only on Fridays.",comeBackFriday:"Come back Friday morning!",connFailed:"Connection failed. Try again!",notifOptimal:"System is optimal.",notifWeekend:"🔥 The new Weekend Ticket is published! Check the VIP section.",notifAnalyzing:"⏳ The system is analyzing upcoming matches. The VIP ticket is published every Friday!",notifTitle:"NOTIFICATIONS"},
+            sq: {renewActive:"Aktiv",renewCancelled:"Anuluar",cancelSub:"Anulo Abonimin",vipSubLabel:"ABONIMI VIP",expiresOn:"Skadon më:",autoRenew:"Auto-Rinovimi:",addCredits:"Shto Kredite",analyzing:"Sistemi po analizon të dhënat...",dataLocked:"Të dhënat janë të mbyllura",premiumFridayOnly:"Sistemi e gjeneron Skedinën Premium vetëm të Premten.",comeBackFriday:"Kthehuni të Premten në mëngjes!",connFailed:"Lidhja dështoi. Provo përsëri!",notifOptimal:"Sistemi është optimal.",notifWeekend:"🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.",notifAnalyzing:"⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!",notifTitle:"NJOFTIMET"},
+            de: {renewActive:"Aktiv",renewCancelled:"Storniert",cancelSub:"Abo kündigen",vipSubLabel:"VIP-ABO",expiresOn:"Läuft ab am:",autoRenew:"Auto-Verlängerung:",addCredits:"Guthaben aufladen",analyzing:"System analysiert die Daten...",dataLocked:"Daten sind gesperrt",premiumFridayOnly:"Das System erstellt den Premium-Tipp nur freitags.",comeBackFriday:"Komm Freitagmorgen wieder!",connFailed:"Verbindung fehlgeschlagen. Erneut versuchen!",notifOptimal:"System ist optimal.",notifWeekend:"🔥 Der neue Wochenend-Tipp ist da! Siehe VIP-Bereich.",notifAnalyzing:"⏳ Das System analysiert die kommenden Spiele. Der VIP-Tipp erscheint jeden Freitag!",notifTitle:"BENACHRICHTIGUNGEN"},
+            fr: {renewActive:"Actif",renewCancelled:"Annulé",cancelSub:"Annuler l'abonnement",vipSubLabel:"ABONNEMENT VIP",expiresOn:"Expire le :",autoRenew:"Renouvellement auto :",addCredits:"Ajouter des crédits",analyzing:"Le système analyse les données...",dataLocked:"Les données sont verrouillées",premiumFridayOnly:"Le système génère le Ticket Premium uniquement le vendredi.",comeBackFriday:"Revenez vendredi matin !",connFailed:"Échec de connexion. Réessayez !",notifOptimal:"Le système est optimal.",notifWeekend:"🔥 Le nouveau Ticket du Week-end est publié ! Voir la section VIP.",notifAnalyzing:"⏳ Le système analyse les prochains matchs. Le ticket VIP est publié chaque vendredi !",notifTitle:"NOTIFICATIONS"},
+            it: {renewActive:"Attivo",renewCancelled:"Annullato",cancelSub:"Annulla abbonamento",vipSubLabel:"ABBONAMENTO VIP",expiresOn:"Scade il:",autoRenew:"Rinnovo automatico:",addCredits:"Aggiungi crediti",analyzing:"Il sistema sta analizzando i dati...",dataLocked:"I dati sono bloccati",premiumFridayOnly:"Il sistema genera la Schedina Premium solo il venerdì.",comeBackFriday:"Torna venerdì mattina!",connFailed:"Connessione fallita. Riprova!",notifOptimal:"Il sistema è ottimale.",notifWeekend:"🔥 La nuova Schedina del Weekend è pubblicata! Vedi la sezione VIP.",notifAnalyzing:"⏳ Il sistema sta analizzando le prossime partite. La schedina VIP esce ogni venerdì!",notifTitle:"NOTIFICHE"}
+        };
         function hapNjoftimet() { 
+            const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
             let dita_sot = new Date().getDay();
-            let msg = "Sistemi është optimal.";
+            let msg = _ux.notifOptimal;
             if(dita_sot === 5 || dita_sot === 6 || dita_sot === 0) {
-                msg = "🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.";
+                msg = _ux.notifWeekend;
                 localStorage.setItem('skedina_pare_kete_jave', 'true');
                 kontrolloNjoftimet();
-            } else { msg = "⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!"; }
+            } else { msg = _ux.notifAnalyzing; }
             
             document.getElementById('modalContainerSize').style.maxWidth = '400px'; 
             document.getElementById('modalOverlay').style.display = 'flex'; 
-            document.getElementById('modalTitle').innerText = "NOTIFICATIONS"; 
+            document.getElementById('modalTitle').innerText = _ux.notifTitle; 
             document.getElementById('modalTitle').style.color = "#58a6ff"; 
             document.getElementById('modalBody').innerHTML = `<div style="background:#0d1117; padding:15px; border-radius:6px; border-left:4px solid #58a6ff;"><p style="margin:0; font-weight:bold; color:#fff;">Soccer1X2 🧠</p><p style="margin:8px 0 0 0; font-size:13px; color:#8ba898; line-height:1.5;">${msg}</p></div>`; 
         }
@@ -1429,6 +1438,7 @@ if (!gjuhaAktuale) {
         }
 
         function hapProfilin() {
+            const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
             document.getElementById('modalContainerSize').style.maxWidth = '400px';
             document.getElementById('modalOverlay').style.display = 'flex';
             document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].profile; 
@@ -1438,8 +1448,8 @@ if (!gjuhaAktuale) {
             
             let vipInfo = "";
             if (perdoruesi.isVip) {
-                let statusRinovimi = perdoruesi.auto_rinovim ? "<span style='color:#3fb950;'>Aktiv</span>" : "<span style='color:#da3633;'>Anuluar</span>";
-                let btnCancel = perdoruesi.auto_rinovim ? `<button class="filter-btn active" style="background:#da3633; color:#fff; border:none; width:100%; margin-top:10px; padding:6px; font-size:11px;" onclick="anuloAbonimin()">Anulo Abonimin (Cancel)</button>` : "";
+                let statusRinovimi = perdoruesi.auto_rinovim ? "<span style='color:#3fb950;'>"+_ux.renewActive+"</span>" : "<span style='color:#da3633;'>"+_ux.renewCancelled+"</span>";
+                let btnCancel = perdoruesi.auto_rinovim ? `<button class="filter-btn active" style="background:#da3633; color:#fff; border:none; width:100%; margin-top:10px; padding:6px; font-size:11px;" onclick="anuloAbonimin()">${_ux.cancelSub}</button>` : "";
                 
                 // Rregullimi i vitit 1970
                 let formattedSkad = "N/A";
@@ -1450,9 +1460,9 @@ if (!gjuhaAktuale) {
 
                 vipInfo = `
                 <div class="profile-card" style="border-color:#00e5ff; background:rgba(0, 229, 255, 0.05);">
-                    <span class="profile-label" style="color:#00e5ff;">💎 ABONIMI VIP</span>
-                    <div style="font-size:13px; color:#c9d1d9; margin-top:5px;">Skadon më: <b>${formattedSkad}</b></div>
-                    <div style="font-size:13px; color:#c9d1d9; margin-top:3px;">Auto-Rinovimi: <b>${statusRinovimi}</b></div>
+                    <span class="profile-label" style="color:#00e5ff;">💎 ${_ux.vipSubLabel}</span>
+                    <div style="font-size:13px; color:#c9d1d9; margin-top:5px;">${_ux.expiresOn} <b>${formattedSkad}</b></div>
+                    <div style="font-size:13px; color:#c9d1d9; margin-top:3px;">${_ux.autoRenew} <b>${statusRinovimi}</b></div>
                     ${btnCancel}
                 </div>`;
             }
@@ -1462,7 +1472,7 @@ if (!gjuhaAktuale) {
                     <div class="wallet-card">
                         <span class="profile-label" style="color:#d4af37;">💰 ${ui[gjuhaAktuale].wallet}</span>
                         <span class="wallet-amount">$${perdoruesi.portofoli.toFixed(2)}</span>
-                        <button class="filter-btn active" style="background:#d4af37; color:#000; border:none; margin-top:12px; font-size:11px; padding:6px 15px;" onclick="hapTopUp()">➕ Shto Kredite</button>
+                        <button class="filter-btn active" style="background:#d4af37; color:#000; border:none; margin-top:12px; font-size:11px; padding:6px 15px;" onclick="hapTopUp()">➕ ${_ux.addCredits}</button>
                         <span style="font-size:9px; color:#8ba898; display:block; margin-top:10px;">${ui[gjuhaAktuale].walletNote}</span>
                     </div>
                     <div class="profile-card">
@@ -1586,6 +1596,7 @@ if (!gjuhaAktuale) {
 
         function hapVipAbonim() {
             if(!isLogged) { hapAuthModal('login'); return; }
+            const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
             document.getElementById('modalContainerSize').style.maxWidth = '450px';
             document.getElementById('modalOverlay').style.display = 'flex';
             document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].vipSub; 
@@ -1594,7 +1605,7 @@ if (!gjuhaAktuale) {
             if(perdoruesi.isVip) {
                 let ditaSot = new Date().getDay();
                 if (ditaSot === 5 || ditaSot === 6 || ditaSot === 0) {
-                    document.getElementById('modalBody').innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#00e5ff; font-size:15px;"><i class="fa-solid fa-circle-notch fa-spin"></i> Sistemi po analizon të dhënat...</div></div>`;
+                    document.getElementById('modalBody').innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#00e5ff; font-size:15px;"><i class="fa-solid fa-circle-notch fa-spin"></i> ${_ux.analyzing}</div></div>`;
                     
                     fetch('https://soccer1x2-api.onrender.com/api/vip_weekend')
                     .then(res => res.json())
@@ -1608,9 +1619,9 @@ if (!gjuhaAktuale) {
                                 document.getElementById('modalBody').innerHTML = gjeneroSkedinenVip(data.skedina, totalOdds);
                             }
                         }
-                    }).catch(err => { document.getElementById('modalBody').innerHTML = `<div style="text-align:center; color:#ff7b72;">Lidhja dështoi. Provo përsëri!</div>`; });
+                    }).catch(err => { document.getElementById('modalBody').innerHTML = `<div style="text-align:center; color:#ff7b72;">${_ux.connFailed}</div>`; });
                 } else {
-                    document.getElementById('modalBody').innerHTML = `<div style="text-align:center; padding: 20px;"><i class="fa-solid fa-lock" style="font-size:40px; color:#da3633; margin-bottom:15px;"></i><h3 style="color:#da3633; margin-top:0;">Të dhënat janë të mbyllura</h3><div style="color:#c9d1d9; font-size:14px; margin-bottom: 20px;">Sistemi e gjeneron Skedinën Premium vetëm të Premten.</div><h4 style="color:#f2cc60; margin:0;">Kthehuni të Premten në mëngjes!</h4></div>`;
+                    document.getElementById('modalBody').innerHTML = `<div style="text-align:center; padding: 20px;"><i class="fa-solid fa-lock" style="font-size:40px; color:#da3633; margin-bottom:15px;"></i><h3 style="color:#da3633; margin-top:0;">${_ux.dataLocked}</h3><div style="color:#c9d1d9; font-size:14px; margin-bottom: 20px;">${_ux.premiumFridayOnly}</div><h4 style="color:#f2cc60; margin:0;">${_ux.comeBackFriday}</h4></div>`;
                 }
             } else {
                 document.getElementById('modalBody').innerHTML = `
@@ -1919,7 +1930,17 @@ if (!gjuhaAktuale) {
                     let legs = (hh.pikat||[]).map(p => { let cls = p.goditi === true ? 'ok' : (p.goditi === false ? 'no' : ''); return `<div class="hist-leg ${cls}">${p.ndeshja} · ${p.tregu}${p.rezultati?` (${p.rezultati})`:''}</div>`; }).join('');
                     return `<div class="hist-row ${hh.statusi==='fituese'?'win':(hh.statusi==='humbur'?'loss':'pend')}"><div class="hist-row-head"><b>${hh.data} · ${T.totalKoef.toLowerCase()} ${hh.koef_total||'—'}</b> ${badge}</div>${legs}</div>`;
                 }).join('');
-                _modalHap('📊 ' + T.prodHistoriku, '#58a6ff', head + (rows || `<p class="prod-note">${T.histEmpty}</p>`), '640px');
+                let vipHtml = '';
+                if ((d.vip_combo||[]).length > 0) {
+                    vipHtml = '<div style="font-weight:bold; color:#ffd700; font-size:13px; margin:10px 0 8px;"><i class="fa-solid fa-crown"></i> VIP COMBO</div>';
+                    vipHtml += d.vip_combo.map(c => {
+                        let f = c.fituesi || {rreshtat:[], korrekte:0, total:0};
+                        let badge = c.statusi==='fituese' ? `<span class="hist-badge win">${T.win}</span>` : `<span class="hist-badge loss">${T.loss}</span>`;
+                        let legs = (f.rreshtat||[]).map(r => `<div class="hist-leg ${r.goditi?'ok':'no'}">${r.liga?`<span style="font-size:10px;color:#8ba898;">${r.liga} · </span>`:''}${r.ndeshja} · <b>${r.parashikim||'—'}</b> → ${r.real||'—'}</div>`).join('');
+                        return `<div class="hist-row ${c.statusi==='fituese'?'win':'loss'}"><div class="hist-row-head"><b>👑 ${c.data} · ${f.korrekte}/${f.total}</b> ${badge}</div>${legs}</div>`;
+                    }).join('');
+                }
+                _modalHap('📊 ' + T.prodHistoriku, '#58a6ff', head + vipHtml + (rows || `<p class="prod-note">${T.histEmpty}</p>`), '640px');
             } catch(e) {
                 _modalHap('📊 ' + T.prodHistoriku, '#58a6ff', `<p style="color:#f85149;text-align:center;padding:20px;">${T.loadErr}</p>`);
             }
