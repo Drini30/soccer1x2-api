@@ -83,6 +83,10 @@
         
         .calendar-wrapper { display: flex; justify-content: flex-end; padding: 8px 15px; background-color: #161b22; border-bottom: 2px solid #30363d;}
         #datePicker { background-color: #1a4a2c; border: 1px solid #2d6b43; color: white; padding: 5px 8px; border-radius: 6px; font-family: inherit; font-size: 12px; font-weight: bold; outline: none; cursor: pointer; }
+        .date-nav { background:#1a4a2c; border:1px solid #2d6b43; color:#fff; width:28px; height:28px; border-radius:6px; cursor:pointer; font-size:11px; margin:0 4px; transition:.2s; vertical-align:middle; }
+        .date-nav:hover { background:#238636; }
+        body.light .date-nav { background:#f3f5f8; border-color:#e3e7ec; color:#3a424c; }
+        body.light .date-nav:hover { background:#e3eefb; }
         #datePicker::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
         
         .permbajtja { padding: 8px; display: flex; gap: 10px; position: relative; flex-grow: 1; }
@@ -504,7 +508,7 @@
                     <button class="filter-btn" id="btnTicket" onclick="verifikoAksesin(() => ndryshoFiltra('Skedina Ime', this))">My Ticket</button>
                     <button class="filter-btn" id="btnHistory" onclick="ndryshoFiltra('Historiku', this)">📊 Historiku PPM</button>
                 </div>
-                <input type="date" id="datePicker" onchange="ndryshoDaten()">
+                <button class="date-nav" onclick="ndryshoDaten(-1)" title="Dje">&#9664;</button><input type="date" id="datePicker" onchange="ndryshoDaten()"><button class="date-nav" onclick="ndryshoDaten(1)" title="Nesër">&#9654;</button>
             </div>
         </div>
         
@@ -1221,7 +1225,6 @@ if (!gjuhaAktuale) {
                     vizatoNdeshjet(); 
                 } else {
                     document.getElementById('rezultati').innerHTML = `<div style="text-align:center; padding: 40px; width:100%; color:#8ba898;">${ui[gjuhaAktuale].empty}</div>`;
-            try{ mbushPFHash(); }catch(e){}
                 }
             }).catch(err => {
                 document.getElementById('rezultati').innerHTML = `<div class="error-panel" style="width:100%;"><h3 style="color:#ff7b72; margin-top:0;">🚨 ${ui[gjuhaAktuale].errApi}</h3><button class="filter-btn active" style="margin-top:10px;" onclick="location.reload()">${ui[gjuhaAktuale].btnReload}</button></div>`;
@@ -1229,7 +1232,16 @@ if (!gjuhaAktuale) {
         }
         ngarkoNdeshjet();
 
-        function ndryshoDaten() { ngarkoNdeshjet(document.getElementById('datePicker').value); }
+        function ndryshoDaten(delta) {
+            const dp = document.getElementById('datePicker');
+            if (delta) {
+                const baze = dp.value || new Date().toISOString().split('T')[0];
+                const d = new Date(baze + 'T00:00:00');
+                d.setDate(d.getDate() + delta);
+                dp.value = d.toISOString().split('T')[0];
+            }
+            ngarkoNdeshjet(dp.value);
+        }
         function toggleThemeDropdown() { let dp=document.getElementById('themeDropdown'); dp.style.display = dp.style.display==='flex'?'none':'flex'; }
         function vendosTemen(tema) {
             if (tema === 'light') { document.body.classList.add('light'); var ic=document.getElementById('themeIcon'); if(ic) ic.className='fa-solid fa-sun'; }
@@ -1251,7 +1263,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0623L','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0623M','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2188,6 +2200,7 @@ if (!gjuhaAktuale) {
                 }
             });
             container.innerHTML = ndeshjeGjeturTotal > 0 ? sidebarHtml + htmlNdeshjet + `</div>` : `<div style="text-align:center; color: #8b949e; padding: 40px; width: 100%;">${ui[gjuhaAktuale].empty}</div>`;
+            try{ mbushPFHash(); }catch(e){}
         }
 
         // ==========================================
@@ -2492,12 +2505,12 @@ if (!gjuhaAktuale) {
             const T=_T();
             const _ux=uiExtra[gjuhaAktuale]||uiExtra.en;
             if(!perdoruesi.isVip){
-                _modalHap('<i class="fa-solid fa-crown"></i> VIP Combo', '#d4af37',
+                _modalHap('👑 VIP Combo', '#d4af37',
                   '<div class="prod-lock-box" style="border-color:#d4af37;"><p>👑 VIP Combo është ekskluzivisht për anëtarët VIP. Kombinime me rezultate të sakta nga modeli.</p><button class="ppm-btn-buy" style="width:100%; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900;" onclick="hapVipAbonim()">'+T.beVip+'</button></div>');
                 return;
             }
             vipNr=2; vipRez=4;
-            _modalHap('<i class="fa-solid fa-crown"></i> VIP Combo', '#d4af37',
+            _modalHap('👑 VIP Combo', '#d4af37',
               '<div class="gen-form" id="vipComboForm">'
               +'<label class="gen-label">Sa ndeshje?</label>'
               +'<div class="gen-opts">'
@@ -2537,6 +2550,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623L</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623M</div>
 </body>
 </html>
