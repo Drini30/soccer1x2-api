@@ -1253,7 +1253,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         grupet = ["1x2", "ou", "gg"]
 
     gen_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt"
-               f"&best_bet=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300")
+               f"&best_bet=not.is.null&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300")
     if liga and liga.strip():
         gen_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     res = requests.get(gen_url, headers=SUPABASE_SERVICE_HEADERS)
