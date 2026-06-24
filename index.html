@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
         body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 0; font-size: 14px; overflow-x: hidden; }
-        #app-container { max-width: 1100px; margin: 0 auto; background: #161b22; min-height: 100vh; border-left: 1px solid #30363d; border-right: 1px solid #30363d; box-shadow: 0 0 20px rgba(0,0,0,0.5); position: relative; display: flex; flex-direction: column; }
+        #app-container { max-width: 100%; margin: 0; background: #161b22; min-height: 100vh; position: relative; display: flex; flex-direction: column; }
         .sticky-zone { position: sticky; top: 0; z-index: 1000; background-color: #161b22; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
         .top-header { background-color: #0a2617; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1a4a2c; }
         .header-left { display: flex; align-items: center; gap: 15px; }
@@ -87,9 +87,28 @@
         .date-nav:hover { background:#238636; }
         body.light .date-nav { background:#f3f5f8; border-color:#e3e7ec; color:#3a424c; }
         body.light .date-nav:hover { background:#e3eefb; }
+        .date-group { display:inline-flex; align-items:center; margin-left:auto; }
+        .date-group input[type=date] { margin-left:0 !important; }
+        .team-logo-right { margin-right:0; margin-left:5px; }
         #datePicker::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
         
         .permbajtja { padding: 8px; display: flex; gap: 10px; position: relative; flex-grow: 1; }
+        .argetohu-col { position: fixed; top: 150px; right: 0; width: 280px; max-height: calc(100vh - 165px); background:#161b22; border-left:1px solid #30363d; border-top:1px solid #30363d; border-bottom-left-radius:12px; padding:14px; overflow-y:auto; z-index:50; box-shadow:-5px 0 16px rgba(0,0,0,0.35); display:flex; flex-direction:column; gap:14px; }
+        body.light .argetohu-col { background:#ffffff; border-color:#e3e7ec; box-shadow:-5px 0 16px rgba(20,40,80,0.10); }
+        .arg-head { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #30363d; padding-bottom:8px; }
+        body.light .arg-head { border-bottom-color:#e3e7ec; }
+        .arg-title { font-weight:800; font-size:15px; color:#58a6ff; }
+        body.light .arg-title { color:#2f7fe0; }
+        .arg-close { background:transparent; border:none; color:#8b949e; font-size:22px; cursor:pointer; line-height:1; padding:0 4px; }
+        .arg-close:hover { color:#f85149; }
+        .arg-panel { background:#0d1117; border:1px solid #30363d; border-radius:10px; padding:12px; }
+        body.light .arg-panel { background:#f6f9fe; border-color:#e3e7ec; }
+        .arg-panel-title { font-size:12px; font-weight:700; color:#8ba898; margin-bottom:8px; }
+        .arg-panel-body { font-size:13px; color:#c9d1d9; line-height:1.5; min-height:40px; }
+        body.light .arg-panel-body { color:#3a424c; }
+        body.argetohu-on .permbajtja { padding-right: 296px; }
+        #argReopen { position:fixed; right:14px; bottom:66px; width:44px; height:44px; border-radius:50%; background:#58a6ff; color:#fff; border:none; font-size:20px; cursor:pointer; z-index:51; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(0,0,0,0.35); }
+        @media (max-width:768px) { .argetohu-col { display:none !important; } #argReopen { display:none !important; } body.argetohu-on .permbajtja { padding-right:0 !important; } }
         
         .sidebar-ligat { width: 240px; flex-shrink: 0; background-color: #161b22; border-right: 1px solid #30363d; padding: 8px; position: sticky; top: 160px; height: calc(100vh - 240px); overflow-y: auto; }
         .sidebar-ligat::-webkit-scrollbar { width: 4px; }
@@ -509,13 +528,28 @@
                     <button class="filter-btn" id="btnTicket" onclick="verifikoAksesin(() => ndryshoFiltra('Skedina Ime', this))">My Ticket</button>
                     <button class="filter-btn" id="btnHistory" onclick="ndryshoFiltra('Historiku', this)">📊 Historiku PPM</button>
                 </div>
-                <button class="date-nav" onclick="ndryshoDaten(-1)" title="Dje">&#9664;</button><input type="date" id="datePicker" onchange="ndryshoDaten()"><button class="date-nav" onclick="ndryshoDaten(1)" title="Nesër">&#9654;</button>
+                <div class="date-group"><button class="date-nav" onclick="ndryshoDaten(-1)" title="Dje">&#9664;</button><input type="date" id="datePicker" onchange="ndryshoDaten()"><button class="date-nav" onclick="ndryshoDaten(1)" title="Nesër">&#9654;</button></div>
             </div>
         </div>
         
 
         <div class="permbajtja" id="rezultati">
             </div>
+        <div id="argetohuCol" class="argetohu-col">
+            <div class="arg-head">
+                <span class="arg-title">🎮 <span id="lblArgetohu">Argëtohu</span></span>
+                <button class="arg-close" onclick="mbyllArgetohu()" title="Mbyll">&times;</button>
+            </div>
+            <div class="arg-panel">
+                <div class="arg-panel-title">💬 <span id="lblArgQuote">Quote</span></div>
+                <div id="argQuote" class="arg-panel-body">—</div>
+            </div>
+            <div class="arg-panel">
+                <div class="arg-panel-title">❓ <span id="lblArgQuiz">Quiz</span></div>
+                <div id="argQuiz" class="arg-panel-body">—</div>
+            </div>
+        </div>
+        <button id="argReopen" onclick="hapArgetohu()" title="Argëtohu" style="display:none;">🎮</button>
 
         <div class="footer-zone">
             <div class="footer-links">
@@ -692,6 +726,7 @@ if (!gjuhaAktuale) {
 
         document.addEventListener('DOMContentLoaded', () => { 
             document.getElementById('langText').innerText = gjuhaAktuale.toUpperCase();
+            try{ nisArgetohu(); }catch(e){}
             
             if(isLogged) { 
                 document.getElementById('authBlockUI').style.display = 'none'; 
@@ -1267,7 +1302,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0623Q','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0623T','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2132,6 +2167,26 @@ if (!gjuhaAktuale) {
             }
         }
 
+        function mbyllArgetohu(){
+            document.body.classList.remove('argetohu-on');
+            var c=document.getElementById('argetohuCol'); if(c) c.style.display='none';
+            var r=document.getElementById('argReopen'); if(r) r.style.display='flex';
+            try{ localStorage.setItem('argetohu_mbyllur','1'); }catch(e){}
+        }
+        function hapArgetohu(){
+            try{ localStorage.removeItem('argetohu_mbyllur'); }catch(e){}
+            var c=document.getElementById('argetohuCol'); if(c) c.style.display='flex';
+            var r=document.getElementById('argReopen'); if(r) r.style.display='none';
+            document.body.classList.add('argetohu-on');
+        }
+        function nisArgetohu(){
+            var mbyllur=false; try{ mbyllur=localStorage.getItem('argetohu_mbyllur')==='1'; }catch(e){}
+            if(mbyllur){
+                document.body.classList.remove('argetohu-on');
+                var c=document.getElementById('argetohuCol'); if(c) c.style.display='none';
+                var r=document.getElementById('argReopen'); if(r) r.style.display='flex';
+            } else { hapArgetohu(); }
+        }
         function mbyllModal() { document.querySelectorAll('.modal-overlay').forEach(el => { el.style.display = 'none'; }); }
         function scrollToLeague(ligaId) { const element = document.getElementById(`liga-${ligaId}`); if (element) { const topOffset = 180; window.scrollTo({ top: element.getBoundingClientRect().top + window.pageYOffset - topOffset, behavior: "smooth" }); } }
 
@@ -2200,7 +2255,7 @@ if (!gjuhaAktuale) {
                             let customSkedinaRow = (skedinaIme[n.id] && !['1', 'X', '2'].includes(skedinaIme[n.id].zgjedhja)) ? `<div class="skedina-custom-row"><span>${ui[gjuhaAktuale].yourChoice} <b>${skedinaIme[n.id].zgjedhja}</b></span><span class="sk-val">${skedinaIme[n.id].koef}</span></div>` : "";
                             let emriFinal = n.is_motd ? `<i class="fa-solid fa-star" style="color:#f2cc60;"></i> ` + n.ekipi_1 : n.ekipi_1;
 
-                            htmlNdeshjet += `<div class="ndeshje-box"><div class="ndeshje-main-row"><span class="${classOra}">${tekstiOra}</span><div class="n-ekipet"><img src="https://media.api-sports.io/football/teams/${n.ekipi_1_id}.png" class="team-logo" loading="lazy" onerror="this.style.display='none'"><span class="clickable-team" onclick="hapHistorineDheRenditjen('${n.ekipi_1_id}', '${safeEkipi1}', '${n.liga_id}', '${n.sezoni}', '${safeEkipi1}', '${safeEkipi2}')">${emriFinal}</span> - <img src="https://media.api-sports.io/football/teams/${n.ekipi_2_id}.png" class="team-logo" loading="lazy" onerror="this.style.display='none'"><span class="clickable-team" onclick="hapHistorineDheRenditjen('${n.ekipi_2_id}', '${safeEkipi2}', '${n.liga_id}', '${n.sezoni}', '${safeEkipi1}', '${safeEkipi2}')">${n.ekipi_2}</span></div><div class="qendra-rezultati">${rezultatiDjathatHtml}</div><div class="n-koef-grid"><button class="k-btn ${sel1}" onclick="shtoNeSkedine('${n.id}', '1', '${n.koef_1}')">${n.koef_1}</button><button class="k-btn ${selX}" onclick="shtoNeSkedine('${n.id}', 'X', '${n.koef_x}')">${n.koef_x}</button><button class="k-btn ${sel2}" onclick="shtoNeSkedine('${n.id}', '2', '${n.koef_2}')">${n.koef_2}</button></div><button class="btn-more" onclick="hapKoeficientet('${n.id}', '${safeEkipi1}', '${safeEkipi2}')"><i class="fa-solid fa-ellipsis"></i></button></div>${customSkedinaRow}${htmlAiBar}</div>`;
+                            htmlNdeshjet += `<div class="ndeshje-box"><div class="ndeshje-main-row"><span class="${classOra}">${tekstiOra}</span><div class="n-ekipet"><img src="https://media.api-sports.io/football/teams/${n.ekipi_1_id}.png" class="team-logo" loading="lazy" onerror="this.style.display='none'"><span class="clickable-team" onclick="hapHistorineDheRenditjen('${n.ekipi_1_id}', '${safeEkipi1}', '${n.liga_id}', '${n.sezoni}', '${safeEkipi1}', '${safeEkipi2}')">${emriFinal}</span> - <span class="clickable-team" onclick="hapHistorineDheRenditjen('${n.ekipi_2_id}', '${safeEkipi2}', '${n.liga_id}', '${n.sezoni}', '${safeEkipi1}', '${safeEkipi2}')">${n.ekipi_2}</span><img src="https://media.api-sports.io/football/teams/${n.ekipi_2_id}.png" class="team-logo team-logo-right" loading="lazy" onerror="this.style.display='none'"></div><div class="qendra-rezultati">${rezultatiDjathatHtml}</div><div class="n-koef-grid"><button class="k-btn ${sel1}" onclick="shtoNeSkedine('${n.id}', '1', '${n.koef_1}')">${n.koef_1}</button><button class="k-btn ${selX}" onclick="shtoNeSkedine('${n.id}', 'X', '${n.koef_x}')">${n.koef_x}</button><button class="k-btn ${sel2}" onclick="shtoNeSkedine('${n.id}', '2', '${n.koef_2}')">${n.koef_2}</button></div><button class="btn-more" onclick="hapKoeficientet('${n.id}', '${safeEkipi1}', '${safeEkipi2}')"><i class="fa-solid fa-ellipsis"></i></button></div>${customSkedinaRow}${htmlAiBar}</div>`;
                         });
                     }
                 }
@@ -2552,6 +2607,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623Q</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623T</div>
 </body>
 </html>
