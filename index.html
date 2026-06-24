@@ -1307,7 +1307,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0623Z','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0624C','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2153,7 +2153,8 @@ if (!gjuhaAktuale) {
             mbushLigat('genLiga','gjenerator');
         }
 
-        async function gjeneroSkedine() {
+        async function gjeneroSkedine(paguaj) {
+            paguaj = paguaj || 0;
             const T = _T();
             const koef = document.getElementById('genKoef').value;
             const grupet = [...document.querySelectorAll('#genTregjet .gen-opt.active')].map(b => b.dataset.g);
@@ -2161,16 +2162,27 @@ if (!gjuhaAktuale) {
             document.getElementById('genResult').innerHTML = _loadingHtml(T.generating);
             try {
                 const ligaSel = (document.getElementById('genLiga')||{}).value || '';
-                const url = `${API_BASE}/api/gjenero?email=${encodeURIComponent(perdoruesi.email)}&nr=${genNrMin}&nr_max=${genNrMax}&koef=${koef}&tregjet=${grupet.join(',')}&liga=${encodeURIComponent(ligaSel)}`;
+                const url = `${API_BASE}/api/gjenero?email=${encodeURIComponent(perdoruesi.email)}&nr=${genNrMin}&nr_max=${genNrMax}&koef=${koef}&tregjet=${grupet.join(',')}&liga=${encodeURIComponent(ligaSel)}&paguaj=${paguaj}`;
                 const r = await fetch(url);
                 const d = await r.json();
-                if (!d.sukses) { document.getElementById('genResult').innerHTML = `<p style="color:#f85149;text-align:center;">${d.arsye||T.loadErr}</p>`; return; }
+                if (!d.sukses) {
+                    if (d.kerko_pagese) {
+                        document.getElementById('genResult').innerHTML = `<div style="text-align:center;background:#0d1117;border:1px solid #58a6ff;border-radius:8px;padding:14px;"><p style="color:#e6edf3;font-size:13px;margin-bottom:4px;">${d.arsye||''}</p><p style="color:#8b949e;font-size:11px;margin-bottom:10px;">Bilanci: $${d.portofoli||0}</p><button class="ppm-btn-buy" style="width:100%;background:#58a6ff;color:#fff;font-weight:900;" onclick="gjeneroSkedine(1)">⚙️ Gjenero për $${d.cmimi||10}</button></div>`;
+                    } else if (d.mungojne_kredite) {
+                        document.getElementById('genResult').innerHTML = `<div style="text-align:center;background:#0d1117;border:1px solid #f85149;border-radius:8px;padding:14px;"><p style="color:#ff7b72;font-size:13px;margin-bottom:10px;">${d.arsye||''}</p><button class="ppm-btn-buy" style="width:100%;background:#d4af37;color:#000;font-weight:900;" onclick="mbyllModal(); hapTopUp();">➕ Mbush Portofolin</button></div>`;
+                    } else {
+                        document.getElementById('genResult').innerHTML = `<p style="color:#f85149;text-align:center;">${d.arsye||T.loadErr}</p>`;
+                    }
+                    return;
+                }
+                if (d.u_pagua && typeof d.portofoli!=='undefined') { perdoruesi.portofoli=d.portofoli; }
                 const s = d.skedina;
-                let rows = (s.ndeshjet||[]).map(n => `<div class="prod-leg"><span class="prod-leg-match">${n.liga ? `<span style="font-size:10px;color:#8ba898;">${n.liga}</span><br>` : ''}${n.ndeshja}${n.parashikimi ? `<br><span style="font-size:10px;color:#8ba898;">🎯 ${n.parashikimi}</span>` : ''}</span><span class="prod-leg-pick">${n.tregu} <b>@${n.koef}</b></span></div>`).join('');
+                let rows = (s.ndeshjet||[]).map(n => `<div class="prod-leg"><span class="prod-leg-match">${n.liga ? `<span style="font-size:10px;color:#8ba898;">${n.liga}</span><br>` : ''}${n.ndeshja}${n.parashikimi ? `<br><span style="font-size:11px;color:#3fb950;font-weight:bold;">🎯 ${ui[gjuhaAktuale].result}: ${n.parashikimi}</span>` : ''}</span><span class="prod-leg-pick">${n.tregu} <b>@${n.koef}</b></span></div>`).join('');
                 var pp=Math.round((s.prob||0)*100);
                 var pc = pp>=25 ? '#3fb950' : (pp>=12 ? '#f2cc60' : '#f85149');
+                var paid = d.u_pagua ? `<div style="text-align:center;color:#3fb950;font-size:12px;font-weight:bold;margin-bottom:8px;">✓ U pagua $${d.cmimi||10} · bilanci: $${d.portofoli||0}</div>` : '';
                 var warn = (s.arritur === false) ? `<div style="background:rgba(242,204,96,0.08);border:1px solid #f2cc60;border-radius:6px;padding:8px 10px;margin-bottom:10px;color:#d4af37;font-size:11.5px;">&#9888; ${T.genNoTarget} <b>${s.koef_total}</b>.</div>` : '';
-                document.getElementById('genResult').innerHTML = warn + `<div class="prod-slip">${rows}<div class="prod-slip-foot">${T.totalKoef}: <b>${s.koef_total}</b> · <span style="color:${pc};font-weight:bold;">${T.prob} ${pp}%</span> · ${s.nr} ${T.matches}</div></div><p class="prod-note">${T.genProbNote}</p>`;
+                document.getElementById('genResult').innerHTML = paid + warn + `<div class="prod-slip">${rows}<div class="prod-slip-foot">${T.totalKoef}: <b>${s.koef_total}</b> · <span style="color:${pc};font-weight:bold;">${T.prob} ${pp}%</span> · ${s.nr} ${T.matches}</div></div><p class="prod-note">${T.genProbNote}</p>`;
             } catch(e) {
                 document.getElementById('genResult').innerHTML = `<p style="color:#f85149;text-align:center;">${T.loadErr}</p>`;
             }
@@ -2595,14 +2607,34 @@ if (!gjuhaAktuale) {
               +'</div>');
         }
 
-        async function gjeneroVipCombo(){
+        async function gjeneroVipCombo(paguaj){
+            paguaj = paguaj || 0;
             const box=document.getElementById('vipComboRez');
             box.innerHTML='<p style="text-align:center; color:#8b949e;">Duke gjeneruar...</p>';
             try{
-                const r=await fetch(API_BASE+'/api/vip-combo?email='+encodeURIComponent(perdoruesi.email)+'&nr='+vipNr+'&rez='+vipRez);
+                const r=await fetch(API_BASE+'/api/vip-combo?email='+encodeURIComponent(perdoruesi.email)+'&nr='+vipNr+'&rez='+vipRez+'&paguaj='+paguaj);
                 const d=await r.json();
-                if(!d.sukses){ box.innerHTML='<p style="text-align:center; color:#ff7b72;">'+(d.arsye||'Gabim')+'</p>'; return; }
-                let html='<div style="font-size:12px; color:#8b949e; margin-bottom:10px; text-align:center;">'+d.nr_kombinimesh+' skedina • mbulimi ~'+d.mbulimi_perqind+'%</div>';
+                if(!d.sukses){
+                    if(d.kerko_pagese){
+                        box.innerHTML='<div style="text-align:center; background:#0d1117; border:1px solid #d4af37; border-radius:8px; padding:14px;">'
+                          +'<p style="color:#e6edf3; font-size:13px; margin-bottom:4px;">'+(d.arsye||'')+'</p>'
+                          +'<p style="color:#8b949e; font-size:11px; margin-bottom:10px;">Bilanci: $'+(d.portofoli||0)+'</p>'
+                          +'<button class="gen-opt" style="width:100%; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900; border:none;" onclick="gjeneroVipCombo(1)">👑 Gjenero për $'+(d.cmimi||30)+'</button>'
+                          +'</div>';
+                    } else if(d.mungojne_kredite){
+                        box.innerHTML='<div style="text-align:center; background:#0d1117; border:1px solid #f85149; border-radius:8px; padding:14px;">'
+                          +'<p style="color:#ff7b72; font-size:13px; margin-bottom:10px;">'+(d.arsye||'')+'</p>'
+                          +'<button class="ppm-btn-buy" style="width:100%; background:#d4af37; color:#000; font-weight:900;" onclick="mbyllModal(); hapTopUp();">➕ Mbush Portofolin</button>'
+                          +'</div>';
+                    } else {
+                        box.innerHTML='<p style="text-align:center; color:#ff7b72;">'+(d.arsye||'Gabim')+'</p>';
+                    }
+                    return;
+                }
+                if(d.u_pagua && typeof d.portofoli!=='undefined'){ perdoruesi.portofoli=d.portofoli; }
+                let html='';
+                if(d.u_pagua){ html+='<div style="text-align:center; color:#3fb950; font-size:12px; font-weight:bold; margin-bottom:8px;">✓ U pagua $'+(d.cmimi||30)+' · bilanci: $'+(d.portofoli||0)+'</div>'; }
+                html+='<div style="font-size:12px; color:#8b949e; margin-bottom:10px; text-align:center;">'+d.nr_kombinimesh+' skedina • mbulimi ~'+d.mbulimi_perqind+'%</div>';
                 d.kombinimet.forEach(function(k,i){
                     html+='<div style="background:#0d1117; border:1px solid #d4af37; border-radius:8px; padding:8px 10px; margin-bottom:8px;">';
                     html+='<div style="display:flex; justify-content:space-between; font-weight:bold; color:#ffd700; font-size:12px; margin-bottom:5px;"><span>Skedina #'+(i+1)+'</span><span>koef '+k.koef_total+'</span></div>';
@@ -2614,6 +2646,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623Z</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0624C</div>
 </body>
 </html>

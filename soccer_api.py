@@ -1169,9 +1169,12 @@ def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara
 CMIM_VIPCOMBO = 30.0   # jo-VIP paguan kaq për 1 VIP Combo
 CMIM_GENERATE = 10.0   # jo-VIP paguan kaq për 1 Generate Ticket
 
-def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float):
+def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float, paguaj: bool = False):
     """KONTROLLON pa ndryshuar asgjë (pa zbritur para, pa shënuar datën).
-    produkt: 'vipcombo' ose 'generate'. Kthen dict {ok, is_vip, portofoli, arsye}."""
+    produkt: 'vipcombo' ose 'generate'.
+    Logjikë: VIP merr 1 gjenerim FALAS/ditë; pasi e përdor, mund të gjenerojë
+    përsëri DUKE PAGUAR (njësoj si jo-VIP). 'paguaj=True' = përdoruesi e konfirmoi pagesën.
+    Kthen dict {ok, is_vip, falas, kerko_pagese, mungojne_kredite, portofoli, cmimi, arsye}."""
     fusha = "vipcombo_fundit" if produkt == "vipcombo" else "generate_fundit"
     emri = "VIP Combo" if produkt == "vipcombo" else "Generate Ticket"
     dt = datetime.utcnow().strftime("%Y-%m-%d")
@@ -1187,15 +1190,28 @@ def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float):
             fundit = row.get(fusha)
     except Exception:
         pass
-    if is_vip:
-        if fundit == dt:
-            return {"ok": False, "is_vip": True, "portofoli": portofoli,
-                    "arsye": f"E ke përdorur {emri} sot. Kthehu nesër për një tjetër falas."}
-        return {"ok": True, "is_vip": True, "portofoli": portofoli, "arsye": ""}
+
+    # 1) VIP me falasin e ditës ende të papërdorur → gjenerim FALAS
+    if is_vip and fundit != dt:
+        return {"ok": True, "is_vip": True, "falas": True,
+                "portofoli": portofoli, "cmimi": cmimi, "arsye": ""}
+
+    # 2) Duhet pagesë (jo-VIP, OSE VIP që e ka përdorur falasin sot) — pa kredite të mjaftueshme
     if portofoli < cmimi:
-        return {"ok": False, "is_vip": False, "portofoli": portofoli,
-                "arsye": f"Nuk ke kredite të mjaftueshme. {emri} kushton {int(cmimi)}. Mbush portofolin për të vazhduar."}
-    return {"ok": True, "is_vip": False, "portofoli": portofoli, "arsye": ""}
+        return {"ok": False, "is_vip": False, "falas": False, "mungojne_kredite": True,
+                "portofoli": portofoli, "cmimi": cmimi,
+                "arsye": f"{emri} kushton ${int(cmimi)}. Nuk ke kredite të mjaftueshme — mbush portofolin për të vazhduar."}
+
+    # 3) Ka kredite por s'ka konfirmuar ende → kërko konfirmim (s'gjeneron, s'heq para)
+    if not paguaj:
+        msg = (f"E përdore {emri} falas sot. Gjenero përsëri për ${int(cmimi)}?"
+               if is_vip else f"{emri} kushton ${int(cmimi)}.")
+        return {"ok": False, "is_vip": False, "falas": False, "kerko_pagese": True,
+                "portofoli": portofoli, "cmimi": cmimi, "arsye": msg}
+
+    # 4) Konfirmuar + ka kredite → vazhdo me pagesë
+    return {"ok": True, "is_vip": False, "falas": False,
+            "portofoli": portofoli, "cmimi": cmimi, "arsye": ""}
 
 def _konfirmo_perdorimin(email: str, produkt: str, cmimi: float, is_vip: bool, portofoli: float):
     """THIRRET VETËM PAS gjenerimit të suksesshëm.
@@ -1217,12 +1233,15 @@ def _konfirmo_perdorimin(email: str, produkt: str, cmimi: float, is_vip: bool, p
 
 
 @app.get("/api/gjenero")
-def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = ""):
+def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0):
     if not email or not email.strip():
         return {"sukses": False, "arsye": "Hyr së pari në llogari."}
-    _drejta = _kontrollo_te_drejten(email, "generate", CMIM_GENERATE)
+    _drejta = _kontrollo_te_drejten(email, "generate", CMIM_GENERATE, bool(paguaj))
     if not _drejta["ok"]:
-        return {"sukses": False, "bllokuar": True, "arsye": _drejta["arsye"],
+        return {"sukses": False, "bllokuar": True,
+                "kerko_pagese": _drejta.get("kerko_pagese", False),
+                "mungojne_kredite": _drejta.get("mungojne_kredite", False),
+                "arsye": _drejta["arsye"],
                 "portofoli": _drejta["portofoli"], "is_vip": _drejta["is_vip"], "cmimi": CMIM_GENERATE}
     nr = max(2, min(15, int(nr)))
     nr_max = int(nr_max) if nr_max else nr
@@ -1772,13 +1791,16 @@ def _vleso_vip_combot():
 
 
 @app.get("/api/vip-combo")
-def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = ""):
+def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj: int = 0):
     """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
     if not email or not email.strip():
         return {"sukses": False, "arsye": "Hyr së pari në llogari."}
-    _drejta = _kontrollo_te_drejten(email, "vipcombo", CMIM_VIPCOMBO)
+    _drejta = _kontrollo_te_drejten(email, "vipcombo", CMIM_VIPCOMBO, bool(paguaj))
     if not _drejta["ok"]:
-        return {"sukses": False, "bllokuar": True, "arsye": _drejta["arsye"],
+        return {"sukses": False, "bllokuar": True,
+                "kerko_pagese": _drejta.get("kerko_pagese", False),
+                "mungojne_kredite": _drejta.get("mungojne_kredite", False),
+                "arsye": _drejta["arsye"],
                 "portofoli": _drejta["portofoli"], "is_vip": _drejta["is_vip"], "cmimi": CMIM_VIPCOMBO}
     nr = 3 if int(nr) == 3 else 2
     rez = 3 if int(rez) == 3 else 4
