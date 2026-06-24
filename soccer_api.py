@@ -207,7 +207,7 @@ def regjistro_perdorues(data: LoginData):
         "email": email_clean,
         "password": _hash_fjalekalimi(data.password),   # HASH, jo plaintext
         "emri": emri, "mbiemri": mbiemri,
-        "portofoli": 20.0, "isVip": False, "vip_skadon_me": None,
+        "portofoli": 10.0, "isVip": False, "vip_skadon_me": None,
         "auto_rinovim": False, "blerjet": []
     }
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_SERVICE_HEADERS, json=user_payload)
