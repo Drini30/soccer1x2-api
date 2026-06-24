@@ -963,6 +963,13 @@ def skedina_historik():
         vip_combo = vc.json() if vc.status_code == 200 else []
     except Exception:
         vip_combo = []
+    # Dedup: vetëm 1 skedinë VIP për ditë — ajo me më shumë ndeshje (koeficenti i kombinuar më i lartë)
+    _vc_best = {}
+    for _c in vip_combo:
+        _dita = _c.get("data")
+        if _dita not in _vc_best or (_c.get("nr") or 0) > (_vc_best[_dita].get("nr") or 0):
+            _vc_best[_dita] = _c
+    vip_combo = sorted(_vc_best.values(), key=lambda x: (x.get("krijuar") or ""), reverse=True)
     return {
         "historik": rows,
         "fituese": fituese,

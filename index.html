@@ -45,7 +45,7 @@
         .user-profile-icon { font-size: 18px; color: #e5e7eb; cursor: pointer; background: #1a4a2c; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid #2d6b43; transition: all 0.2s; }
         .user-profile-icon:hover { background: #238636; transform: scale(1.1); }
 
-        .filtra-wrapper { display: flex; justify-content: space-between; align-items: center; padding: 8px 15px; background-color: #0d1117; border-bottom: 1px solid #30363d; overflow-x: auto; white-space: nowrap; gap: 15px; }
+        .filtra-wrapper { display: flex; justify-content: space-between; align-items: center; padding: 8px 15px; background: linear-gradient(180deg, #0a2617 0%, #0c2c1c 100%); border-bottom: 1px solid #1a4a2c; overflow-x: auto; white-space: nowrap; gap: 15px; }
         .filtra-wrapper::-webkit-scrollbar { display: none; }
         .filtra-left, .filtra-qender, .filtra-actions-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .btn-ppm-badge { background: linear-gradient(90deg, #3a2c00 0%, #1a1500 100%); border: 1px solid #d4af37; color: #d4af37; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 10px; transition: transform 0.2s; }
@@ -1307,7 +1307,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0623W','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0623X','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2619,6 +2619,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623W</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0623X</div>
 </body>
 </html>
