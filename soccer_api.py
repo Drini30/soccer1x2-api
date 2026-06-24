@@ -2699,17 +2699,19 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         "liga_emri", "parashikimi_origjinal_ai"
     }
 
-    # FREEZE: gjej ndeshjet që TASHMË kanë parashikim (një kërkesë batch)
+    # FREEZE: ngri VETËM fushat që tashmë kanë vlerë në DB (lejon backfill të null-eve, p.sh. dist_gola)
     FUSHA_NGRIRA = ("rezultati_sakt", "dist_gola", "koef_rez_sakt", "parashikimi_origjinal_ai")
     _ids = [str(nd.get("id")) for nd in ndeshjet_premium if nd.get("id") is not None]
-    ekzistueset = set()
+    ekziston_fusha = {}   # id -> set e fushave që tashmë kanë vlerë (jo null)
     if _ids:
         try:
+            _sel = "id," + ",".join(FUSHA_NGRIRA)
             _q = requests.get(
-                f"{SUPABASE_URL_PREDS}?id=in.({','.join(_ids)})&rezultati_sakt=not.is.null&select=id",
+                f"{SUPABASE_URL_PREDS}?id=in.({','.join(_ids)})&select={_sel}",
                 headers=headers, timeout=8)
             if _q.status_code == 200:
-                ekzistueset = {str(rr.get("id")) for rr in _q.json()}
+                for rr in _q.json():
+                    ekziston_fusha[str(rr.get("id"))] = {f for f in FUSHA_NGRIRA if rr.get(f) is not None}
         except:
             pass
 
@@ -2721,10 +2723,9 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         if "parashikimi_origjinal_ai" not in pako:
             pako["parashikimi_origjinal_ai"] = pako.get("rezultati_sakt", "")
 
-        # FREEZE: ndeshje që tashmë ka parashikim → MOS e mbishkruaj (vetëm odds/status përditësohen)
-        if str(pako.get("id")) in ekzistueset:
-            for _f in FUSHA_NGRIRA:
-                pako.pop(_f, None)
+        # FREEZE: mos mbishkruaj VETËM fushat që tashmë kanë vlerë (null-et lejohen të mbushen)
+        for _f in ekziston_fusha.get(str(pako.get("id")), ()):
+            pako.pop(_f, None)
 
         try:
             r = requests.post(SUPABASE_URL_PREDS, headers=headers, json=pako, timeout=5)
