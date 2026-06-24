@@ -458,7 +458,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625C) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625D) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -618,7 +618,7 @@
         }
         /* ===================== FUND REDIZAJN NAVY ===================== */
 
-        /* ===================== KORRIGJIME 0625C ===================== */
+        /* ===================== KORRIGJIME 0625D ===================== */
         /* Header i levizshem: top-header + hero rrjedhin; vetem nav+tabs (sticky-zone) ngjiten. */
         .top-header{ position:relative !important; }
         .sticky-zone{ position:sticky; top:0; z-index:1000; }
@@ -655,9 +655,9 @@
           .mini-logo img{ height:28px; }
           .mini-logo{ top:6px; left:10px; }
         }
-        /* ===================== FUND KORRIGJIME 0625C ===================== */
+        /* ===================== FUND KORRIGJIME 0625D ===================== */
 
-        /* ===================== KORRIGJIME 0625C ===================== */
+        /* ===================== KORRIGJIME 0625D ===================== */
         /* Mini-logo: shkelqim periodik (glint) */
         .mini-logo{ overflow:hidden; }
         .mini-logo::after{ content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; background:linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); transform:skewX(-18deg); animation:miniShine 4.5s ease-in-out infinite; pointer-events:none; }
@@ -673,7 +673,14 @@
         /* Sidebar PPM/premium: sticky me scroll te vetin, nuk shtrihet me flex (ligat = scroll-i kryesor) */
         .sidebar-ligat{ position:sticky !important; top:122px !important; align-self:flex-start !important; height:auto !important; max-height:calc(100vh - 134px) !important; overflow-y:auto !important; }
         @media (max-width:768px){ .sidebar-ligat{ position:static !important; max-height:none !important; } }
-        /* ===================== FUND KORRIGJIME 0625C ===================== */
+        /* ===================== FUND KORRIGJIME 0625D ===================== */
+
+        /* ===================== KORRIGJIME 0625D ===================== */
+        /* Dizajn navy-only: light mode i caktivizuar, fshih toggle-in */
+        #themeToggleWrap{ display:none !important; }
+        /* Skedina e gjeneruar: emrat e ndeshjeve lexueshem mbi navy */
+        .prod-leg-match{ color:#e8eefb !important; }
+        /* ===================== FUND KORRIGJIME 0625D ===================== */
     </style>
 </head>
 <body>
@@ -699,7 +706,7 @@
                             <div class="lang-option" onclick="ndryshoGjuhen('it')">🇮🇹 Italiano</div>
                         </div>
                     </div>
-                    <div class="lang-container" style="margin-left: 8px;">
+                    <div class="lang-container" id="themeToggleWrap" style="margin-left: 8px;">
                         <button class="lang-btn" onclick="toggleThemeDropdown()"><i class="fa-solid fa-moon" id="themeIcon"></i></button>
                         <div class="lang-dropdown" id="themeDropdown">
                             <div class="lang-option" onclick="vendosTemen('dark')"><i class="fa-solid fa-moon"></i> Dark</div>
@@ -1533,7 +1540,7 @@ if (!gjuhaAktuale) {
         }
         function toggleThemeDropdown() { let dp=document.getElementById('themeDropdown'); dp.style.display = dp.style.display==='flex'?'none':'flex'; }
         function vendosTemen(tema) {
-            if (tema === 'light') { document.body.classList.add('light'); var ic=document.getElementById('themeIcon'); if(ic) ic.className='fa-solid fa-sun'; }
+            if (tema === 'light') { document.body.classList.remove('light'); var ic=document.getElementById('themeIcon'); if(ic) ic.className='fa-solid fa-sun'; }
             else { document.body.classList.remove('light'); var ic2=document.getElementById('themeIcon'); if(ic2) ic2.className='fa-solid fa-moon'; }
             localStorage.setItem('soccer_theme', tema);
             var dd=document.getElementById('themeDropdown'); if(dd) dd.style.display='none';
@@ -1552,7 +1559,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625C','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625D','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2894,7 +2901,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625C</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625D</div>
     <script>
     (function(){
       function init(){
