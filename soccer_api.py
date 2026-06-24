@@ -1163,10 +1163,67 @@ def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara
     return None
 
 
+# ============ LIMITET & PAGESAT (VIP COMBO / GENERATE TICKET) ============
+# VIP: 1 herë falas/ditë secilin, pastaj bllokohet deri nesër.
+# Jo-VIP: paguan nga portofoli për çdo gjenerim.
+CMIM_VIPCOMBO = 30.0   # jo-VIP paguan kaq për 1 VIP Combo
+CMIM_GENERATE = 10.0   # jo-VIP paguan kaq për 1 Generate Ticket
+
+def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float):
+    """KONTROLLON pa ndryshuar asgjë (pa zbritur para, pa shënuar datën).
+    produkt: 'vipcombo' ose 'generate'. Kthen dict {ok, is_vip, portofoli, arsye}."""
+    fusha = "vipcombo_fundit" if produkt == "vipcombo" else "generate_fundit"
+    emri = "VIP Combo" if produkt == "vipcombo" else "Generate Ticket"
+    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    is_vip = _eshte_vip(email)
+    portofoli = 0.0
+    fundit = None
+    try:
+        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,{fusha}",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        if r.status_code == 200 and r.json():
+            row = r.json()[0]
+            portofoli = float(row.get("portofoli", 0) or 0)
+            fundit = row.get(fusha)
+    except Exception:
+        pass
+    if is_vip:
+        if fundit == dt:
+            return {"ok": False, "is_vip": True, "portofoli": portofoli,
+                    "arsye": f"E ke përdorur {emri} sot. Kthehu nesër për një tjetër falas."}
+        return {"ok": True, "is_vip": True, "portofoli": portofoli, "arsye": ""}
+    if portofoli < cmimi:
+        return {"ok": False, "is_vip": False, "portofoli": portofoli,
+                "arsye": f"Nuk ke kredite të mjaftueshme. {emri} kushton {int(cmimi)}. Mbush portofolin për të vazhduar."}
+    return {"ok": True, "is_vip": False, "portofoli": portofoli, "arsye": ""}
+
+def _konfirmo_perdorimin(email: str, produkt: str, cmimi: float, is_vip: bool, portofoli: float):
+    """THIRRET VETËM PAS gjenerimit të suksesshëm.
+    VIP → shëno datën e sotme (konsumon falasin e ditës). Jo-VIP → zbrit çmimin nga portofoli.
+    Kthen portofolin e ri."""
+    fusha = "vipcombo_fundit" if produkt == "vipcombo" else "generate_fundit"
+    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    try:
+        if is_vip:
+            requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                           headers=SUPABASE_SERVICE_HEADERS, json={fusha: dt}, timeout=8)
+            return portofoli
+        ri = round(portofoli - cmimi, 2)
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                       headers=SUPABASE_SERVICE_HEADERS, json={"portofoli": ri}, timeout=8)
+        return ri
+    except Exception:
+        return portofoli
+
+
 @app.get("/api/gjenero")
 def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = ""):
-    if not _eshte_vip(email):
-        return {"sukses": False, "arsye": "Vetëm për abonentët VIP."}
+    if not email or not email.strip():
+        return {"sukses": False, "arsye": "Hyr së pari në llogari."}
+    _drejta = _kontrollo_te_drejten(email, "generate", CMIM_GENERATE)
+    if not _drejta["ok"]:
+        return {"sukses": False, "bllokuar": True, "arsye": _drejta["arsye"],
+                "portofoli": _drejta["portofoli"], "is_vip": _drejta["is_vip"], "cmimi": CMIM_GENERATE}
     nr = max(2, min(15, int(nr)))
     nr_max = int(nr_max) if nr_max else nr
     nr_max = max(nr, min(15, nr_max))
@@ -1186,7 +1243,9 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     sked = _gjenero_skedine_fleksibel(pool, nr, nr_max, koef, grupet)
     if not sked:
         return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
+    _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"])
     return {"sukses": True, "skedina": sked,
+            "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"]), "cmimi": CMIM_GENERATE,
             "kerkesa": {"nr_min": nr, "nr_max": nr_max, "koef_target": koef, "tregjet": grupet}}
 
 
@@ -1715,8 +1774,12 @@ def _vleso_vip_combot():
 @app.get("/api/vip-combo")
 def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = ""):
     """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
-    if not email or not _eshte_vip(email):
-        return {"sukses": False, "arsye": "VIP-only. Bëhu VIP për të hapur VIP Combo."}
+    if not email or not email.strip():
+        return {"sukses": False, "arsye": "Hyr së pari në llogari."}
+    _drejta = _kontrollo_te_drejten(email, "vipcombo", CMIM_VIPCOMBO)
+    if not _drejta["ok"]:
+        return {"sukses": False, "bllokuar": True, "arsye": _drejta["arsye"],
+                "portofoli": _drejta["portofoli"], "is_vip": _drejta["is_vip"], "cmimi": CMIM_VIPCOMBO}
     nr = 3 if int(nr) == 3 else 2
     rez = 3 if int(rez) == 3 else 4
     dt = datetime.utcnow().strftime("%Y-%m-%d")
@@ -1763,9 +1826,11 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = ""):
     for n in ndeshjet:
         mbulim *= sum(x["prob"] for x in n["rezultatet"])
     _ruaj_vip_combo(dt, nr, rez, ndeshjet)
+    _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"])
     return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet,
             "nr_kombinimesh": len(kombinimet),
+            "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"]), "cmimi": CMIM_VIPCOMBO,
             "mbulimi_perqind": round(mbulim * 100, 1)}
 
 
@@ -2172,7 +2237,8 @@ def simulim_monte_carlo_v2(
     xg_1: float, xg_2: float,
     kaos_factor: float = 1.0,
     is_derbi: bool = False,
-    iteracione: int = 50_000
+    iteracione: int = 50_000,
+    seed: int = None
 ) -> tuple:
     """
     Monte Carlo vectorized me numpy — 50,000 simulime në ~60ms.
@@ -2185,7 +2251,7 @@ def simulim_monte_carlo_v2(
     sigma_1 = xg_1 * 0.18 * kaos_factor
     sigma_2 = xg_2 * 0.18 * kaos_factor
 
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
     xg1_virtual = np.clip(rng.normal(xg_1, sigma_1, iteracione), 0.05, 6.0)
     xg2_virtual = np.clip(rng.normal(xg_2, sigma_2, iteracione), 0.05, 6.0)
 
@@ -2399,8 +2465,9 @@ def analizo_ndeshjen_premium_master(
     xg_2 = float(np.clip(xg_2, 0.30, 3.50))
 
     # ── MONTE CARLO V2 (numpy, 50k) ──
+    _seed_ndeshja = int(hashlib.sha256(str(id_ndeshja).encode()).hexdigest()[:8], 16)
     rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
-        xg_1, xg_2, kaosi_liges, is_derbi, iteracione=50_000
+        xg_1, xg_2, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja
     )
 
     try:
@@ -2632,6 +2699,20 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         "liga_emri", "parashikimi_origjinal_ai"
     }
 
+    # FREEZE: gjej ndeshjet që TASHMË kanë parashikim (një kërkesë batch)
+    FUSHA_NGRIRA = ("rezultati_sakt", "dist_gola", "koef_rez_sakt", "parashikimi_origjinal_ai")
+    _ids = [str(nd.get("id")) for nd in ndeshjet_premium if nd.get("id") is not None]
+    ekzistueset = set()
+    if _ids:
+        try:
+            _q = requests.get(
+                f"{SUPABASE_URL_PREDS}?id=in.({','.join(_ids)})&rezultati_sakt=not.is.null&select=id",
+                headers=headers, timeout=8)
+            if _q.status_code == 200:
+                ekzistueset = {str(rr.get("id")) for rr in _q.json()}
+        except:
+            pass
+
     for nd in ndeshjet_premium:
         # Ndërto payload vetëm me kolonat valide
         pako = {k: v for k, v in nd.items() if k in KOLONAT_VALIDE}
@@ -2639,6 +2720,11 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         # Sigurohu parashikimi_origjinal_ai ekziston
         if "parashikimi_origjinal_ai" not in pako:
             pako["parashikimi_origjinal_ai"] = pako.get("rezultati_sakt", "")
+
+        # FREEZE: ndeshje që tashmë ka parashikim → MOS e mbishkruaj (vetëm odds/status përditësohen)
+        if str(pako.get("id")) in ekzistueset:
+            for _f in FUSHA_NGRIRA:
+                pako.pop(_f, None)
 
         try:
             r = requests.post(SUPABASE_URL_PREDS, headers=headers, json=pako, timeout=5)
