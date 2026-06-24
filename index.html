@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
     <style>
         body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 0; font-size: 14px; overflow-x: hidden; }
         #app-container { max-width: 100%; margin: 0; background: #161b22; min-height: 100vh; position: relative; display: flex; flex-direction: column; }
@@ -456,6 +457,166 @@
             .filtra-actions-right i { font-size: 18px; }
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
+
+        /* ===================== REDIZAJN NAVY 2026 (build 0625A) =====================
+           Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
+        body { background-color:#081226 !important; color:#e8eefb; }
+        #app-container { background:#081226 !important; }
+        .sticky-zone { background-color:#0a162e !important; box-shadow:0 6px 20px rgba(0,0,0,.55) !important; }
+        ::-webkit-scrollbar{ width:10px; height:10px; }
+        ::-webkit-scrollbar-track{ background:#0a1830; }
+        ::-webkit-scrollbar-thumb{ background:#1d3460; border-radius:6px; }
+
+        /* ---- TOP UTILITY BAR ---- */
+        .top-header{ background:#04070f !important; padding:10px 22px !important; border-bottom:1px solid rgba(120,180,255,.12); position:relative; z-index:6; }
+        .top-header .logo-img{ height:40px; }
+        .lang-btn{ background:rgba(8,20,40,.6) !important; border:1px solid rgba(120,180,255,.18) !important; color:#cfe0ff !important; border-radius:9px !important; backdrop-filter:blur(4px); }
+        .lang-btn:hover{ background:rgba(30,58,110,.7) !important; }
+        .lang-dropdown{ background:#0b1830 !important; border:1px solid rgba(120,180,255,.18) !important; }
+        .lang-option{ color:#cfe0ff !important; }
+        .lang-option:hover{ background:#13254a !important; color:#7db8ff !important; }
+        #searchInput{ background:rgba(8,20,40,.6) !important; border:1px solid rgba(120,180,255,.18) !important; color:#cfe0ff !important; border-radius:9px !important; }
+        .auth-action{ color:#cfe0ff !important; }
+        .auth-or{ color:#7e96c2 !important; }
+        .user-profile-icon{ background:linear-gradient(160deg,#2f7df6,#1b3a8f) !important; border:1px solid rgba(150,200,255,.4) !important; color:#fff !important; }
+        .user-profile-icon:hover{ filter:brightness(1.12); transform:scale(1.05); }
+        .action-sub-icon{ color:#9fb8e6; }
+
+        /* ---- HERO BANNER (skena e stadiumit) ---- */
+        .hero-banner{ position:relative; height:330px; overflow:hidden; background:#04070f; border-bottom:1px solid rgba(120,180,255,.12); }
+        .hero-scene{ position:absolute; inset:0; animation:hClarify 2.4s cubic-bezier(.16,.84,.3,1) both; }
+        .hero-sky{ position:absolute; inset:0; background:radial-gradient(120% 90% at 50% -10%, #16315e 0%, #0a1a36 38%, #060f22 66%, #03060e 100%); }
+        .hero-stands{ position:absolute; top:70px; left:0; right:0; height:140px; background:repeating-linear-gradient(90deg, rgba(70,110,170,.10) 0 3px, transparent 3px 9px), linear-gradient(180deg, rgba(40,70,120,.30), rgba(10,22,44,0)); transform:perspective(700px) rotateX(28deg); transform-origin:bottom; }
+        .hero-crowd{ position:absolute; top:90px; left:0; right:0; height:110px; opacity:.5; background:
+          radial-gradient(1.2px 1.2px at 12% 30%, rgba(200,220,255,.7) 50%, transparent 51%),
+          radial-gradient(1.2px 1.2px at 28% 60%, rgba(255,230,180,.6) 50%, transparent 51%),
+          radial-gradient(1.2px 1.2px at 47% 20%, rgba(200,220,255,.6) 50%, transparent 51%),
+          radial-gradient(1.2px 1.2px at 63% 70%, rgba(255,230,180,.6) 50%, transparent 51%),
+          radial-gradient(1.2px 1.2px at 82% 40%, rgba(200,220,255,.6) 50%, transparent 51%),
+          radial-gradient(1.2px 1.2px at 91% 64%, rgba(255,230,180,.5) 50%, transparent 51%); }
+        .hero-beam{ position:absolute; top:6px; width:220px; height:280px; }
+        .hero-beam.l{ left:13%; transform:translateX(-50%); background:radial-gradient(60% 42% at 50% 0%, rgba(255,247,224,.5), rgba(255,247,224,0) 70%); animation:hBeam 6s ease-in-out infinite; }
+        .hero-beam.r{ right:13%; transform:translateX(50%); background:radial-gradient(60% 42% at 50% 0%, rgba(214,235,255,.45), rgba(214,235,255,0) 70%); animation:hBeam 7s ease-in-out infinite; }
+        .hero-pods{ position:absolute; top:12px; display:flex; gap:6px; }
+        .hero-pods.l{ left:13%; transform:translateX(-50%); }
+        .hero-pods.r{ right:13%; transform:translateX(50%); }
+        .hero-pods span{ width:12px; height:12px; border-radius:50%; background:#fff7e0; box-shadow:0 0 16px 5px rgba(255,247,224,.8); animation:hFlick 4s infinite; }
+        .hero-pods span:nth-child(2){ animation:hFlickB 5s infinite; }
+        .hero-pitch-wrap{ position:absolute; left:50%; bottom:-26px; transform:translateX(-50%); width:1500px; height:520px; perspective:470px; perspective-origin:50% 4%; opacity:.55; }
+        .hero-pitch{ position:absolute; inset:0; transform:rotateX(74deg); transform-origin:50% 100%; border-radius:2px; background:
+          linear-gradient(0deg, #11603a 0%, #0c4828 38%, #07331d 68%, #03150c 100%),
+          repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 64px, rgba(0,0,0,.05) 64px 128px),
+          repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 72px);
+          box-shadow:inset 0 0 0 3px rgba(220,235,255,.09); }
+        .hero-circle{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:200px; height:200px; border:2px solid rgba(220,235,255,.09); border-radius:50%; }
+        .hero-goal{ position:absolute; top:128px; left:50%; transform:translateX(-50%); width:150px; height:62px; opacity:.9; animation:hGoal 6s ease-in-out infinite; }
+        .hero-goal .net{ position:absolute; left:7px; right:7px; top:7px; bottom:0; background:repeating-linear-gradient(46deg, rgba(180,205,240,.10) 0 1px, transparent 1px 10px), repeating-linear-gradient(-46deg, rgba(180,205,240,.10) 0 1px, transparent 1px 10px); }
+        .hero-goal .pl{ position:absolute; left:3px; top:5px; width:4px; bottom:0; background:rgba(150,180,225,.32); box-shadow:0 0 6px rgba(110,160,215,.25); }
+        .hero-goal .pr{ position:absolute; right:3px; top:5px; width:4px; bottom:0; background:rgba(150,180,225,.32); box-shadow:0 0 6px rgba(110,160,215,.25); }
+        .hero-goal .cb{ position:absolute; left:3px; right:3px; top:5px; height:4px; background:rgba(180,205,240,.42); box-shadow:0 0 8px rgba(110,160,215,.3); }
+        .hero-vignette{ position:absolute; inset:0; background:radial-gradient(80% 60% at 50% 118%, rgba(0,0,0,0) 30%, rgba(2,5,12,.85) 100%), linear-gradient(180deg, rgba(4,7,15,.2) 0%, rgba(4,7,15,0) 22%); }
+        .hero-mote{ position:absolute; width:3px; height:3px; border-radius:50%; background:rgba(255,247,224,.8); }
+        .hero-mote.m1{ left:24%; bottom:110px; animation:hFloat 7s ease-in infinite; }
+        .hero-mote.m2{ left:70%; bottom:84px; width:2px; height:2px; background:rgba(214,235,255,.8); animation:hFloat 9s ease-in 1.5s infinite; }
+        .hero-mote.m3{ left:52%; bottom:128px; width:2.5px; height:2.5px; background:rgba(255,247,224,.7); animation:hFloat 8s ease-in 3s infinite; }
+        .hero-content{ position:relative; z-index:5; display:flex; flex-direction:column; align-items:center; padding-top:56px; }
+        .hero-logo-rise{ animation:hLogoRise 1.4s cubic-bezier(.2,.8,.25,1) .25s both; transform-style:preserve-3d; }
+        .hero-logo{ display:flex; align-items:center; gap:8px; font-family:'Anton',sans-serif; font-size:92px; line-height:.9; letter-spacing:.01em; transform:perspective(900px) rotateX(11deg); }
+        .hero-logo .soc{ background:linear-gradient(180deg,#7dffae 0%,#27c759 42%,#0e7a35 100%); -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow:0 1px 0 #0c5a28,0 2px 0 #0b5326,0 3px 0 #0a4c23,0 4px 0 #094520,0 5px 0 #083e1d,0 6px 0 #07371a,0 8px 0 #062f16,0 10px 14px rgba(0,0,0,.55),0 18px 30px rgba(0,0,0,.5); }
+        .hero-logo .pro{ background:linear-gradient(180deg,#9ec6ff 0%,#3b82f6 42%,#1546a8 100%); -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow:0 1px 0 #1b4ea8,0 2px 0 #1949a0,0 3px 0 #174497,0 4px 0 #153f8f,0 5px 0 #133a86,0 6px 0 #11357d,0 8px 0 #0e2d6c,0 10px 14px rgba(0,0,0,.55),0 18px 30px rgba(0,0,0,.5); }
+        .hero-ball{ position:relative; width:68px; height:68px; border-radius:50%; margin:0 2px; background:radial-gradient(60% 60% at 38% 32%, #fff 0%, #e6edf6 40%, #b9c6d8 72%, #8595ab 100%); box-shadow:0 8px 0 #5d6b80,0 12px 18px rgba(0,0,0,.55), inset -8px -10px 18px rgba(0,0,0,.25), inset 6px 8px 12px rgba(255,255,255,.7); }
+        .hero-ball::after{ content:""; position:absolute; inset:0; border-radius:50%; background:radial-gradient(10px 10px at 50% 30%, #1a2230 48%, transparent 50%), radial-gradient(7px 7px at 28% 60%, #1a2230 48%, transparent 50%), radial-gradient(7px 7px at 72% 60%, #1a2230 48%, transparent 50%), radial-gradient(6px 6px at 50% 82%, #1a2230 48%, transparent 50%); }
+        .hero-tag{ margin-top:14px; font-family:'Barlow Semi Condensed','Oswald',sans-serif; font-weight:600; letter-spacing:.42em; text-transform:uppercase; font-size:13px; color:#acc4f0; text-shadow:0 2px 8px rgba(0,0,0,.6); }
+        @keyframes hClarify{ 0%{transform:scale(1.12) translateY(18px);filter:blur(6px) brightness(.5) saturate(.78)} 55%{filter:blur(2px) brightness(.8) saturate(.92)} 100%{transform:scale(1) translateY(0);filter:blur(0) brightness(1) saturate(1)} }
+        @keyframes hLogoRise{ 0%{transform:perspective(900px) rotateX(26deg) translateY(34px) scale(.86)} 100%{transform:perspective(900px) rotateX(11deg) translateY(0) scale(1)} }
+        @keyframes hFlick{ 0%,100%{opacity:.92}45%{opacity:.7}70%{opacity:1} }
+        @keyframes hFlickB{ 0%,100%{opacity:.85}30%{opacity:1}60%{opacity:.66} }
+        @keyframes hBeam{ 0%,100%{opacity:.5}50%{opacity:.85} }
+        @keyframes hGoal{ 0%,100%{opacity:.55;filter:blur(1px)}50%{opacity:.9;filter:blur(0)} }
+        @keyframes hFloat{ 0%{transform:translateY(0);opacity:0}15%{opacity:.7}100%{transform:translateY(-120px);opacity:0} }
+
+        /* ---- NAV ROW (butonat e produkteve) ---- */
+        .filtra-wrapper{ background:#0a162e !important; padding:14px 22px !important; justify-content:center !important; gap:12px !important; }
+        .filtra-qender{ gap:12px !important; flex-wrap:wrap; justify-content:center; }
+        .prod-btn{ background:linear-gradient(180deg,#1f4f9c,#143569) !important; color:#eaf2ff !important; padding:11px 20px !important; border-radius:12px !important; font-family:'Oswald',sans-serif; font-weight:600 !important; font-size:15px !important; box-shadow:0 8px 20px rgba(0,0,0,.45),0 0 0 1px rgba(120,200,255,.12) inset !important; transition:transform .18s, box-shadow .18s !important; }
+        .prod-btn::after{ content:"" !important; margin:0 !important; opacity:0 !important; }
+        .prod-btn:hover{ transform:translateY(-3px) !important; background:linear-gradient(180deg,#2560b8,#184080) !important; box-shadow:0 14px 28px rgba(0,0,0,.5),0 0 0 1px rgba(120,200,255,.25) inset !important; }
+        .prod-btn.prod-vip{ background:linear-gradient(180deg,#f7cf6a,#e0a21a) !important; color:#1c1206 !important; }
+        .prod-btn.prod-vip:hover{ background:linear-gradient(180deg,#ffd97a,#f0b22a) !important; color:#1c1206 !important; }
+        body.light .prod-btn{ background:linear-gradient(180deg,#1f4f9c,#143569) !important; color:#eaf2ff !important; }
+        body.light .prod-btn:hover{ background:linear-gradient(180deg,#2560b8,#184080) !important; color:#eaf2ff !important; }
+        body.light .prod-btn.prod-vip{ background:linear-gradient(180deg,#f7cf6a,#e0a21a) !important; color:#1c1206 !important; }
+        .fire-badge{ display:flex !important; background:linear-gradient(150deg,#f59324,#e0641a) !important; box-shadow:0 6px 16px rgba(224,100,26,.35) !important; border:1px solid #ffd0a3 !important; color:#fff !important; }
+
+        /* ---- SUB TABS + date ---- */
+        .calendar-wrapper{ background:#0a162e !important; padding:14px 22px !important; border-bottom:1px solid rgba(120,180,255,.1) !important; }
+        .filter-btn{ background:#13254a !important; border:1px solid rgba(120,180,255,.2) !important; color:#cfe0ff !important; border-radius:10px !important; font-family:'Oswald',sans-serif; padding:9px 16px !important; font-size:13px !important; }
+        .filter-btn.active{ background:#7db8ff !important; color:#0a162e !important; border-color:transparent !important; }
+        #btnLive.active{ background:#2a1320 !important; color:#ff9b9b !important; border-color:rgba(255,90,90,.35) !important; }
+        #datePicker{ background:#fff !important; color:#0a162e !important; border:none !important; font-weight:700 !important; border-radius:9px !important; }
+        #datePicker::-webkit-calendar-picker-indicator{ filter:none !important; }
+        .date-nav{ background:#13254a !important; border:1px solid rgba(120,180,255,.2) !important; color:#cfe0ff !important; border-radius:9px !important; width:34px !important; height:34px !important; }
+        .date-nav:hover{ background:#1d3460 !important; }
+
+        /* ---- FEED: ligat + kartelat e ndeshjeve ---- */
+        .permbajtja{ background:#081226 !important; }
+        .liga-header{ background:linear-gradient(90deg,#13254a,#0e1d3a) !important; color:#7db8ff !important; border-left:none !important; border-radius:12px 12px 0 0 !important; padding:14px 18px !important; font-family:'Oswald',sans-serif; font-size:16px !important; border-bottom:1px solid rgba(120,180,255,.1); margin-top:18px !important; }
+        .ndeshje-box{ background:#0b1830 !important; border:1px solid rgba(120,180,255,.12) !important; border-radius:0 !important; padding:14px 18px !important; margin:0 !important; border-top:none !important; }
+        .n-ora{ color:#8aa0c8 !important; font-family:'Barlow Semi Condensed','Oswald',sans-serif; }
+        .n-ekipet{ color:#e8eefb !important; font-family:'Oswald',sans-serif; font-size:15px !important; font-weight:500 !important; }
+        .n-result-djathat{ background:#0a2417 !important; border:1px solid rgba(39,199,89,.35) !important; color:#3ee07a !important; font-family:'Anton',sans-serif; border-radius:8px !important; }
+        .n-result-djathat:hover{ border-color:#3ee07a !important; color:#7dffae !important; }
+        .k-btn{ background:#102243 !important; border:1px solid rgba(120,180,255,.16) !important; color:#cfe0ff !important; border-radius:8px !important; }
+        .k-btn:hover{ background:#1b3a6b !important; color:#ffd86b !important; border-color:rgba(120,180,255,.16) !important; }
+        .k-btn.selected{ background:#f5b32a !important; color:#1a1200 !important; border-color:#f5b32a !important; }
+        .btn-more{ background:#102243 !important; color:#7e96c2 !important; border:1px solid rgba(120,180,255,.16) !important; border-radius:8px !important; }
+        .btn-more:hover{ background:#1b3a6b !important; }
+        .ai-prediction-bar{ background:rgba(13,28,56,.6) !important; border:none !important; border-left:3px solid #2f7df6 !important; border-radius:0 8px 8px 0 !important; color:#b7c7e6 !important; font-size:13px !important; padding:10px 14px !important; }
+        .ai-prediction-bar.locked{ background:#1c0e0e !important; border-left-color:#da3633 !important; }
+        .skedina-custom-row{ background:rgba(47,125,246,.08) !important; border-left:3px solid #2f7df6 !important; color:#b7c7e6 !important; }
+        .prod-slip{ background:#0b1830 !important; border:1px solid rgba(120,180,255,.12) !important; }
+        .prod-leg{ border-bottom:1px solid rgba(120,180,255,.07) !important; }
+
+        /* ---- Argetohu / Have Fun ---- */
+        .argetohu-col{ background:#0b1830 !important; border-left:1px solid rgba(120,180,255,.12) !important; border-top:1px solid rgba(120,180,255,.12) !important; }
+        .arg-head{ border-bottom:1px solid rgba(120,180,255,.1) !important; }
+        .arg-title{ color:#7db8ff !important; font-family:'Oswald',sans-serif; }
+        .arg-panel{ background:linear-gradient(160deg,#11264c,#0c1c3a) !important; border:1px solid rgba(120,180,255,.12) !important; border-radius:12px !important; }
+        .arg-panel-title{ color:#cfe0ff !important; font-family:'Oswald',sans-serif; }
+        .arg-panel-body{ color:#9fb4d8 !important; font-style:italic; }
+        #argEdge{ background:#2f7df6 !important; }
+        #argEdge:hover{ background:#2560b8 !important; }
+        .arg-adrenalin{ border-radius:12px; padding:16px; background:linear-gradient(160deg,#1a1030,#0e0a22); border:1px solid rgba(160,120,255,.18); }
+        .arg-adrenalin-t{ font-family:'Oswald',sans-serif; font-weight:700; font-size:14px; color:#c4a8ff; margin-bottom:10px; }
+        .arg-adrenalin-bar{ height:12px; border-radius:8px; background:#0a1730; overflow:hidden; }
+        .arg-adrenalin-fill{ height:100%; width:78%; border-radius:8px; background:linear-gradient(90deg,#27c759,#f5b32a,#e0641a); }
+        .arg-adrenalin-sub{ margin-top:8px; font-size:12.5px; color:#9a8fc4; }
+
+        /* ---- Premium picks (pf-*) ---- */
+        .pf-box{ background:linear-gradient(160deg,#11264c,#0c1c3a) !important; }
+        .pf-match{ background:rgba(255,255,255,.04) !important; border:1px solid rgba(120,180,255,.12) !important; }
+
+        /* ---- Footer ---- */
+        .footer-zone{ background:#081226 !important; }
+        .footer-links a{ color:#5f78a6; }
+
+        /* ---- RESPONSIVE: mobile ---- */
+        @media (max-width:768px){
+          .hero-banner{ height:196px; }
+          .hero-content{ padding-top:40px; }
+          .hero-logo{ font-size:50px; gap:5px; }
+          .hero-ball{ width:38px; height:38px; }
+          .hero-ball::after{ background:radial-gradient(6px 6px at 50% 30%, #1a2230 48%, transparent 50%), radial-gradient(4px 4px at 28% 60%, #1a2230 48%, transparent 50%), radial-gradient(4px 4px at 72% 60%, #1a2230 48%, transparent 50%), radial-gradient(4px 4px at 50% 82%, #1a2230 48%, transparent 50%); }
+          .hero-tag{ font-size:10px; letter-spacing:.26em; }
+          .hero-pitch-wrap{ width:900px; height:380px; }
+          .top-header{ padding:8px 12px !important; }
+          .filtra-wrapper{ padding:10px 12px !important; }
+          .prod-btn{ font-size:13px !important; padding:9px 13px !important; }
+          .calendar-wrapper{ padding:10px 12px !important; }
+          .liga-header{ font-size:14px !important; padding:12px 14px !important; }
+          .ndeshje-box{ padding:12px 14px !important; }
+        }
+        /* ===================== FUND REDIZAJN NAVY ===================== */
     </style>
 </head>
 <body>
@@ -501,6 +662,27 @@
                 </div>
             </div>
 
+            <div class="hero-banner" aria-hidden="true">
+              <div class="hero-scene">
+                <div class="hero-sky"></div>
+                <div class="hero-stands"></div>
+                <div class="hero-crowd"></div>
+                <div class="hero-beam l"></div>
+                <div class="hero-beam r"></div>
+                <div class="hero-pods l"><span></span><span></span><span></span></div>
+                <div class="hero-pods r"><span></span><span></span><span></span></div>
+                <div class="hero-pitch-wrap"><div class="hero-pitch"><div class="hero-circle"></div></div></div>
+                <div class="hero-goal"><div class="net"></div><div class="pl"></div><div class="pr"></div><div class="cb"></div></div>
+                <div class="hero-vignette"></div>
+                <div class="hero-mote m1"></div><div class="hero-mote m2"></div><div class="hero-mote m3"></div>
+              </div>
+              <div class="hero-content">
+                <div class="hero-logo-rise">
+                  <div class="hero-logo"><span class="soc">SOCCER</span><span class="hero-ball"></span><span class="pro">PRO</span></div>
+                </div>
+                <div class="hero-tag">Pasion &middot; Analiz&euml; &middot; Adrenalin&euml;</div>
+              </div>
+            </div>
             <div class="filtra-wrapper">
                 <div class="filtra-left">
                     <button class="btn-ppm-badge" onclick="verifikoAksesin(hapPremiumModal)"><span id="lblPPM">🔒 Pay Per Match</span> (<span id="ppmCount">0</span>)</button>
@@ -552,6 +734,11 @@
             <div class="arg-panel">
                 <div class="arg-panel-title">❓ <span id="lblArgQuiz">Quiz</span></div>
                 <div id="argQuiz" class="arg-panel-body">—</div>
+            </div>
+            <div class="arg-adrenalin">
+                <div class="arg-adrenalin-t">⚡ Adrenalin Meter</div>
+                <div class="arg-adrenalin-bar"><div class="arg-adrenalin-fill"></div></div>
+                <div class="arg-adrenalin-sub">Sot ndeshjet janë 🔥 të forta.</div>
             </div>
         </div>
         <button id="argEdge" onclick="hapArgetohu()" title="Argëtohu">&#9664;</button>
@@ -1307,7 +1494,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0624C','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625A','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2646,6 +2833,6 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0624C</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625A</div>
 </body>
 </html>
