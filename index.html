@@ -459,7 +459,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625H) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625J) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -619,7 +619,7 @@
         }
         /* ===================== FUND REDIZAJN NAVY ===================== */
 
-        /* ===================== KORRIGJIME 0625H ===================== */
+        /* ===================== KORRIGJIME 0625J ===================== */
         /* Header i levizshem: top-header + hero rrjedhin; vetem nav+tabs (sticky-zone) ngjiten. */
         .top-header{ position:relative !important; }
         .sticky-zone{ position:sticky; top:0; z-index:1000; }
@@ -656,9 +656,9 @@
           .mini-logo img{ height:28px; }
           .mini-logo{ top:6px; left:10px; }
         }
-        /* ===================== FUND KORRIGJIME 0625H ===================== */
+        /* ===================== FUND KORRIGJIME 0625J ===================== */
 
-        /* ===================== KORRIGJIME 0625H ===================== */
+        /* ===================== KORRIGJIME 0625J ===================== */
         /* Mini-logo: shkelqim periodik (glint) */
         .mini-logo{ overflow:hidden; }
         .mini-logo::after{ content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; background:linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); transform:skewX(-18deg); animation:miniShine 4.5s ease-in-out infinite; pointer-events:none; }
@@ -674,14 +674,45 @@
         /* Sidebar PPM/premium: sticky me scroll te vetin, nuk shtrihet me flex (ligat = scroll-i kryesor) */
         .sidebar-ligat{ position:sticky !important; top:122px !important; align-self:flex-start !important; height:auto !important; max-height:calc(100vh - 134px) !important; overflow-y:auto !important; }
         @media (max-width:768px){ .sidebar-ligat{ position:static !important; max-height:none !important; } }
-        /* ===================== FUND KORRIGJIME 0625H ===================== */
+        /* ===================== FUND KORRIGJIME 0625J ===================== */
 
-        /* ===================== KORRIGJIME 0625H ===================== */
+        /* ===================== KORRIGJIME 0625J ===================== */
         /* Dizajn navy-only: light mode i caktivizuar, fshih toggle-in */
         #themeToggleWrap{ display:none !important; }
         /* Skedina e gjeneruar: emrat e ndeshjeve lexueshem mbi navy */
         .prod-leg-match{ color:#e8eefb !important; }
-        /* ===================== FUND KORRIGJIME 0625H ===================== */
+        /* ===================== FUND KORRIGJIME 0625J ===================== */
+        /* ===== SKEDINA IME (skedinat e gjeneruara) ===== */
+        .si-wrap{ width:100%; padding:4px 2px 22px; }
+        .si-group-title{ font-size:12.5px; font-weight:900; letter-spacing:.06em; color:#9fb4d6; margin:14px 4px 10px; text-transform:uppercase; }
+        .si-combo{ background:#0b1830; border:1px solid #1e3a63; border-radius:12px; margin-bottom:10px; overflow:hidden; }
+        .si-head{ width:100%; display:flex; align-items:center; gap:9px; flex-wrap:wrap; background:transparent; border:none; color:#e8eefb; padding:13px 15px; cursor:pointer; font-size:14px; font-weight:800; text-align:left; }
+        .si-head.won{ background:linear-gradient(90deg,#0a2a17,#0c3a20); border-left:4px solid #2ea043; }
+        .si-head.lost{ background:linear-gradient(90deg,#2a1012,#1a0c0e); border-left:4px solid #b3343a; opacity:.9; }
+        .si-head.pending{ border-left:4px solid #d4af37; }
+        .si-badge{ font-size:10px; font-weight:900; padding:2px 8px; border-radius:20px; letter-spacing:.04em; }
+        .si-badge.won{ background:#1a5e30; color:#7ee29a; } .si-badge.lost{ background:#5e1a1f; color:#ff9ca0; } .si-badge.pending{ background:#5e4d18; color:#f2cc60; }
+        .si-meta{ font-size:11px; color:#8ba8d0; font-weight:600; margin-left:auto; }
+        .si-chev{ transition:transform .2s; color:#5a7bb0; font-size:12px; }
+        .si-combo.open .si-chev{ transform:rotate(180deg); }
+        .si-body{ display:none; padding:2px 15px 14px; } .si-combo.open .si-body{ display:block; }
+        .si-combo-matches{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 12px; }
+        .si-cm{ font-size:11px; color:#adb9c9; background:rgba(255,255,255,.04); padding:3px 8px; border-radius:6px; }
+        .si-komb{ display:flex; justify-content:space-between; gap:8px; font-size:12.5px; color:#c9d1d9; padding:7px 10px; border-radius:7px; margin-bottom:5px; background:rgba(255,255,255,.03); }
+        .si-komb.won{ background:rgba(46,160,67,.16); color:#7ee29a; font-weight:700; border:1px solid #2ea043; }
+        .si-kt{ color:#f2cc60; font-weight:700; white-space:nowrap; }
+        .si-ticket{ background:#0b1830; border:1px solid #1e3a63; border-radius:12px; margin-bottom:10px; padding:12px 14px; }
+        .si-ticket.won{ border-color:#2ea043; } .si-ticket.lost{ opacity:.9; }
+        .si-tk-head{ display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:800; color:#e8eefb; margin-bottom:8px; padding-bottom:7px; border-bottom:1px solid #1e3a63; }
+        .si-leg{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 8px; border-radius:6px; margin-bottom:4px; font-size:12.5px; }
+        .si-leg-m{ color:#dbe7fb; } .si-leg-p{ color:#79c0ff; font-weight:700; white-space:nowrap; }
+        .si-leg.leg-won{ background:rgba(46,160,67,.12); } .si-leg.leg-won .si-leg-m{ color:#7ee29a; }
+        .si-leg.leg-lost{ background:rgba(179,52,58,.12); } .si-leg.leg-lost .si-leg-m{ color:#ff9ca0; text-decoration:line-through; }
+        .si-leg-real{ font-size:10.5px; color:#8ba8d0; }
+        .si-tk-foot{ text-align:right; font-size:12px; color:#9fb4d6; margin-top:8px; padding-top:7px; border-top:1px dashed #1e3a63; }
+        /* ===== FUND SKEDINA IME ===== */
+        .pf-buy{ width:100%; margin-top:8px; background:linear-gradient(90deg,#1f6feb,#388bfd); color:#fff; border:none; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; }
+        .pf-buy:hover{ filter:brightness(1.08); }
     </style>
 </head>
 <body>
@@ -1474,11 +1505,11 @@ if (!gjuhaAktuale) {
         setTimeout(kontrolloNjoftimet, 1000);
 
         var uiExtra = {
-            en: {renewActive:"Active",renewCancelled:"Cancelled",cancelSub:"Cancel Subscription",vipSubLabel:"VIP SUBSCRIPTION",expiresOn:"Expires on:",autoRenew:"Auto-Renewal:",addCredits:"Add Credits",analyzing:"System is analyzing the data...",dataLocked:"Data is locked",premiumFridayOnly:"The system generates the Premium Ticket only on Fridays.",comeBackFriday:"Come back Friday morning!",connFailed:"Connection failed. Try again!",notifOptimal:"System is optimal.",notifWeekend:"🔥 The new Weekend Ticket is published! Check the VIP section.",notifAnalyzing:"⏳ The system is analyzing upcoming matches. The VIP ticket is published every Friday!",notifTitle:"NOTIFICATIONS",genLeague:"League",allLeagues:"All leagues",commTitle:"💬 OFFICIAL COMMUNITY",commJoin:"Join the Other Members",commDesc:"To keep the app fast, all discussions happen in our Telegram community.",commBtn:"Join the Telegram Group",creditBackSub:"If the premium pick loses — credits are refunded",bonusTitle:"🎁 BONUS EARNED!",bonusHead:"Congrats! You got $10 Credits",bonusBody:"Thank you for joining Soccer1X2 PRO. We added <b>$10</b> to your wallet as a welcome gift for future purchases.",bonusBtn:"Start Exploring",argTitle:"Have Fun",argQuote:"Quote",argQuiz:"Quiz",heroTag:"Passion · Analysis · Adrenaline",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Today's matches are 🔥 stacked.",premiumPicks:"PREMIUM PICKS (HASH)"},
-            sq: {renewActive:"Aktiv",renewCancelled:"Anuluar",cancelSub:"Anulo Abonimin",vipSubLabel:"ABONIMI VIP",expiresOn:"Skadon më:",autoRenew:"Auto-Rinovimi:",addCredits:"Shto Kredite",analyzing:"Sistemi po analizon të dhënat...",dataLocked:"Të dhënat janë të mbyllura",premiumFridayOnly:"Sistemi e gjeneron Skedinën Premium vetëm të Premten.",comeBackFriday:"Kthehuni të Premten në mëngjes!",connFailed:"Lidhja dështoi. Provo përsëri!",notifOptimal:"Sistemi është optimal.",notifWeekend:"🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.",notifAnalyzing:"⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!",notifTitle:"NJOFTIMET",genLeague:"Liga",allLeagues:"Të gjitha ligat",commTitle:"💬 KOMUNITETI ZYRTAR",commJoin:"Bashkohu me Anëtarët e Tjerë",commDesc:"Për të ruajtur shpejtësinë e aplikacionit, të gjitha diskutimet bëhen në komunitetin tonë në Telegram.",commBtn:"Hyr në Grupin e Telegram",creditBackSub:"Nëse parashikimi premium humbet — kreditë kthehen",bonusTitle:"🎁 BONUS I FITUAR!",bonusHead:"Urime! Fituat $10 Kredite",bonusBody:"Faleminderit që u bashkuat me Soccer1X2 PRO. Kemi shtuar <b>$10</b> në portofolin tuaj si dhuratë mirëseardhje për blerjet e ardhshme.",bonusBtn:"Fillo Eksplorimin",argTitle:"Argëtohu",argQuote:"Kuotë",argQuiz:"Kuiz",heroTag:"Pasion · Analizë · Adrenalinë",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Sot ndeshjet janë 🔥 të forta.",premiumPicks:"PARASHIKIME PREMIUM (HASH)"},
-            de: {renewActive:"Aktiv",renewCancelled:"Storniert",cancelSub:"Abo kündigen",vipSubLabel:"VIP-ABO",expiresOn:"Läuft ab am:",autoRenew:"Auto-Verlängerung:",addCredits:"Guthaben aufladen",analyzing:"System analysiert die Daten...",dataLocked:"Daten sind gesperrt",premiumFridayOnly:"Das System erstellt den Premium-Tipp nur freitags.",comeBackFriday:"Komm Freitagmorgen wieder!",connFailed:"Verbindung fehlgeschlagen. Erneut versuchen!",notifOptimal:"System ist optimal.",notifWeekend:"🔥 Der neue Wochenend-Tipp ist da! Siehe VIP-Bereich.",notifAnalyzing:"⏳ Das System analysiert die kommenden Spiele. Der VIP-Tipp erscheint jeden Freitag!",notifTitle:"BENACHRICHTIGUNGEN",genLeague:"Liga",allLeagues:"Alle Ligen",commTitle:"💬 OFFIZIELLE COMMUNITY",commJoin:"Werde Mitglied",commDesc:"Um die App schnell zu halten, finden alle Diskussionen in unserer Telegram-Community statt.",commBtn:"Telegram-Gruppe beitreten",creditBackSub:"Wenn der Premium-Tipp verliert — Credits zurück",bonusTitle:"🎁 BONUS ERHALTEN!",bonusHead:"Glückwunsch! $10 Credits erhalten",bonusBody:"Danke, dass du Soccer1X2 PRO beigetreten bist. Wir haben <b>$10</b> als Willkommensgeschenk zu deinem Wallet hinzugefügt.",bonusBtn:"Loslegen",argTitle:"Spaß",argQuote:"Zitat",argQuiz:"Quiz",heroTag:"Leidenschaft · Analyse · Adrenalin",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Heutige Spiele sind 🔥 stark.",premiumPicks:"PREMIUM-TIPPS (HASH)"},
-            fr: {renewActive:"Actif",renewCancelled:"Annulé",cancelSub:"Annuler l'abonnement",vipSubLabel:"ABONNEMENT VIP",expiresOn:"Expire le :",autoRenew:"Renouvellement auto :",addCredits:"Ajouter des crédits",analyzing:"Le système analyse les données...",dataLocked:"Les données sont verrouillées",premiumFridayOnly:"Le système génère le Ticket Premium uniquement le vendredi.",comeBackFriday:"Revenez vendredi matin !",connFailed:"Échec de connexion. Réessayez !",notifOptimal:"Le système est optimal.",notifWeekend:"🔥 Le nouveau Ticket du Week-end est publié ! Voir la section VIP.",notifAnalyzing:"⏳ Le système analyse les prochains matchs. Le ticket VIP est publié chaque vendredi !",notifTitle:"NOTIFICATIONS",genLeague:"Ligue",allLeagues:"Toutes les ligues",commTitle:"💬 COMMUNAUTÉ OFFICIELLE",commJoin:"Rejoignez les autres membres",commDesc:"Pour garder une appli rapide, toutes les discussions se font dans notre communauté Telegram.",commBtn:"Rejoindre le groupe Telegram",creditBackSub:"Si le pronostic premium perd — crédits remboursés",bonusTitle:"🎁 BONUS OBTENU !",bonusHead:"Félicitations ! Vous avez 10 $ de crédits",bonusBody:"Merci de rejoindre Soccer1X2 PRO. Nous avons ajouté <b>10 $</b> à votre portefeuille en cadeau de bienvenue.",bonusBtn:"Commencer",argTitle:"Amuse-toi",argQuote:"Citation",argQuiz:"Quiz",heroTag:"Passion · Analyse · Adrénaline",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Les matchs du jour sont 🔥 chauds.",premiumPicks:"PRONOSTICS PREMIUM (HASH)"},
-            it: {renewActive:"Attivo",renewCancelled:"Annullato",cancelSub:"Annulla abbonamento",vipSubLabel:"ABBONAMENTO VIP",expiresOn:"Scade il:",autoRenew:"Rinnovo automatico:",addCredits:"Aggiungi crediti",analyzing:"Il sistema sta analizzando i dati...",dataLocked:"I dati sono bloccati",premiumFridayOnly:"Il sistema genera la Schedina Premium solo il venerdì.",comeBackFriday:"Torna venerdì mattina!",connFailed:"Connessione fallita. Riprova!",notifOptimal:"Il sistema è ottimale.",notifWeekend:"🔥 La nuova Schedina del Weekend è pubblicata! Vedi la sezione VIP.",notifAnalyzing:"⏳ Il sistema sta analizzando le prossime partite. La schedina VIP esce ogni venerdì!",notifTitle:"NOTIFICHE",genLeague:"Lega",allLeagues:"Tutte le leghe",commTitle:"💬 COMUNITÀ UFFICIALE",commJoin:"Unisciti agli altri membri",commDesc:"Per mantenere una app veloce, tutte le discussioni avvengono nella nostra community Telegram.",commBtn:"Entra nel gruppo Telegram",creditBackSub:"Se il pronostico premium perde — crediti rimborsati",bonusTitle:"🎁 BONUS OTTENUTO!",bonusHead:"Complimenti! Hai 10 $ di crediti",bonusBody:"Grazie per esserti unito a Soccer1X2 PRO. Abbiamo aggiunto <b>10 $</b> al tuo portafoglio come regalo di benvenuto.",bonusBtn:"Inizia",argTitle:"Divertiti",argQuote:"Citazione",argQuiz:"Quiz",heroTag:"Passione · Analisi · Adrenalina",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Le partite di oggi sono 🔥 toste.",premiumPicks:"PRONOSTICI PREMIUM (HASH)"}
+            en: {renewActive:"Active",renewCancelled:"Cancelled",cancelSub:"Cancel Subscription",vipSubLabel:"VIP SUBSCRIPTION",expiresOn:"Expires on:",autoRenew:"Auto-Renewal:",addCredits:"Add Credits",analyzing:"System is analyzing the data...",dataLocked:"Data is locked",premiumFridayOnly:"The system generates the Premium Ticket only on Fridays.",comeBackFriday:"Come back Friday morning!",connFailed:"Connection failed. Try again!",notifOptimal:"System is optimal.",notifWeekend:"🔥 The new Weekend Ticket is published! Check the VIP section.",notifAnalyzing:"⏳ The system is analyzing upcoming matches. The VIP ticket is published every Friday!",notifTitle:"NOTIFICATIONS",genLeague:"League",allLeagues:"All leagues",commTitle:"💬 OFFICIAL COMMUNITY",commJoin:"Join the Other Members",commDesc:"To keep the app fast, all discussions happen in our Telegram community.",commBtn:"Join the Telegram Group",creditBackSub:"If the premium pick loses — credits are refunded",bonusTitle:"🎁 BONUS EARNED!",bonusHead:"Congrats! You got $10 Credits",bonusBody:"Thank you for joining Soccer1X2 PRO. We added <b>$10</b> to your wallet as a welcome gift for future purchases.",bonusBtn:"Start Exploring",argTitle:"Have Fun",argQuote:"Quote",argQuiz:"Quiz",heroTag:"Passion · Analysis · Adrenaline",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Today's matches are 🔥 stacked.",premiumPicks:"PREMIUM PICKS (HASH)",siEmpty:"No generated tickets yet. Generate a ticket or VIP Combo.",siTickets:"TICKETS",siCombos:"combos",buyReveal:"Buy to reveal"},
+            sq: {renewActive:"Aktiv",renewCancelled:"Anuluar",cancelSub:"Anulo Abonimin",vipSubLabel:"ABONIMI VIP",expiresOn:"Skadon më:",autoRenew:"Auto-Rinovimi:",addCredits:"Shto Kredite",analyzing:"Sistemi po analizon të dhënat...",dataLocked:"Të dhënat janë të mbyllura",premiumFridayOnly:"Sistemi e gjeneron Skedinën Premium vetëm të Premten.",comeBackFriday:"Kthehuni të Premten në mëngjes!",connFailed:"Lidhja dështoi. Provo përsëri!",notifOptimal:"Sistemi është optimal.",notifWeekend:"🔥 Skedina e re e Fundjavës është publikuar! Shiko seksionin VIP.",notifAnalyzing:"⏳ Sistemi po analizon të dhënat e ndeshjeve të radhës. Skedina VIP publikohet çdo të Premte!",notifTitle:"NJOFTIMET",genLeague:"Liga",allLeagues:"Të gjitha ligat",commTitle:"💬 KOMUNITETI ZYRTAR",commJoin:"Bashkohu me Anëtarët e Tjerë",commDesc:"Për të ruajtur shpejtësinë e aplikacionit, të gjitha diskutimet bëhen në komunitetin tonë në Telegram.",commBtn:"Hyr në Grupin e Telegram",creditBackSub:"Nëse parashikimi premium humbet — kreditë kthehen",bonusTitle:"🎁 BONUS I FITUAR!",bonusHead:"Urime! Fituat $10 Kredite",bonusBody:"Faleminderit që u bashkuat me Soccer1X2 PRO. Kemi shtuar <b>$10</b> në portofolin tuaj si dhuratë mirëseardhje për blerjet e ardhshme.",bonusBtn:"Fillo Eksplorimin",argTitle:"Argëtohu",argQuote:"Kuotë",argQuiz:"Kuiz",heroTag:"Pasion · Analizë · Adrenalinë",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Sot ndeshjet janë 🔥 të forta.",premiumPicks:"PARASHIKIME PREMIUM (HASH)",siEmpty:"Ende s'ke skedina të gjeneruara. Gjenero një skedinë ose VIP Combo.",siTickets:"SKEDINA",siCombos:"kombinime",buyReveal:"Blej për të zbuluar"},
+            de: {renewActive:"Aktiv",renewCancelled:"Storniert",cancelSub:"Abo kündigen",vipSubLabel:"VIP-ABO",expiresOn:"Läuft ab am:",autoRenew:"Auto-Verlängerung:",addCredits:"Guthaben aufladen",analyzing:"System analysiert die Daten...",dataLocked:"Daten sind gesperrt",premiumFridayOnly:"Das System erstellt den Premium-Tipp nur freitags.",comeBackFriday:"Komm Freitagmorgen wieder!",connFailed:"Verbindung fehlgeschlagen. Erneut versuchen!",notifOptimal:"System ist optimal.",notifWeekend:"🔥 Der neue Wochenend-Tipp ist da! Siehe VIP-Bereich.",notifAnalyzing:"⏳ Das System analysiert die kommenden Spiele. Der VIP-Tipp erscheint jeden Freitag!",notifTitle:"BENACHRICHTIGUNGEN",genLeague:"Liga",allLeagues:"Alle Ligen",commTitle:"💬 OFFIZIELLE COMMUNITY",commJoin:"Werde Mitglied",commDesc:"Um die App schnell zu halten, finden alle Diskussionen in unserer Telegram-Community statt.",commBtn:"Telegram-Gruppe beitreten",creditBackSub:"Wenn der Premium-Tipp verliert — Credits zurück",bonusTitle:"🎁 BONUS ERHALTEN!",bonusHead:"Glückwunsch! $10 Credits erhalten",bonusBody:"Danke, dass du Soccer1X2 PRO beigetreten bist. Wir haben <b>$10</b> als Willkommensgeschenk zu deinem Wallet hinzugefügt.",bonusBtn:"Loslegen",argTitle:"Spaß",argQuote:"Zitat",argQuiz:"Quiz",heroTag:"Leidenschaft · Analyse · Adrenalin",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Heutige Spiele sind 🔥 stark.",premiumPicks:"PREMIUM-TIPPS (HASH)",siEmpty:"Noch keine generierten Tipps. Erstelle einen Tipp oder VIP Combo.",siTickets:"TIPPS",siCombos:"Kombis",buyReveal:"Kaufen zum Aufdecken"},
+            fr: {renewActive:"Actif",renewCancelled:"Annulé",cancelSub:"Annuler l'abonnement",vipSubLabel:"ABONNEMENT VIP",expiresOn:"Expire le :",autoRenew:"Renouvellement auto :",addCredits:"Ajouter des crédits",analyzing:"Le système analyse les données...",dataLocked:"Les données sont verrouillées",premiumFridayOnly:"Le système génère le Ticket Premium uniquement le vendredi.",comeBackFriday:"Revenez vendredi matin !",connFailed:"Échec de connexion. Réessayez !",notifOptimal:"Le système est optimal.",notifWeekend:"🔥 Le nouveau Ticket du Week-end est publié ! Voir la section VIP.",notifAnalyzing:"⏳ Le système analyse les prochains matchs. Le ticket VIP est publié chaque vendredi !",notifTitle:"NOTIFICATIONS",genLeague:"Ligue",allLeagues:"Toutes les ligues",commTitle:"💬 COMMUNAUTÉ OFFICIELLE",commJoin:"Rejoignez les autres membres",commDesc:"Pour garder une appli rapide, toutes les discussions se font dans notre communauté Telegram.",commBtn:"Rejoindre le groupe Telegram",creditBackSub:"Si le pronostic premium perd — crédits remboursés",bonusTitle:"🎁 BONUS OBTENU !",bonusHead:"Félicitations ! Vous avez 10 $ de crédits",bonusBody:"Merci de rejoindre Soccer1X2 PRO. Nous avons ajouté <b>10 $</b> à votre portefeuille en cadeau de bienvenue.",bonusBtn:"Commencer",argTitle:"Amuse-toi",argQuote:"Citation",argQuiz:"Quiz",heroTag:"Passion · Analyse · Adrénaline",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Les matchs du jour sont 🔥 chauds.",premiumPicks:"PRONOSTICS PREMIUM (HASH)",siEmpty:"Pas encore de tickets générés. Générez un ticket ou VIP Combo.",siTickets:"TICKETS",siCombos:"combos",buyReveal:"Acheter pour révéler"},
+            it: {renewActive:"Attivo",renewCancelled:"Annullato",cancelSub:"Annulla abbonamento",vipSubLabel:"ABBONAMENTO VIP",expiresOn:"Scade il:",autoRenew:"Rinnovo automatico:",addCredits:"Aggiungi crediti",analyzing:"Il sistema sta analizzando i dati...",dataLocked:"I dati sono bloccati",premiumFridayOnly:"Il sistema genera la Schedina Premium solo il venerdì.",comeBackFriday:"Torna venerdì mattina!",connFailed:"Connessione fallita. Riprova!",notifOptimal:"Il sistema è ottimale.",notifWeekend:"🔥 La nuova Schedina del Weekend è pubblicata! Vedi la sezione VIP.",notifAnalyzing:"⏳ Il sistema sta analizzando le prossime partite. La schedina VIP esce ogni venerdì!",notifTitle:"NOTIFICHE",genLeague:"Lega",allLeagues:"Tutte le leghe",commTitle:"💬 COMUNITÀ UFFICIALE",commJoin:"Unisciti agli altri membri",commDesc:"Per mantenere una app veloce, tutte le discussioni avvengono nella nostra community Telegram.",commBtn:"Entra nel gruppo Telegram",creditBackSub:"Se il pronostico premium perde — crediti rimborsati",bonusTitle:"🎁 BONUS OTTENUTO!",bonusHead:"Complimenti! Hai 10 $ di crediti",bonusBody:"Grazie per esserti unito a Soccer1X2 PRO. Abbiamo aggiunto <b>10 $</b> al tuo portafoglio come regalo di benvenuto.",bonusBtn:"Inizia",argTitle:"Divertiti",argQuote:"Citazione",argQuiz:"Quiz",heroTag:"Passione · Analisi · Adrenalina",adrenalinTitle:"Adrenalin Meter",adrenalinSub:"Le partite di oggi sono 🔥 toste.",premiumPicks:"PRONOSTICI PREMIUM (HASH)",siEmpty:"Ancora nessuna schedina generata. Genera una schedina o VIP Combo.",siTickets:"SCHEDINE",siCombos:"combo",buyReveal:"Acquista per rivelare"}
         };
         function hapNjoftimet() { 
             const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
@@ -1560,7 +1591,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625H','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625J','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -1923,6 +1954,7 @@ if (!gjuhaAktuale) {
                 perdoruesi.portofoli = data.portofoli;
                 if(data.blerja) perdoruesi.blerjet.push(data.blerja);
                 ruajTeDhenat();
+                try{ var _pfb=document.getElementById("pfHashBox"); if(_pfb) renderPFHash(_pfb); }catch(e){}
                 dergoEmailNjoftimi("PPM_CREDITS", cmimi, ndeshja + " (" + (data.blerja ? data.blerja.rezultati : "") + ")");
                 document.getElementById('modalTitle').innerText = "";
                 document.getElementById('modalBody').innerHTML = `<div class="ticket-modal"><div class="ticket-icon"><i class="fa-solid fa-ticket"></i></div><h3 style="color:#fff; margin-bottom:10px;">${ui[gjuhaAktuale].successTitle}</h3><p style="color:#8ba898; font-size:13px;">${ui[gjuhaAktuale].successMsg}</p><button class="filter-btn active" style="margin-top:20px; padding:10px 30px;" onclick="hapPremiumModal()">${ui[gjuhaAktuale].viewRes}</button></div>`;
@@ -2318,20 +2350,29 @@ if (!gjuhaAktuale) {
                 renderPFHash(box);   // rifresko me ndeshjet kur vjen përgjigja
             }
         }
+        function blejPFPick(idx){
+            var p=(_pfCache||[])[idx]; if(!p) return;
+            var pm=(typeof ndeshjetPremium!=="undefined"?ndeshjetPremium:[]).find(function(m){return m.ndeshja===p.ndeshja;});
+            if(!pm){ alert("Kjo ndeshje s'eshte e disponueshme per blerje."); return; }
+            hapCheckout(pm.id, p.ndeshja, "", "", 20, "");
+        }
         function renderPFHash(box){
             const _ux=uiExtra[gjuhaAktuale]||uiExtra.en;
             let html='<div class="pf-bonus" onclick="hapCreditBackInfo()" style="cursor:pointer"><div class="pf-bonus-big">\u{1F6E1}\uFE0F '+ui[gjuhaAktuale].creditBack+'</div><div class="pf-bonus-sm">'+_ux.creditBackSub+'</div></div>';
             const picks=_pfCache||[];
             if(picks.length){
                 html+='<div class="pf-head">\u{1F512} '+_ux.premiumPicks+'</div><div class="pf-scroll">';
-                picks.forEach(function(p){
+                picks.forEach(function(p,idx){
                     const zb=p.statusi==='zbuluar';
                     const nd=(p.ndeshja||'').replace(' vs ',' <span>vs</span> ');
-                    const sc=zb?('<span class="pf-scr-open">'+(p.parashikimi||'?')+'</span>'):'<span class="pf-scr">0:0</span>';
-                    html+='<div class="pf-match"><div class="pf-teams">'+nd+'</div>'
-                        +'<div class="pf-locked"><i class="fa-solid fa-'+(zb?'lock-open':'lock')+'"></i> '+sc+'</div>'
-                        +(zb&&p.rezultati_real?('<div class="pf-real">Real: '+p.rezultati_real+'</div>'):'')
-                        +'<button class="pf-proof" onclick="verifikoPF('+p.id+')"><i class="fa-solid fa-fingerprint"></i> Proof / Hash</button></div>';
+                    const pm=(typeof ndeshjetPremium!=='undefined'?ndeshjetPremium:[]).find(function(m){return m.ndeshja===p.ndeshja;});
+                    const blere=(pm&&typeof perdoruesi!=='undefined'&&perdoruesi.blerjet)?perdoruesi.blerjet.find(function(b){return String(b.id)===String(pm.id);}):null;
+                    let mid;
+                    if(zb){ mid='<div class="pf-locked"><i class="fa-solid fa-lock-open"></i> <span class="pf-scr-open">'+(p.parashikimi||'?')+'</span></div>'+(p.rezultati_real?('<div class="pf-real">Real: '+p.rezultati_real+'</div>'):''); }
+                    else if(blere){ mid='<div class="pf-locked"><i class="fa-solid fa-lock-open"></i> <span class="pf-scr-open">'+(blere.rezultati||'?')+'</span></div>'; }
+                    else if(pm){ mid='<div class="pf-locked"><i class="fa-solid fa-lock"></i> <span class="pf-scr">?:?</span></div><button class="pf-buy" onclick="blejPFPick('+idx+')"><i class="fa-solid fa-unlock"></i> '+(_ux.buyReveal||'Buy to reveal')+' ($20)</button>'; }
+                    else { mid='<div class="pf-locked"><i class="fa-solid fa-lock"></i> <span class="pf-scr">0:0</span></div>'; }
+                    html+='<div class="pf-match"><div class="pf-teams">'+nd+'</div>'+mid+'<button class="pf-proof" onclick="verifikoPF('+p.id+')"><i class="fa-solid fa-fingerprint"></i> Proof / Hash</button></div>';
                 });
                 html+='</div>';
             }
@@ -2463,6 +2504,7 @@ if (!gjuhaAktuale) {
 
         function vizatoNdeshjet() {
             const container = document.getElementById('rezultati');
+            if (filtriAktiv === 'Skedina Ime') { renderSkedinaIme(); return; }
             if (!teDhenatGlobale || teDhenatGlobale.length === 0) return;
             const kerkim = document.getElementById('searchInput').value.toLowerCase();
             let htmlNdeshjet = ''; let ndeshjeGjeturTotal = 0;
@@ -2898,7 +2940,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625H</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625J</div>
     <script>
     (function(){
       function init(){
@@ -2934,5 +2976,47 @@ if (!gjuhaAktuale) {
       if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded", initArg); } else { initArg(); }
     })();
     </script>
+<script>
+/* ===== SKEDINA IME — render i skedinave te gjeneruara ===== */
+let _siCache=null,_siTs=0;
+function renderSkedinaIme(force){
+    const cont=document.getElementById("rezultati"); if(!cont) return;
+    const now=Date.now();
+    if(!force && _siCache && (now-_siTs<15000)){ cont.innerHTML=_htmlSkedinaIme(_siCache); return; }
+    cont.innerHTML='<div style="width:100%;text-align:center;padding:46px 20px;color:#8ba898;">'+(ui[gjuhaAktuale].loading||"...")+'</div>';
+    fetch(API_BASE+"/api/skedina-ime?email="+encodeURIComponent((typeof perdoruesi!=="undefined"&&perdoruesi.email)||""))
+      .then(function(r){return r.json();}).then(function(d){ _siCache=(d&&d.skedinat)||[]; _siTs=Date.now(); cont.innerHTML=_htmlSkedinaIme(_siCache); })
+      .catch(function(){ cont.innerHTML='<div style="width:100%;text-align:center;padding:46px;color:#f85149;">'+(ui[gjuhaAktuale].loadErr||"Error")+'</div>'; });
+}
+function _htmlSkedinaIme(lista){
+    const _ux=uiExtra[gjuhaAktuale]||uiExtra.en;
+    if(!lista||!lista.length){ return '<div style="width:100%;text-align:center;padding:54px 20px;color:#8ba898;"><div style="font-size:42px;margin-bottom:12px;">\u{1F3AB}</div><p style="font-size:14px;max-width:320px;margin:0 auto;">'+(_ux.siEmpty||"")+'</p></div>'; }
+    const combos=lista.filter(function(s){return s.tipi==="combo";});
+    const tickets=lista.filter(function(s){return s.tipi==="ticket";});
+    let h='<div class="si-wrap">';
+    if(combos.length){ h+='<div class="si-group-title">\u{1F3B0} VIP COMBO</div>'; combos.forEach(function(s,i){ h+=_siCombo(s,i+1); }); }
+    if(tickets.length){ h+='<div class="si-group-title">\u2699\uFE0F '+(_ux.siTickets||"SKEDINA")+'</div>'; tickets.forEach(function(s,i){ h+=_siTicket(s,i+1); }); }
+    h+='</div>'; return h;
+}
+function _siCls(st){ return st==="fituese"?"won":(st==="humbur"?"lost":"pending"); }
+function _siLbl(st){ const T=_T(); return st==="fituese"?T.win:(st==="humbur"?T.loss:T.pending); }
+function _siCombo(s,n){
+    const _ux=uiExtra[gjuhaAktuale]||uiExtra.en; const p=s.permbajtja||{}; const f=s.fituesi||{};
+    const st=s.statusi||"pezull"; const cls=_siCls(st);
+    const winIdx=f.fitues_idx||[]; const nd=p.ndeshjet||[]; const komb=p.kombinimet||[];
+    let body='<div class="si-combo-matches">'; nd.forEach(function(m){ body+='<span class="si-cm">'+(m.ndeshja||"")+'</span>'; });
+    body+='</div><div class="si-combo-list">';
+    komb.forEach(function(k,ki){ const won=winIdx.indexOf(ki)>=0; const sk=(k.skedina||[]).map(function(l){return "<b>"+(l.skor||"")+"</b>";}).join(" \u00b7 "); body+='<div class="si-komb'+(won?" won":"")+'">'+(won?"\u2705 ":"")+sk+' <span class="si-kt">@'+(k.koef_total||"")+'</span></div>'; });
+    body+='</div>';
+    return '<div class="si-combo"><button class="si-head '+cls+'" onclick="this.parentNode.classList.toggle(\'open\')"><span>VIP COMBO #'+n+'</span><span class="si-badge '+cls+'">'+_siLbl(st)+'</span><span class="si-meta">'+(p.nr||nd.length)+'\u00d7'+(p.rez||"")+' \u00b7 '+komb.length+' '+(_ux.siCombos||"")+'</span><i class="fa-solid fa-chevron-down si-chev"></i></button><div class="si-body">'+body+'</div></div>';
+}
+function _siTicket(s,n){
+    const T=_T(); const p=s.permbajtja||{}; const f=s.fituesi||{};
+    const st=s.statusi||"pezull"; const cls=_siCls(st);
+    const legs=(f.ndeshjet&&f.ndeshjet.length)?f.ndeshjet:(p.ndeshjet||[]);
+    let rows=legs.map(function(l){ const has=(typeof l.goditi!=="undefined"); const lc=!has?"":(l.goditi?"leg-won":"leg-lost"); const realTxt=(l.real&&l.real!=="\u2014")?'<span class="si-leg-real">('+l.real+')</span>':""; return '<div class="si-leg '+lc+'"><span class="si-leg-m">'+(l.ndeshja||"")+' '+realTxt+'</span><span class="si-leg-p">'+(l.tregu||"")+' @'+(l.koef||"")+'</span></div>'; }).join("");
+    return '<div class="si-ticket '+cls+'"><div class="si-tk-head"><span>SKEDINA #'+n+'</span><span class="si-badge '+cls+'">'+_siLbl(st)+'</span></div>'+rows+'<div class="si-tk-foot">'+T.totalKoef+': <b>'+(p.koef_total||"?")+'</b></div></div>';
+}
+</script>
 </body>
 </html>
