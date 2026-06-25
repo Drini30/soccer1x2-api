@@ -1092,7 +1092,7 @@ def _gjenero_target_v2(pool, nr, koef_target, grupet_lejuara, tol=0.06):
             continue
         ops.sort(key=lambda o: o["prob"], reverse=True)
         ops = ops[:24]   # kufizo për shpejtësi
-        matches.append({"ndeshja": p.get("ndeshja"), "parashikimi": p.get("rezultati_sakt"),
+        matches.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "parashikimi": p.get("rezultati_sakt"),
                         "ops": ops, "conf": ops[0]["prob"]})
     if len(matches) < nr:
         return None
@@ -1130,7 +1130,7 @@ def _gjenero_target_v2(pool, nr, koef_target, grupet_lejuara, tol=0.06):
     for m, oi in zip(perdor, path):
         op = m["ops"][oi]
         ktot *= op["koef"]; ptot *= op["prob"]
-        ndeshjet.append({"ndeshja": m["ndeshja"], "tregu": " + ".join(op["pjeset"]),
+        ndeshjet.append({"id": m.get("id"), "ndeshja": m["ndeshja"], "tregu": " + ".join(op["pjeset"]),
                          "parashikimi": m.get("parashikimi"),
                          "prob": round(op["prob"], 4), "koef": op["koef"]})
     return {"ndeshjet": ndeshjet, "koef_total": round(ktot, 2),
@@ -1232,6 +1232,70 @@ def _konfirmo_perdorimin(email: str, produkt: str, cmimi: float, is_vip: bool, p
         return portofoli
 
 
+# ============ LARMIA E GJENERIMEVE (NO-REPEAT PER PERDORUES) ============
+# Mban id-te e ndeshjeve te dhena SOT cdo perdoruesi, ndaras per produkt
+# (generate / vipcombo). Rivendoset vete cdo dite. Kolona: users.gen_historik (jsonb).
+def _lexo_gen_historik(email):
+    try:
+        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=gen_historik",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=6)
+        if r.status_code == 200 and r.json():
+            gh = r.json()[0].get("gen_historik") or {}
+            if isinstance(gh, str):
+                try: gh = json.loads(gh)
+                except Exception: gh = {}
+            if isinstance(gh, dict):
+                return gh
+    except Exception:
+        pass
+    return {}
+
+def _shkruaj_gen_historik(email, gh):
+    try:
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                       headers=SUPABASE_SERVICE_HEADERS, json={"gen_historik": gh}, timeout=6)
+    except Exception:
+        pass
+
+def _merr_given_ids(email, produkt):
+    """Id-te e ndeshjeve te dhena SOT per kete produkt (boshe nese dita ndryshoi)."""
+    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    gh = _lexo_gen_historik(email)
+    if gh.get("data") != dt:
+        return []
+    return [int(x) for x in (gh.get(produkt) or []) if x is not None]
+
+def _ruaj_given_ids(email, produkt, ids_te_reja):
+    """Shton id-te e reja te lista e SOTME e produktit (rifillon nese dita ndryshoi)."""
+    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    gh = _lexo_gen_historik(email)
+    if gh.get("data") != dt:
+        gh = {"data": dt}
+    ekz = [int(x) for x in (gh.get(produkt) or []) if x is not None]
+    for i in ids_te_reja:
+        try:
+            ii = int(i)
+            if ii not in ekz:
+                ekz.append(ii)
+        except Exception:
+            pass
+    gh["data"] = dt
+    gh[produkt] = ekz
+    _shkruaj_gen_historik(email, gh)
+
+def _rivendos_given(email, produkt):
+    """Zeron listen e produktit per sot (rifillon ciklin kur shterohet pool-i)."""
+    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    gh = _lexo_gen_historik(email)
+    if gh.get("data") != dt:
+        gh = {"data": dt}
+    gh["data"] = dt
+    gh[produkt] = []
+    _shkruaj_gen_historik(email, gh)
+
+print("LARMIA: gjurmimi i gjenerimeve aktiv (users.gen_historik) — Generate + VIP Combo")
+
+
 @app.get("/api/gjenero")
 def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0):
     if not email or not email.strip():
@@ -1259,11 +1323,20 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     res = requests.get(gen_url, headers=SUPABASE_SERVICE_HEADERS)
     pool = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
 
-    sked = _gjenero_skedine_fleksibel(pool, nr, nr_max, koef, grupet)
+    # LARMIA: përjashto ndeshjet e dhëna më parë sot këtij përdoruesi
+    given = _merr_given_ids(email, "generate")
+    pool_f = [p for p in pool if p.get("id") not in given]
+    sked = _gjenero_skedine_fleksibel(pool_f, nr, nr_max, koef, grupet)
+    rifilluar = False
+    if not sked and given:
+        _rivendos_given(email, "generate")
+        sked = _gjenero_skedine_fleksibel(pool, nr, nr_max, koef, grupet)
+        rifilluar = True
     if not sked:
         return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
     _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"])
-    return {"sukses": True, "skedina": sked,
+    _ruaj_given_ids(email, "generate", [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
+    return {"sukses": True, "skedina": sked, "rifilluar": rifilluar,
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"]), "cmimi": CMIM_GENERATE,
             "kerkesa": {"nr_min": nr, "nr_max": nr_max, "koef_target": koef, "tregjet": grupet}}
 
@@ -1790,6 +1863,20 @@ def _vleso_vip_combot():
         pass
 
 
+def _ndeshjet_vipcombo(rows, nr, rez):
+    """Nderton listen e ndeshjeve per VIP Combo nga nje grup rrow-esh (deri ne nr)."""
+    out = []
+    for p in rows:
+        topr = _top_rezultate_sakta(p, rez)
+        if len(topr) >= rez:
+            out.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
+                        "liga": p.get("liga_emri"), "rezultati_sakt": p.get("rezultati_sakt"),
+                        "rezultatet": topr})
+        if len(out) >= nr:
+            break
+    return out
+
+
 @app.get("/api/vip-combo")
 def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj: int = 0):
     """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
@@ -1812,15 +1899,14 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
         vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(vc_url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
     rows = r.json() if r.status_code == 200 else []
-    ndeshjet = []
-    for p in rows:
-        topr = _top_rezultate_sakta(p, rez)
-        if len(topr) >= rez:
-            ndeshjet.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
-                             "liga": p.get("liga_emri"), "rezultati_sakt": p.get("rezultati_sakt"),
-                             "rezultatet": topr})
-        if len(ndeshjet) >= nr:
-            break
+    # LARMIA: përjashto ndeshjet e dhëna më parë sot këtij përdoruesi
+    given = _merr_given_ids(email, "vipcombo")
+    ndeshjet = _ndeshjet_vipcombo([p for p in rows if p.get("id") not in given], nr, rez)
+    rifilluar = False
+    if len(ndeshjet) < nr and given:
+        _rivendos_given(email, "vipcombo")
+        ndeshjet = _ndeshjet_vipcombo(rows, nr, rez)
+        rifilluar = True
     if len(ndeshjet) < nr:
         return {"sukses": False, "arsye": f"Nuk ka {nr} ndeshje me rezultate të sakta sot."}
 
@@ -1849,7 +1935,8 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
         mbulim *= sum(x["prob"] for x in n["rezultatet"])
     _ruaj_vip_combo(dt, nr, rez, ndeshjet)
     _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"])
-    return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez,
+    _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
+    return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez, "rifilluar": rifilluar,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet,
             "nr_kombinimesh": len(kombinimet),
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"]), "cmimi": CMIM_VIPCOMBO,
