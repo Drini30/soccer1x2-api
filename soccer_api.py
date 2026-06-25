@@ -1131,7 +1131,6 @@ def _gjenero_target_v2(pool, nr, koef_target, grupet_lejuara, tol=0.06):
         op = m["ops"][oi]
         ktot *= op["koef"]; ptot *= op["prob"]
         ndeshjet.append({"id": m.get("id"), "ndeshja": m["ndeshja"], "tregu": " + ".join(op["pjeset"]),
-                         "parashikimi": m.get("parashikimi"),
                          "prob": round(op["prob"], 4), "koef": op["koef"]})
     return {"ndeshjet": ndeshjet, "koef_total": round(ktot, 2),
             "prob": round(ptot, 4), "nr": len(ndeshjet)}
@@ -3159,6 +3158,23 @@ def _me_live_fresh(payload, data_target):
         return payload
 
 
+def _fshih_premium(grupet):
+    """Heq rezultatin e sakte premium (rezultati_sakt/koef_rez_sakt) nga ndeshjet is_premium
+    para se t'i dergoje klientit. Zbulohet vetem me blerje PPM (/api/ppm/purchase). S'e modifikon cache-n."""
+    if not grupet:
+        return grupet
+    out = []
+    for liga in grupet:
+        nd_list = []
+        for nd in (liga.get("ndeshjet") or []):
+            if isinstance(nd, dict) and nd.get("is_premium"):
+                nd = {k: v for k, v in nd.items() if k not in ("rezultati_sakt", "koef_rez_sakt")}
+            nd_list.append(nd)
+        lc = dict(liga); lc["ndeshjet"] = nd_list
+        out.append(lc)
+    return out
+
+
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
     data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
@@ -3170,7 +3186,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
     # 1) Cache në memorie (më i shpejti)
     if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 600):
-        return {"mesazhi": "Sukses", "skedina_grupuar": _me_live_fresh(SKEDINA_CACHE[data_target], data_target)}
+        return {"mesazhi": "Sukses", "skedina_grupuar": _fshih_premium(_me_live_fresh(SKEDINA_CACHE[data_target], data_target))}
 
     # 2) Cache në DB (mbijeton restart-et) — kthe MENJËHERË, pa llogaritur
     payload, fresh = _lexo_cache_db(data_target, max_age_min=60)
@@ -3179,11 +3195,11 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         SKEDINA_LAST_UPDATE[data_target] = koha_tani
         if not fresh:
             background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, data_target)  # rifresko në sfond
-        return {"mesazhi": "Sukses", "skedina_grupuar": _me_live_fresh(payload, data_target)}
+        return {"mesazhi": "Sukses", "skedina_grupuar": _fshih_premium(_me_live_fresh(payload, data_target))}
 
     # 3) Asgjë në cache (hera e parë) → gjenero tani; cron-i do e parahapë më pas
     rez = _kompjuto_dhe_ruaj_skedina(data_target)
-    return {"mesazhi": "Sukses" if rez else "Gabim", "skedina_grupuar": rez}
+    return {"mesazhi": "Sukses" if rez else "Gabim", "skedina_grupuar": _fshih_premium(rez)}
 
 
 def _parse_skor(s):
