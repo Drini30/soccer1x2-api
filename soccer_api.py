@@ -1918,6 +1918,14 @@ def pf_list():
         rows = r.json() if r.status_code == 200 else []
     except Exception:
         rows = []
+    name2id = {}
+    try:
+        pr = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data&order=id.desc&limit=400",
+                          headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        for _p in (pr.json() if pr.status_code == 200 else []):
+            name2id[(_p.get("ndeshja"), _p.get("data"))] = _p.get("id")
+    except Exception:
+        pass
     out = []
     for pf_row in rows:
         item = {"id": pf_row.get("id"), "ndeshja": pf_row.get("ndeshja"),
@@ -1925,6 +1933,7 @@ def pf_list():
                 "data": pf_row.get("data"), "hash_publik": pf_row.get("hash_publik"),
                 "statusi": pf_row.get("statusi"), "ekipi_1_id": pf_row.get("ekipi_1_id"),
                 "ekipi_2_id": pf_row.get("ekipi_2_id")}
+        item["match_id"] = name2id.get((pf_row.get("ndeshja"), pf_row.get("data")))
         if pf_row.get("statusi") == "zbuluar":
             item["parashikimi"] = pf_row.get("parashikimi")
             item["server_seed"] = pf_row.get("server_seed")
