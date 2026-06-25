@@ -816,7 +816,7 @@ def skedina_dhe_kombinimi_ditore(email: str = ""):
         f"&order=id.desc&limit=300",
         headers=SUPABASE_SERVICE_HEADERS)
     preds = res.json() if res.status_code == 200 else []
-    preds = [p for p in preds if p.get("best_bet")]
+    preds = [p for p in preds if p.get("best_bet") and float((p.get("best_bet") or {}).get("koef", 0) or 0) >= 1.7]
 
     def _prob(p):
         try:
@@ -881,7 +881,7 @@ def _snapshot_skedina_ditore():
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,best_bet&best_bet=not.is.null"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300",
             headers=SUPABASE_SERVICE_HEADERS, timeout=8)
-        preds = [p for p in (res.json() if res.status_code == 200 else []) if p.get("best_bet")]
+        preds = [p for p in (res.json() if res.status_code == 200 else []) if p.get("best_bet") and float((p.get("best_bet") or {}).get("koef", 0) or 0) >= 1.7]
         preds.sort(key=lambda p: float((p.get("best_bet") or {}).get("prob", 0)), reverse=True)
         top4 = preds[:4]
         if len(top4) < 4:

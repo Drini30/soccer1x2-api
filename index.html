@@ -243,7 +243,8 @@
         .history-badge-loss { background:rgba(218, 54, 51, 0.15); border:1px solid #da3633; color:#da3633; padding:8px; text-align:center; font-weight:bold; border-radius:4px; margin-top:5px; font-size:12px; }
 
         @media (max-width: 800px) {
-            .sidebar-ligat { display: none; }
+            .sidebar-ligat { display: block; width: 100%; position: static; height: auto; max-height: none; border-right: none; padding: 0; margin-bottom: 8px; }
+            .sidebar-ligat > *:not(#pfHashBox) { display: none; }
             .calendar-wrapper { padding-left: 4px !important; }
             .header-left { gap: 10px; }
             .header-right { gap: 10px; }
@@ -458,7 +459,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625F) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625H) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -603,7 +604,7 @@
         /* ---- RESPONSIVE: mobile ---- */
         @media (max-width:768px){
           .hero-banner{ height:196px; }
-          .hero-content{ padding-top:40px; }
+          .hero-content{ padding-top:16px; }
           .hero-logo{ font-size:50px; gap:5px; }
           .hero-ball{ width:38px; height:38px; }
           .hero-ball::after{ background:radial-gradient(6px 6px at 50% 30%, #1a2230 48%, transparent 50%), radial-gradient(4px 4px at 28% 60%, #1a2230 48%, transparent 50%), radial-gradient(4px 4px at 72% 60%, #1a2230 48%, transparent 50%), radial-gradient(4px 4px at 50% 82%, #1a2230 48%, transparent 50%); }
@@ -618,7 +619,7 @@
         }
         /* ===================== FUND REDIZAJN NAVY ===================== */
 
-        /* ===================== KORRIGJIME 0625F ===================== */
+        /* ===================== KORRIGJIME 0625H ===================== */
         /* Header i levizshem: top-header + hero rrjedhin; vetem nav+tabs (sticky-zone) ngjiten. */
         .top-header{ position:relative !important; }
         .sticky-zone{ position:sticky; top:0; z-index:1000; }
@@ -648,16 +649,16 @@
         .argetohu-col{ top:128px !important; z-index:900 !important; }
 
         @media (max-width:768px){
-          .hero-banner{ height:150px !important; }
+          .hero-banner{ height:116px !important; }
           .hero-content{ padding-top:28px !important; }
-          .hero-logo{ font-size:46px !important; gap:6px !important; }
-          .hero-logo .x12{ font-size:22px; }
+          .hero-logo{ font-size:33px !important; gap:5px !important; }
+          .hero-logo .x12{ font-size:16px; }
           .mini-logo img{ height:28px; }
           .mini-logo{ top:6px; left:10px; }
         }
-        /* ===================== FUND KORRIGJIME 0625F ===================== */
+        /* ===================== FUND KORRIGJIME 0625H ===================== */
 
-        /* ===================== KORRIGJIME 0625F ===================== */
+        /* ===================== KORRIGJIME 0625H ===================== */
         /* Mini-logo: shkelqim periodik (glint) */
         .mini-logo{ overflow:hidden; }
         .mini-logo::after{ content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; background:linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); transform:skewX(-18deg); animation:miniShine 4.5s ease-in-out infinite; pointer-events:none; }
@@ -673,14 +674,14 @@
         /* Sidebar PPM/premium: sticky me scroll te vetin, nuk shtrihet me flex (ligat = scroll-i kryesor) */
         .sidebar-ligat{ position:sticky !important; top:122px !important; align-self:flex-start !important; height:auto !important; max-height:calc(100vh - 134px) !important; overflow-y:auto !important; }
         @media (max-width:768px){ .sidebar-ligat{ position:static !important; max-height:none !important; } }
-        /* ===================== FUND KORRIGJIME 0625F ===================== */
+        /* ===================== FUND KORRIGJIME 0625H ===================== */
 
-        /* ===================== KORRIGJIME 0625F ===================== */
+        /* ===================== KORRIGJIME 0625H ===================== */
         /* Dizajn navy-only: light mode i caktivizuar, fshih toggle-in */
         #themeToggleWrap{ display:none !important; }
         /* Skedina e gjeneruar: emrat e ndeshjeve lexueshem mbi navy */
         .prod-leg-match{ color:#e8eefb !important; }
-        /* ===================== FUND KORRIGJIME 0625F ===================== */
+        /* ===================== FUND KORRIGJIME 0625H ===================== */
     </style>
 </head>
 <body>
@@ -1559,7 +1560,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625F','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625H','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2175,11 +2176,11 @@ if (!gjuhaAktuale) {
         // ==========================================
         const API_BASE = 'https://soccer1x2-api.onrender.com';
         const uiProd = {
-            en: {prodSkedina:"Daily Ticket",prodKombinimi:"Daily Combo",prodHistoriku:"History",prodGjenero:"Generate Ticket",totalKoef:"Total odds",unlockBoth:"Unlock both daily products (Ticket + Combo) for",unlock:"Unlock",skedinaNote:"The 4 safest value picks of the day.",kombinimiNote:"6 tickets × 4 matches, each with odds ≥ 10.",slipsReady:"tickets ready (odds ≥ 10)",histWinTickets:"winning tickets",histEmpty:"No history yet. Tickets appear once matches finish.",win:"WON",loss:"LOST",pending:"PENDING",genVipOnly:"The ticket generator is exclusive to VIP members.",beVip:"Become VIP",genNr:"How many matches?",genKoef:"Target odds:",genMarkets:"Allowed markets:",genBtn:"Generate",generating:"Generating...",loadErr:"Loading error. Try again.",pickMarket:"Select at least one market.",prob:"prob",matches:"matches",mktDC:"Double Chance",mktCS:"Correct Score",vipBannerSub:"— Full access + Daily Tickets + Generator",genProbNote:"Lower target odds = higher win chance. High odds = high payout, low probability.",genNoTarget:"Could not reach the target without betting against the favorites. The algorithm never plays against its own prediction. Closest coherent odds:"},
-            sq: {prodSkedina:"Skedina e Ditës",prodKombinimi:"Kombinimi i Ditës",prodHistoriku:"Historiku",prodGjenero:"Gjenero Skedinën",totalKoef:"Koeficienti total",unlockBoth:"Zhblloko të dyja produktet ditore (Skedina + Kombinimi) për",unlock:"Zhblloko",skedinaNote:"4 piket më të sigurta të ditës (best value).",kombinimiNote:"6 skedina × 4 ndeshje, secila me koeficient ≥ 10.",slipsReady:"skedina të gatshme (koef ≥ 10)",histWinTickets:"skedina fituese",histEmpty:"Ende s'ka histori. Skedinat shfaqen pasi të mbarojnë ndeshjet.",win:"FITUESE",loss:"HUMBUR",pending:"PEZULL",genVipOnly:"Gjeneratori i skedinave është ekskluziv për abonentët VIP.",beVip:"Bëhu VIP",genNr:"Sa ndeshje?",genKoef:"Koeficienti i synuar:",genMarkets:"Tregjet e lejuara:",genBtn:"Gjenero",generating:"Po gjenerohet...",loadErr:"Gabim në ngarkim. Provo sërish.",pickMarket:"Zgjidh të paktën një treg.",prob:"prob",matches:"ndeshje",mktDC:"Double Chance",mktCS:"Rezultat Saktë",vipBannerSub:"— Akses i plotë + Skedina Ditore + Gjeneratori",genProbNote:"Koeficient më i ulët = shans më i lartë fitoreje. Koeficient i lartë = fitim i madh, probabilitet i ulët.",genNoTarget:"Nuk u arrit koeficienti i synuar pa luajtur kundër favoritëve. Algoritmi kurrë nuk luan kundër parashikimit të vet. Koeficienti më i afërt koherent:"},
-            de: {prodSkedina:"Tagestipp",prodKombinimi:"Tageskombi",prodHistoriku:"Verlauf",prodGjenero:"Tipp Erstellen",totalKoef:"Gesamtquote",unlockBoth:"Schalte beide Tagesprodukte (Tipp + Kombi) frei für",unlock:"Freischalten",skedinaNote:"Die 4 sichersten Value-Tipps des Tages.",kombinimiNote:"6 Tipps × 4 Spiele, je mit Quote ≥ 10.",slipsReady:"Tipps bereit (Quote ≥ 10)",histWinTickets:"Gewinn-Tipps",histEmpty:"Noch kein Verlauf. Tipps erscheinen nach Spielende.",win:"GEWONNEN",loss:"VERLOREN",pending:"OFFEN",genVipOnly:"Der Tipp-Generator ist exklusiv für VIP-Mitglieder.",beVip:"VIP werden",genNr:"Wie viele Spiele?",genKoef:"Zielquote:",genMarkets:"Erlaubte Märkte:",genBtn:"Erstellen",generating:"Wird erstellt...",loadErr:"Ladefehler. Erneut versuchen.",pickMarket:"Wähle mindestens einen Markt.",prob:"Wahrsch.",matches:"Spiele",mktDC:"Doppelte Chance",mktCS:"Genaues Ergebnis",vipBannerSub:"— Voller Zugang + Tagestipps + Generator",genProbNote:"Niedrigere Zielquote = höhere Gewinnchance. Hohe Quote = hoher Gewinn, geringe Wahrscheinlichkeit.",genNoTarget:"Zielquote nicht erreichbar, ohne gegen die Favoriten zu wetten. Der Algorithmus spielt nie gegen seine eigene Vorhersage. Naechste kohaerente Quote:"},
-            fr: {prodSkedina:"Ticket du Jour",prodKombinimi:"Combo du Jour",prodHistoriku:"Historique",prodGjenero:"Générer le Ticket",totalKoef:"Cote totale",unlockBoth:"Débloquez les deux produits du jour (Ticket + Combo) pour",unlock:"Débloquer",skedinaNote:"Les 4 meilleurs choix value du jour.",kombinimiNote:"6 tickets × 4 matchs, chacun avec cote ≥ 10.",slipsReady:"tickets prêts (cote ≥ 10)",histWinTickets:"tickets gagnants",histEmpty:"Pas encore d'historique. Les tickets apparaissent après les matchs.",win:"GAGNÉ",loss:"PERDU",pending:"EN ATTENTE",genVipOnly:"Le générateur de tickets est exclusif aux membres VIP.",beVip:"Devenir VIP",genNr:"Combien de matchs ?",genKoef:"Cote cible :",genMarkets:"Marchés autorisés :",genBtn:"Générer",generating:"Génération...",loadErr:"Erreur de chargement. Réessayez.",pickMarket:"Sélectionnez au moins un marché.",prob:"prob",matches:"matchs",mktDC:"Double Chance",mktCS:"Score Exact",vipBannerSub:"— Accès complet + Tickets du Jour + Générateur",genProbNote:"Cote cible plus basse = plus de chances de gagner. Cote élevée = gros gain, faible probabilité.",genNoTarget:"Cote cible non atteinte sans parier contre les favoris. Notre algorithme ne joue jamais contre sa propre prédiction. Cote cohérente la plus proche:"},
-            it: {prodSkedina:"Schedina del Giorno",prodKombinimi:"Combo del Giorno",prodHistoriku:"Storico",prodGjenero:"Genera Schedina",totalKoef:"Quota totale",unlockBoth:"Sblocca entrambi i prodotti del giorno (Schedina + Combo) per",unlock:"Sblocca",skedinaNote:"Le 4 scelte value più sicure del giorno.",kombinimiNote:"6 schedine × 4 partite, ognuna con quota ≥ 10.",slipsReady:"schedine pronte (quota ≥ 10)",histWinTickets:"schedine vincenti",histEmpty:"Ancora nessuno storico. Le schedine appaiono a fine partite.",win:"VINTA",loss:"PERSA",pending:"IN ATTESA",genVipOnly:"Il generatore di schedine è esclusivo per i membri VIP.",beVip:"Diventa VIP",genNr:"Quante partite?",genKoef:"Quota obiettivo:",genMarkets:"Mercati consentiti:",genBtn:"Genera",generating:"Generazione...",loadErr:"Errore di caricamento. Riprova.",pickMarket:"Seleziona almeno un mercato.",prob:"prob",matches:"partite",mktDC:"Doppia Chance",mktCS:"Risultato Esatto",vipBannerSub:"— Accesso completo + Schedine del Giorno + Generatore",genProbNote:"Quota obiettivo più bassa = maggiore probabilità di vincita. Quota alta = vincita alta, bassa probabilità.",genNoTarget:"Quota obiettivo non raggiunta senza puntare contro i favoriti. Il nostro algoritmo non gioca mai contro la propria previsione. Quota coerente più vicina:"}
+            en: {prodSkedina:"Daily Ticket",prodKombinimi:"Daily Combo",prodHistoriku:"History",prodGjenero:"Generate Ticket",totalKoef:"Total odds",unlockBoth:"Unlock both daily products (Ticket + Combo) for",unlock:"Unlock",skedinaNote:"The 4 safest value picks of the day.",kombinimiNote:"6 tickets × 4 matches, each with odds ≥ 10.",slipsReady:"tickets ready (odds ≥ 10)",histWinTickets:"winning tickets",histEmpty:"No history yet. Tickets appear once matches finish.",win:"WON",loss:"LOST",pending:"PENDING",genVipOnly:"The ticket generator is exclusive to VIP members.",beVip:"Become VIP",genNr:"How many matches?",genKoef:"Target odds:",genMarkets:"Allowed markets:",genBtn:"Generate",generating:"Generating...",loadErr:"Loading error. Try again.",pickMarket:"Select at least one market.",prob:"prob",matches:"matches",mktDC:"Double Chance",mktCS:"Correct Score",vipBannerSub:"— Full access + Daily Tickets + Generator",genProbNote:"Lower target odds = higher win chance. High odds = high payout, low probability.",genNoTarget:"Could not reach the target without betting against the favorites. The algorithm never plays against its own prediction. Closest coherent odds:",genPriceNote:"Generate Ticket is free for VIP members — or generate for $10."},
+            sq: {prodSkedina:"Skedina e Ditës",prodKombinimi:"Kombinimi i Ditës",prodHistoriku:"Historiku",prodGjenero:"Gjenero Skedinën",totalKoef:"Koeficienti total",unlockBoth:"Zhblloko të dyja produktet ditore (Skedina + Kombinimi) për",unlock:"Zhblloko",skedinaNote:"4 piket më të sigurta të ditës (best value).",kombinimiNote:"6 skedina × 4 ndeshje, secila me koeficient ≥ 10.",slipsReady:"skedina të gatshme (koef ≥ 10)",histWinTickets:"skedina fituese",histEmpty:"Ende s'ka histori. Skedinat shfaqen pasi të mbarojnë ndeshjet.",win:"FITUESE",loss:"HUMBUR",pending:"PEZULL",genVipOnly:"Gjeneratori i skedinave është ekskluziv për abonentët VIP.",beVip:"Bëhu VIP",genNr:"Sa ndeshje?",genKoef:"Koeficienti i synuar:",genMarkets:"Tregjet e lejuara:",genBtn:"Gjenero",generating:"Po gjenerohet...",loadErr:"Gabim në ngarkim. Provo sërish.",pickMarket:"Zgjidh të paktën një treg.",prob:"prob",matches:"ndeshje",mktDC:"Double Chance",mktCS:"Rezultat Saktë",vipBannerSub:"— Akses i plotë + Skedina Ditore + Gjeneratori",genProbNote:"Koeficient më i ulët = shans më i lartë fitoreje. Koeficient i lartë = fitim i madh, probabilitet i ulët.",genNoTarget:"Nuk u arrit koeficienti i synuar pa luajtur kundër favoritëve. Algoritmi kurrë nuk luan kundër parashikimit të vet. Koeficienti më i afërt koherent:",genPriceNote:"Gjenero Skedinën është falas për abonentët VIP — ose gjenero për $10."},
+            de: {prodSkedina:"Tagestipp",prodKombinimi:"Tageskombi",prodHistoriku:"Verlauf",prodGjenero:"Tipp Erstellen",totalKoef:"Gesamtquote",unlockBoth:"Schalte beide Tagesprodukte (Tipp + Kombi) frei für",unlock:"Freischalten",skedinaNote:"Die 4 sichersten Value-Tipps des Tages.",kombinimiNote:"6 Tipps × 4 Spiele, je mit Quote ≥ 10.",slipsReady:"Tipps bereit (Quote ≥ 10)",histWinTickets:"Gewinn-Tipps",histEmpty:"Noch kein Verlauf. Tipps erscheinen nach Spielende.",win:"GEWONNEN",loss:"VERLOREN",pending:"OFFEN",genVipOnly:"Der Tipp-Generator ist exklusiv für VIP-Mitglieder.",beVip:"VIP werden",genNr:"Wie viele Spiele?",genKoef:"Zielquote:",genMarkets:"Erlaubte Märkte:",genBtn:"Erstellen",generating:"Wird erstellt...",loadErr:"Ladefehler. Erneut versuchen.",pickMarket:"Wähle mindestens einen Markt.",prob:"Wahrsch.",matches:"Spiele",mktDC:"Doppelte Chance",mktCS:"Genaues Ergebnis",vipBannerSub:"— Voller Zugang + Tagestipps + Generator",genProbNote:"Niedrigere Zielquote = höhere Gewinnchance. Hohe Quote = hoher Gewinn, geringe Wahrscheinlichkeit.",genNoTarget:"Zielquote nicht erreichbar, ohne gegen die Favoriten zu wetten. Der Algorithmus spielt nie gegen seine eigene Vorhersage. Naechste kohaerente Quote:",genPriceNote:"Tipp erstellen ist für VIP-Mitglieder kostenlos — sonst $10 pro Erstellung."},
+            fr: {prodSkedina:"Ticket du Jour",prodKombinimi:"Combo du Jour",prodHistoriku:"Historique",prodGjenero:"Générer le Ticket",totalKoef:"Cote totale",unlockBoth:"Débloquez les deux produits du jour (Ticket + Combo) pour",unlock:"Débloquer",skedinaNote:"Les 4 meilleurs choix value du jour.",kombinimiNote:"6 tickets × 4 matchs, chacun avec cote ≥ 10.",slipsReady:"tickets prêts (cote ≥ 10)",histWinTickets:"tickets gagnants",histEmpty:"Pas encore d'historique. Les tickets apparaissent après les matchs.",win:"GAGNÉ",loss:"PERDU",pending:"EN ATTENTE",genVipOnly:"Le générateur de tickets est exclusif aux membres VIP.",beVip:"Devenir VIP",genNr:"Combien de matchs ?",genKoef:"Cote cible :",genMarkets:"Marchés autorisés :",genBtn:"Générer",generating:"Génération...",loadErr:"Erreur de chargement. Réessayez.",pickMarket:"Sélectionnez au moins un marché.",prob:"prob",matches:"matchs",mktDC:"Double Chance",mktCS:"Score Exact",vipBannerSub:"— Accès complet + Tickets du Jour + Générateur",genProbNote:"Cote cible plus basse = plus de chances de gagner. Cote élevée = gros gain, faible probabilité.",genNoTarget:"Cote cible non atteinte sans parier contre les favoris. Notre algorithme ne joue jamais contre sa propre prédiction. Cote cohérente la plus proche:",genPriceNote:"Générer le Ticket est gratuit pour les membres VIP — sinon 10$ par génération."},
+            it: {prodSkedina:"Schedina del Giorno",prodKombinimi:"Combo del Giorno",prodHistoriku:"Storico",prodGjenero:"Genera Schedina",totalKoef:"Quota totale",unlockBoth:"Sblocca entrambi i prodotti del giorno (Schedina + Combo) per",unlock:"Sblocca",skedinaNote:"Le 4 scelte value più sicure del giorno.",kombinimiNote:"6 schedine × 4 partite, ognuna con quota ≥ 10.",slipsReady:"schedine pronte (quota ≥ 10)",histWinTickets:"schedine vincenti",histEmpty:"Ancora nessuno storico. Le schedine appaiono a fine partite.",win:"VINTA",loss:"PERSA",pending:"IN ATTESA",genVipOnly:"Il generatore di schedine è esclusivo per i membri VIP.",beVip:"Diventa VIP",genNr:"Quante partite?",genKoef:"Quota obiettivo:",genMarkets:"Mercati consentiti:",genBtn:"Genera",generating:"Generazione...",loadErr:"Errore di caricamento. Riprova.",pickMarket:"Seleziona almeno un mercato.",prob:"prob",matches:"partite",mktDC:"Doppia Chance",mktCS:"Risultato Esatto",vipBannerSub:"— Accesso completo + Schedine del Giorno + Generatore",genProbNote:"Quota obiettivo più bassa = maggiore probabilità di vincita. Quota alta = vincita alta, bassa probabilità.",genNoTarget:"Quota obiettivo non raggiunta senza puntare contro i favoriti. Il nostro algoritmo non gioca mai contro la propria previsione. Quota coerente più vicina:",genPriceNote:"Genera Schedina è gratis per i membri VIP — oppure 10$ a generazione."}
         };
         function _T() { return uiProd[gjuhaAktuale] || uiProd.en; }
 
@@ -2376,15 +2377,11 @@ if (!gjuhaAktuale) {
 
         function hapGjeneratorin() {
             const T = _T();
-            if (!perdoruesi.isVip) {
-                _modalHap('⚙️ ' + T.prodGjenero, '#58a6ff', `<div class="prod-lock-box" style="border-color:#58a6ff;"><p>⚙️ ${T.genVipOnly}</p><button class="ppm-btn-buy" style="width:100%; background:#58a6ff; color:#fff;" onclick="hapVipAbonim()">${T.beVip}</button></div>`);
-                return;
-            }
             genNrMin = 2; genNrMax = 4;
             const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
             let ligaOpts = `<option value="">${_ux.allLeagues}</option>`;
             _modalHap('⚙️ ' + T.prodGjenero, '#58a6ff', `
-                <div class="gen-form">
+                <div class="gen-form">${perdoruesi.isVip ? '' : '<div style="background:rgba(88,166,255,0.08);border:1px solid #58a6ff;border-radius:6px;padding:9px 11px;margin-bottom:13px;color:#79c0ff;font-size:11.5px;text-align:center;line-height:1.5;">'+T.genPriceNote+'</div>'}
                     <label class="gen-label">${T.genNr}</label>
                     <div class="gen-opts">
                         <button class="gen-opt active" data-min="2" data-max="4" onclick="genSelect(this)">2-4</button>
@@ -2901,7 +2898,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625F</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625H</div>
     <script>
     (function(){
       function init(){
