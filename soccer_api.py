@@ -1312,7 +1312,140 @@ def debug_genhist(email: str = ""):
     out["parsed"] = _lexo_gen_historik(email)
     out["given_generate"] = _merr_given_ids(email, "generate")
     out["given_vipcombo"] = _merr_given_ids(email, "vipcombo")
+    # Sa ndeshje kualifikohen sot per VIP Combo (per te pare nese pool-i eshte i vogel)
+    try:
+        vc = (f"{SUPABASE_URL_PREDS}?select=id,dist_gola,rezultati_sakt,koef_rez_sakt&data=eq.{dt}"
+              f"&dist_gola=not.is.null&rezultati_sakt=not.is.null"
+              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20")
+        rv = requests.get(vc, headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rws = rv.json() if rv.status_code == 200 else []
+        out["vipcombo_pool_total"] = len(rws)
+        out["vipcombo_kualifikojne_rez3"] = sum(1 for p in rws if len(_top_rezultate_sakta(p, 3)) >= 3)
+        out["vipcombo_kualifikojne_rez4"] = sum(1 for p in rws if len(_top_rezultate_sakta(p, 4)) >= 4)
+        out["vipcombo_ids_pool"] = [p.get("id") for p in rws]
+    except Exception as e:
+        out["vc_gabim"] = str(e)
     return out
+
+
+# ============ SKEDINA IME (regjistri i skedinave te gjeneruara) ============
+SKEDINA_IME_URL = f"{SUPABASE_BASE}/rest/v1/skedina_ime"
+
+def _leg_goditi(rh, ra, tregu):
+    """Goditja e nje leg-u; mbulon tregje te kombinuara me '+' (psh '1 + Over 2.5')."""
+    if rh is None:
+        return False
+    pjeset = [t.strip() for t in str(tregu).split("+") if t.strip()]
+    return bool(pjeset) and all(_score_satisfies(rh, ra, p) for p in pjeset)
+
+def _nenshkrim_ticket(sked):
+    try:
+        legs = sorted(f"{n.get('id')}:{n.get('tregu')}" for n in (sked.get("ndeshjet") or []))
+        return "T:" + hashlib.md5("|".join(legs).encode()).hexdigest()[:16]
+    except Exception:
+        return ""
+
+def _nenshkrim_combo(ndeshjet, nr, rez):
+    try:
+        ids = sorted(str(n.get("id")) for n in (ndeshjet or []))
+        return "C:" + hashlib.md5(f"{nr}:{rez}:{chr(124).join(ids)}".encode()).hexdigest()[:16]
+    except Exception:
+        return ""
+
+def _ekziston_nenshkrim(email, nenshkrim):
+    """A ka tashme nje skedine me kete nenshkrim sot (per anti-identik, Hapi 3)."""
+    if not nenshkrim:
+        return False
+    try:
+        dt = datetime.utcnow().strftime("%Y-%m-%d")
+        r = requests.get(f"{SKEDINA_IME_URL}?email=eq.{email}&nenshkrim=eq.{nenshkrim}&data=eq.{dt}&select=id",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=6)
+        return r.status_code == 200 and len(r.json()) > 0
+    except Exception:
+        return False
+
+def _ruaj_skedine_ime(email, tipi, permbajtja, nenshkrim):
+    try:
+        hdr = dict(SUPABASE_SERVICE_HEADERS)
+        hdr["Prefer"] = "return=minimal"
+        requests.post(SKEDINA_IME_URL, headers=hdr,
+                      json={"email": email, "tipi": tipi, "permbajtja": permbajtja,
+                            "nenshkrim": nenshkrim, "statusi": "pezull"}, timeout=6)
+    except Exception:
+        pass
+
+def _vleso_skedina_ime(email):
+    """Vlereson skedinat 'pezull' te perdoruesit kur ndeshjet kane mbaruar."""
+    fund = ("FT", "AET", "PEN", "AWD", "WO")
+    try:
+        r = requests.get(f"{SKEDINA_IME_URL}?email=eq.{email}&statusi=eq.pezull&select=id,tipi,permbajtja",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rows = r.json() if r.status_code == 200 else []
+        for rec in rows:
+            permb = rec.get("permbajtja") or {}
+            if isinstance(permb, str):
+                try: permb = json.loads(permb)
+                except Exception: permb = {}
+            ndeshjet = permb.get("ndeshjet") or []
+            ids = [str(n.get("id")) for n in ndeshjet if n.get("id")]
+            if not ids:
+                continue
+            pr = requests.get(f"{SUPABASE_URL_PREDS}?id=in.({','.join(ids)})&select=id,statusi,rezultati",
+                              headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+            mm = {str(p["id"]): p for p in (pr.json() if pr.status_code == 200 else [])}
+            if not all(mm.get(i, {}).get("statusi") in fund for i in ids):
+                continue
+            reale = {}
+            for i in ids:
+                ps = _parse_score(mm.get(i, {}).get("rezultati") or "")
+                reale[i] = ps if ps else (None, None)
+            if rec.get("tipi") == "ticket":
+                detaje = []; te_gjitha = True
+                for n in ndeshjet:
+                    i = str(n.get("id"))
+                    rh, ra = reale.get(i, (None, None))
+                    hit = _leg_goditi(rh, ra, n.get("tregu"))
+                    if not hit: te_gjitha = False
+                    rshf = f"{rh}-{ra}" if rh is not None else "—"
+                    detaje.append({**n, "real": rshf, "goditi": hit})
+                statusi = "fituese" if te_gjitha else "humbur"
+                fituesi = {"ndeshjet": detaje}
+            else:
+                kombinimet = permb.get("kombinimet") or []
+                fitues_idx = []
+                for ki, k in enumerate(kombinimet):
+                    sk = k.get("skedina") or []
+                    ok = True
+                    for j, leg in enumerate(sk):
+                        n = ndeshjet[j] if j < len(ndeshjet) else {}
+                        rh, ra = reale.get(str(n.get("id")), (None, None))
+                        real_norm = f"{rh}-{ra}" if rh is not None else None
+                        if str(leg.get("skor", "")).replace(" ", "") != (real_norm or "__no__"):
+                            ok = False; break
+                    if ok: fitues_idx.append(ki)
+                statusi = "fituese" if fitues_idx else "humbur"
+                reale_shf = {i: (f"{v[0]}-{v[1]}" if v[0] is not None else "—") for i, v in reale.items()}
+                fituesi = {"fitues_idx": fitues_idx, "reale": reale_shf}
+            requests.patch(f"{SKEDINA_IME_URL}?id=eq.{rec['id']}",
+                           headers=SUPABASE_SERVICE_HEADERS,
+                           json={"statusi": statusi, "fituesi": fituesi}, timeout=6)
+    except Exception as e:
+        print(f"[SKEDINA_IME] vleresim gabim: {e}")
+
+@app.get("/api/skedina-ime")
+def skedina_ime_lista(email: str = ""):
+    """Kthen skedinat e ruajtura te perdoruesit (me te rejat te parat), pasi vlereson pezullet."""
+    if not email or not email.strip():
+        return {"sukses": False, "arsye": "Mungon email."}
+    _vleso_skedina_ime(email)
+    try:
+        r = requests.get(f"{SKEDINA_IME_URL}?email=eq.{email}"
+                         f"&select=id,tipi,data,krijuar,permbajtja,statusi,fituesi&order=krijuar.desc&limit=50",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    return {"sukses": True, "skedinat": rows}
 
 
 @app.get("/api/gjenero")
@@ -1355,6 +1488,8 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
     _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"])
     _ruaj_given_ids(email, "generate", [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
+    _permb_t = dict(sked); _permb_t["tipi"] = "ticket"
+    _ruaj_skedine_ime(email, "ticket", _permb_t, _nenshkrim_ticket(sked))
     return {"sukses": True, "skedina": sked, "rifilluar": rifilluar,
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"]), "cmimi": CMIM_GENERATE,
             "kerkesa": {"nr_min": nr, "nr_max": nr_max, "koef_target": koef, "tregjet": grupet}}
@@ -1955,6 +2090,8 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     _ruaj_vip_combo(dt, nr, rez, ndeshjet)
     _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"])
     _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
+    _permb_c = {"tipi": "combo", "nr": nr, "rez": rez, "ndeshjet": ndeshjet, "kombinimet": kombinimet}
+    _ruaj_skedine_ime(email, "combo", _permb_c, _nenshkrim_combo(ndeshjet, nr, rez))
     return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez, "rifilluar": rifilluar,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet,
             "nr_kombinimesh": len(kombinimet),
