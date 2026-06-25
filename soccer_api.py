@@ -1253,7 +1253,8 @@ def _lexo_gen_historik(email):
 def _shkruaj_gen_historik(email, gh):
     try:
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
-                       headers=SUPABASE_SERVICE_HEADERS, json={"gen_historik": gh}, timeout=6)
+                       headers=SUPABASE_SERVICE_HEADERS,
+                       json={"gen_historik": json.dumps(gh, ensure_ascii=False)}, timeout=6)
     except Exception:
         pass
 
@@ -1294,6 +1295,24 @@ def _rivendos_given(email, produkt):
     _shkruaj_gen_historik(email, gh)
 
 print("LARMIA: gjurmimi i gjenerimeve aktiv (users.gen_historik) — Generate + VIP Combo")
+
+
+@app.get("/api/debug_genhist")
+def debug_genhist(email: str = ""):
+    """Diagnostikë: tregon çfarë ruhet te users.gen_historik për këtë email."""
+    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    out = {"email": email, "data_sot": dt}
+    try:
+        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=gen_historik",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=6)
+        out["status"] = r.status_code
+        out["raw"] = r.text[:600]
+    except Exception as e:
+        out["gabim"] = str(e)
+    out["parsed"] = _lexo_gen_historik(email)
+    out["given_generate"] = _merr_given_ids(email, "generate")
+    out["given_vipcombo"] = _merr_given_ids(email, "vipcombo")
+    return out
 
 
 @app.get("/api/gjenero")
