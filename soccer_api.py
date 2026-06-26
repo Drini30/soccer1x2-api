@@ -330,6 +330,18 @@ PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://soccer1x2pro.com").
 SUPABASE_URL_POROSITE = f"{SUPABASE_BASE}/rest/v1/porosite"
 
 
+def _data_lokale(offset_ditesh=0):
+    """Data lokale e Shqiperise (Europe/Tirane) + offset ditesh.
+       Filtra date duhet te perputhen me oren LOKALE te ndeshjeve, jo UTC.
+       Fallback ne UTC+2 nese mungon tzdata."""
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Europe/Tirane"))
+    except Exception:
+        now = datetime.utcnow() + timedelta(hours=2)
+    return (now + timedelta(days=offset_ditesh)).strftime("%Y-%m-%d")
+
+
 def _cmimi_ppm(koef):
     try:
         k = float(koef)
@@ -1862,12 +1874,12 @@ def _pf_hash(ndeshja, parashikimi, seed):
 
 def _gjenero_pf():
     """Krijon 'commitment' (hash i kyçur) për ndeshjet premium të sotme që s'e kanë ende."""
-    dt = datetime.utcnow().strftime('%Y-%m-%d')
+    dt_sot = _data_lokale(0); dt_neser = _data_lokale(1)
     fund = "FT,AET,PEN,AWD,WO,CANC,PST,ABD"
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=ndeshja,liga_emri,ora,data,rezultati_sakt,ekipi_1_id,ekipi_2_id"
-            f"&data=eq.{dt}&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.({fund})"
+            f"&data=in.({dt_sot},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.({fund})"
             f"&order=koef_rez_sakt.asc&limit=8",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         rows = r.json() if r.status_code == 200 else []
@@ -2069,9 +2081,9 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
                 "portofoli": _drejta["portofoli"], "is_vip": _drejta["is_vip"], "cmimi": CMIM_VIPCOMBO}
     nr = 3 if int(nr) == 3 else 2
     rez = 3 if int(rez) == 3 else 4
-    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    dt = _data_lokale(0); dt_neser = _data_lokale(1)
     vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola"
-              f"&data=eq.{dt}&dist_gola=not.is.null&rezultati_sakt=not.is.null"
+              f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null"
               f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20")
     if liga and liga.strip():
         vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
