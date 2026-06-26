@@ -1671,6 +1671,86 @@ def _ndertoMesazhTelegram(p):
             "⚠️ 18+ • Play responsibly")
 
 
+def _zgjidh_skedine_ditore(data_str, nr=3, prob_max=0.90, koef_min=3.0):
+    """Skedine ditore per Telegram: nr ndeshjet me besimin me te larte
+       (tregu me i mire per secilen ndeshje). Kthen pikat + koef_total."""
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=ndeshja,ora,liga_emri,tregjet,odds_reale,rezultati_sakt"
+            f"&data=eq.{data_str}&tregjet=not.is.null"
+            f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        rows = r.json() if r.status_code == 200 else []
+        kand = []
+        for p in rows:
+            tg_ = p.get("tregjet") or {}
+            od = p.get("odds_reale") or {}
+            bm = None
+            for m in PICK_MARKETS:
+                try:
+                    prob = float(tg_.get(m, 0) or 0)
+                except Exception:
+                    prob = 0.0
+                if prob <= 0 or prob > prob_max:
+                    continue
+                if bm is None or prob > bm["prob"]:
+                    try:
+                        koef = float(od.get(m, 0) or 0)
+                    except Exception:
+                        koef = 0.0
+                    if koef <= 1.0:
+                        koef = round(1 / prob, 2)
+                    bm = {"ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
+                          "liga": p.get("liga_emri"), "tregu": m,
+                          "tregu_emri": _emri_tregut(m, p.get("ndeshja")),
+                          "prob": prob, "koef": koef}
+            if bm:
+                kand.append(bm)
+        if len(kand) < 2:
+            return None
+        nr = min(nr, len(kand))
+        # LIMITI: koef total >= koef_min. Floor per pick = koef_min^(1/nr) e garanton.
+        floor = koef_min ** (1.0 / nr) if koef_min and koef_min > 1.0 else 1.0
+        eligible = [c for c in kand if c["koef"] >= floor]
+        eligible.sort(key=lambda x: x["prob"], reverse=True)
+        if len(eligible) >= nr:
+            zgjedhur = eligible[:nr]            # me te bindurit qe kalojne limitin
+        else:
+            kand.sort(key=lambda x: x["koef"], reverse=True)
+            zgjedhur = kand[:nr]                # s'ka mjaft -> maksimizo koefin
+        if len(zgjedhur) < 2:
+            return None
+        koef_total = 1.0
+        for k in zgjedhur:
+            koef_total *= float(k["koef"])
+        return {"pikat": zgjedhur, "koef_total": round(koef_total, 2),
+                "nr": len(zgjedhur), "koef_min": koef_min}
+    except Exception:
+        return None
+
+
+def _ndertoMesazhTelegramSkedine(sk):
+    nl = chr(10)
+    pikat = sk.get("pikat", [])
+    L = ["🎁 <b>FREE TICKET OF THE DAY</b> — SOCCER1X2 PRO", "",
+         f"🎟️ <b>{sk.get('nr', len(pikat))}-match high-confidence ticket</b>", ""]
+    for i, p in enumerate(pikat, 1):
+        L.append(f"{i}) 🏆 {p.get('liga','')}")
+        L.append(f"🆚 <b>{p['ndeshja']}</b>  🕐 {p.get('ora','')}")
+        L.append(f"🎯 <b>{p['tregu_emri']}</b>  •  💰 {p['koef']}")
+        L.append("")
+    L += [f"🔢 <b>Total odds: {sk.get('koef_total')}</b>", "",
+          "✅ <b>High confidence</b> — a gift from our team.", "",
+          "Maximize your profit: play with <b>COMBOS</b>, unlock the <b>Daily Ticket</b> and become <b>VIP</b>.",
+          "👉 https://soccer1x2pro.com", "",
+          "💎 Daily ticket with a winning combo",
+          "💎 VIP access with premium predictions",
+          "💎 Profit maximization", "",
+          "📈 <b>With us, you invest.</b>", "",
+          "⚠️ 18+ • Play responsibly"]
+    return nl.join(L)
+
+
 def _dergo_telegram(text, chat_id=None):
     if not TELEGRAM_BOT_TOKEN:
         return False, "Mungon TELEGRAM_BOT_TOKEN"
@@ -1691,10 +1771,10 @@ def _dergo_telegram(text, chat_id=None):
 @app.get("/api/telegram/top")
 def telegram_top(date: str = None):
     dt = date or datetime.utcnow().strftime("%Y-%m-%d")
-    pick = _zgjidh_pick_ditor(dt)
-    if not pick:
-        return {"sukses": False, "arsye": "S'ka ndeshje me parashikim për këtë datë."}
-    return {"sukses": True, "pick": pick, "mesazhi": _ndertoMesazhTelegram(pick)}
+    sk = _zgjidh_skedine_ditore(dt)
+    if not sk:
+        return {"sukses": False, "arsye": "S'ka mjaft ndeshje me parashikim për këtë datë."}
+    return {"sukses": True, "skedina": sk, "mesazhi": _ndertoMesazhTelegramSkedine(sk)}
 
 
 @app.get("/api/telegram/dergo")
@@ -1702,11 +1782,11 @@ def telegram_dergo(key: str = "", date: str = None):
     if not TELEGRAM_CRON_KEY or key != TELEGRAM_CRON_KEY:
         return {"sukses": False, "arsye": "Çelës i pavlefshëm."}
     dt = date or datetime.utcnow().strftime("%Y-%m-%d")
-    pick = _zgjidh_pick_ditor(dt)
-    if not pick:
-        return {"sukses": False, "arsye": "S'ka ndeshje për këtë datë."}
-    ok, info = _dergo_telegram(_ndertoMesazhTelegram(pick))
-    return {"sukses": bool(ok), "info": info, "pick": pick}
+    sk = _zgjidh_skedine_ditore(dt)
+    if not sk:
+        return {"sukses": False, "arsye": "S'ka mjaft ndeshje për këtë datë."}
+    ok, info = _dergo_telegram(_ndertoMesazhTelegramSkedine(sk))
+    return {"sukses": bool(ok), "info": info, "skedina": sk}
 
 
 # ===================== VIP COMBO (vetëm VIP) — 2 ndeshje × 4 rezultate të sakta =====================
@@ -1718,12 +1798,8 @@ def _tip_rezultati(skor):
 
 
 def _top_rezultate_sakta(p, n=4):
-    """MBULIM I ZGJERUAR (jo thjesht top-N më të mundshmet, që dalin gjithë X-0):
-       1) rezultati_sakt (spina e algoritmit),
-       2) rezultatet më të mundshme në linjë,
-       3) 1 slot 'underdog shënon' (thyen modelin X-0),
-       4) për n>=4, 1 slot 'surprizë/bllof' me tip 1X2 të ndryshëm.
-       Kapja e bllofeve rritet pa humbur rezultatin kryesor."""
+    """TOP-N: kthen thjesht N skoret me te mundshme nga shperndarja e golave.
+       (Prove mbi 5292 ndeshje: top-N godet me shume se cdo skeme diversiteti/simetrie.)"""
     dist = p.get("dist_gola") or {}
     rez_sakt = p.get("rezultati_sakt")
     if not dist:
@@ -1746,75 +1822,10 @@ def _top_rezultate_sakta(p, n=4):
     def shto(k, v=None):
         zgjedhur.append(mk(k, v)); seen.add(k)
 
-    # 1) ANCHOR
-    anchor = None
-    if rez_sakt:
-        rs = str(rez_sakt).replace(" ", "")
-        for k, v in items:
-            if str(k).replace(" ", "") == rs:
-                shto(k, v); anchor = k; break
-        if anchor is None:
-            shto(rez_sakt, dist.get(rez_sakt, 1)); anchor = rez_sakt
-    pred_tip = _tip_rezultati(anchor) if anchor else "?"
-    ah, aa = _parse_score(anchor) if anchor else (None, None)
-
-    n_div = 1 if n <= 3 else 2
-
-    # 2) IN-LINE (lëmë vend për slotet e diversitetit)
-    for k, v in items:
-        if len(zgjedhur) >= (n - n_div):
-            break
-        if k in seen:
-            continue
-        shto(k, v)
-
-    # 3) DIVERSITET #1: 'underdog shënon' (thyen X-0)
-    div1 = None
-    if ah is not None:
-        for k, v in items:
-            if k in seen:
-                continue
-            kh, ka = _parse_score(k)
-            if kh is None:
-                continue
-            if pred_tip == "1" and ka >= 1:
-                div1 = (k, v); break
-            if pred_tip == "2" and kh >= 1:
-                div1 = (k, v); break
-            if pred_tip == "X" and kh != ka:
-                div1 = (k, v); break
-        if div1 is None:
-            if pred_tip == "1":   alt = f"{ah}-{aa + 1}"
-            elif pred_tip == "2": alt = f"{ah + 1}-{aa}"
-            else:                 alt = f"{ah + 1}-{aa}"
-            if alt not in seen:
-                div1 = (alt, dist.get(alt, max(1.0, total * 0.02)))
-    if div1 and len(zgjedhur) < n and div1[0] not in seen:
-        shto(div1[0], div1[1])
-
-    # 4) DIVERSITET #2 (n>=4): bllof me tip 1X2 të ndryshëm
-    if n_div == 2 and ah is not None:
-        div2 = None
-        for k, v in items:
-            if k in seen:
-                continue
-            if _tip_rezultati(k) != pred_tip:
-                div2 = (k, v); break
-        if div2 is None:
-            if pred_tip == "1":   alt = f"{ah}-{ah}"
-            elif pred_tip == "2": alt = f"{aa}-{aa}"
-            else:                 alt = f"{ah + 1}-{aa}"
-            if alt not in seen:
-                div2 = (alt, dist.get(alt, max(1.0, total * 0.015)))
-        if div2 and len(zgjedhur) < n and div2[0] not in seen:
-            shto(div2[0], div2[1])
-
-    # 5) MBUSH nëse mungojnë
+    # TOP-N i paster: thjesht N skoret me te mundshme nga shperndarja
     for k, v in items:
         if len(zgjedhur) >= n:
             break
-        if k in seen:
-            continue
         shto(k, v)
     return zgjedhur[:n]
 
@@ -2156,15 +2167,16 @@ def merr_dna_nga_db(team_id):
 FORMA_CACHE = {}
 FORMA_CACHE_TTL = 3600  # 1 orë
 
-def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 8) -> dict:
+def merr_formen_reale(team_id: int, liga_emri: str = None, numri_ndeshjeve: int = 8) -> dict:
     """
     Merr ndeshjet e fundit të ekipit dhe llogarit:
     win_rate, xG mesatar, lodhjen e serisë — me të dhëna REALE.
     SHTUAR: home/away split (gola shtëpi vs jashtë veçmas).
     """
     koha_tani = time.time()
-    if team_id in FORMA_CACHE:
-        te_dhenat, koha_ruajtur = FORMA_CACHE[team_id]
+    _cache_key = (team_id, liga_emri)
+    if _cache_key in FORMA_CACHE:
+        te_dhenat, koha_ruajtur = FORMA_CACHE[_cache_key]
         if koha_tani - koha_ruajtur < FORMA_CACHE_TTL:
             return te_dhenat
 
@@ -2172,7 +2184,7 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 8) -> dict:
         res = requests.get(
             "https://v3.football.api-sports.io/fixtures",
             headers=HEADERS,
-            params={"team": team_id, "last": numri_ndeshjeve, "status": "FT"},
+            params={"team": team_id, "last": max(25, numri_ndeshjeve), "status": "FT"},
             timeout=5
         )
         ndeshjet = res.json().get("response", [])
@@ -2181,6 +2193,14 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 8) -> dict:
 
     if not ndeshjet:
         return _forma_boshe()
+
+    # ── FILTRI I LIGES: vetem ndeshjet nga e njejta lige (fallback nese < 5) ──
+    if liga_emri:
+        _same = [n for n in ndeshjet
+                 if f"{(n.get('league') or {}).get('country', '')} - {(n.get('league') or {}).get('name', '')}" == liga_emri]
+        ndeshjet = _same[:numri_ndeshjeve] if len(_same) >= 5 else ndeshjet[:numri_ndeshjeve]
+    else:
+        ndeshjet = ndeshjet[:numri_ndeshjeve]
 
     fitore = barazime = humbje = 0
     gola_shenuar = gola_prane = 0
@@ -2229,6 +2249,19 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 8) -> dict:
     xg_prane          = avg_gola_prane   * 0.85 + 0.20
     k_wins_rresht     = _llogarit_wins_rresht(ndeshjet, team_id)
     lodhja_factor     = 1.0 - (0.04 * max(0, k_wins_rresht - 2))
+    # Kongjestioni: sa ndeshje brenda 14 ditëve nga ndeshja më e fundit (përafrim lodhjeje)
+    ndeshje_14d = 0
+    try:
+        _datat = []
+        for _n in ndeshjet:
+            _d = (_n.get("fixture") or {}).get("date")
+            if _d:
+                _datat.append(datetime.fromisoformat(_d.replace("Z", "+00:00")))
+        if _datat:
+            _maxd = max(_datat)
+            ndeshje_14d = sum(1 for _x in _datat if (_maxd - _x).days <= 14)
+    except Exception:
+        ndeshje_14d = 0
 
     # Mesataret home/away (me fallback te mesatarja e përgjithshme nëse s'ka mjaft)
     avg_shenuar_home = (h_gola_shenuar / h_ndeshje) if h_ndeshje >= 2 else avg_gola_shenuar
@@ -2243,6 +2276,7 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 8) -> dict:
         "xg_shenuar":       round(xg_shenuar, 3),
         "xg_prane":         round(xg_prane, 3),
         "k_wins_rresht":    k_wins_rresht,
+        "ndeshje_14d":      ndeshje_14d,
         "lodhja_factor":    round(lodhja_factor, 3),
         "piket_forma":      round(piket_forma, 1),
         "total_ndeshje":    total,
@@ -2254,13 +2288,13 @@ def merr_formen_reale(team_id: int, numri_ndeshjeve: int = 8) -> dict:
         "h_ndeshje":        h_ndeshje,
         "a_ndeshje":        a_ndeshje,
     }
-    FORMA_CACHE[team_id] = (rezultati, koha_tani)
+    FORMA_CACHE[_cache_key] = (rezultati, koha_tani)
     return rezultati
 
 def _forma_boshe() -> dict:
     return {
         "win_rate": 0.40, "avg_gola_shenuar": 1.2, "avg_gola_prane": 1.2,
-        "xg_shenuar": 1.25, "xg_prane": 1.20, "k_wins_rresht": 0,
+        "xg_shenuar": 1.25, "xg_prane": 1.20, "k_wins_rresht": 0, "ndeshje_14d": 2,
         "lodhja_factor": 1.0, "piket_forma": 0.0, "total_ndeshje": 0,
         "avg_shenuar_home": 1.2, "avg_prane_home": 1.2,
         "avg_shenuar_away": 1.2, "avg_prane_away": 1.2,
@@ -2311,8 +2345,8 @@ def llogarit_xg_te_perparuara(
     # xG i pritur = mesatarja e (sulmit të vet) dhe (dobësisë mbrojtëse të kundërshtarit)
     xg1_forma_raw = (sulm_1 + mbrojtje_2) / 2.0
     xg2_forma_raw = (sulm_2 + mbrojtje_1) / 2.0
-    xg1_forma = (xg1_forma_raw * 0.85 + 0.25) * forma_1["lodhja_factor"]
-    xg2_forma = (xg2_forma_raw * 0.85 + 0.25) * forma_2["lodhja_factor"]
+    xg1_forma = (xg1_forma_raw * 0.85 + 0.25)
+    xg2_forma = (xg2_forma_raw * 0.85 + 0.25)
 
     # Burimi 2: ELO (multiplikator i rritur 2.5 → 3.0)
     diff_elo = (elo_1 - elo_2) / 400.0
@@ -2337,8 +2371,8 @@ def llogarit_xg_te_perparuara(
     xg_2_final = (W_FORMA * xg2_forma + W_ELO * xg2_elo + W_MARKET * xg2_market + W_BASE * xg2_base) * jashte_minus
 
     # Kufijtë e rritur (3.50 → 4.20) që të lejojë rezultate me shumë gola
-    xg_1_final = float(np.clip(xg_1_final, 0.35, 4.20))
-    xg_2_final = float(np.clip(xg_2_final, 0.35, 4.20))
+    xg_1_final = float(np.clip(xg_1_final, 0.35, 5.00))
+    xg_2_final = float(np.clip(xg_2_final, 0.35, 5.00))
 
     return round(xg_1_final, 3), round(xg_2_final, 3)
 
@@ -2411,8 +2445,8 @@ def llogarit_xg_hybrid(
         xg_1 = W_XGB * xgb_h + (1 - W_XGB) * xg_math_1
         xg_2 = W_XGB * xgb_a + (1 - W_XGB) * xg_math_2
 
-        xg_1 = float(np.clip(xg_1, 0.30, 4.20))
-        xg_2 = float(np.clip(xg_2, 0.30, 4.20))
+        xg_1 = float(np.clip(xg_1, 0.30, 5.00))
+        xg_2 = float(np.clip(xg_2, 0.30, 5.00))
         return round(xg_1, 3), round(xg_2, 3), "hybrid"
 
     except Exception as e:
@@ -2506,11 +2540,15 @@ def _best_bet_value(tregjet, odds_reale):
     return max(kand, key=lambda k: k["prob"])
 
 
+RHO_DC = -0.12  # Dixon-Coles: korrelacioni i skoreve te uleta (0 = Poisson i paster)
+
+
 def simulim_monte_carlo_v2(
     xg_1: float, xg_2: float,
     kaos_factor: float = 1.0,
     is_derbi: bool = False,
     iteracione: int = 50_000,
+    rho: float = RHO_DC,
     seed: int = None
 ) -> tuple:
     """
@@ -2531,61 +2569,68 @@ def simulim_monte_carlo_v2(
     gola_1 = rng.poisson(xg1_virtual)
     gola_2 = rng.poisson(xg2_virtual)
 
+    # ── Matrica e perbashket nga simulimet (per Dixon-Coles) ──
+    GMAX = 10
+    _g1 = np.clip(gola_1, 0, GMAX)
+    _g2 = np.clip(gola_2, 0, GMAX)
+    H = np.zeros((GMAX + 1, GMAX + 1), dtype=float)
+    np.add.at(H, (_g1, _g2), 1.0)
+    H = H / H.sum()
+
+    # ── DIXON-COLES: korrigjim korrelacioni per skoret e uleta (0-0,0-1,1-0,1-1) ──
+    _l = max(float(xg_1), 0.05)
+    _m = max(float(xg_2), 0.05)
+    H[0, 0] *= max(1.0 - _l * _m * rho, 1e-6)
+    H[0, 1] *= max(1.0 + _l * rho, 1e-6)
+    H[1, 0] *= max(1.0 + _m * rho, 1e-6)
+    H[1, 1] *= max(1.0 - rho, 1e-6)
+    H = H / H.sum()
+
+    _ii, _jj = np.indices(H.shape)
     prob_1x2 = {
-        "p1": round(float(np.sum(gola_1 > gola_2)  / iteracione), 4),
-        "px": round(float(np.sum(gola_1 == gola_2) / iteracione), 4),
-        "p2": round(float(np.sum(gola_1 < gola_2)  / iteracione), 4),
+        "p1": round(float(H[_ii > _jj].sum()), 4),
+        "px": round(float(H[_ii == _jj].sum()), 4),
+        "p2": round(float(H[_ii < _jj].sum()), 4),
     }
 
-    rezultatet_unique, counts = np.unique(
-        np.stack([gola_1, gola_2], axis=1), axis=0, return_counts=True
-    )
+    # Top 15 rezultatet (si numra, per perputhshmeri me dist_gola)
+    _flat = H.flatten()
+    _order = np.argsort(_flat)[::-1]
+    rezultatet_freq = {}
+    for _idx in _order[:15]:
+        _i = int(_idx // H.shape[1]); _j = int(_idx % H.shape[1])
+        _c = int(round(float(_flat[_idx]) * iteracione))
+        if _c > 0:
+            rezultatet_freq[f"{_i}-{_j}"] = _c
 
-    # Top 15 rezultatet më të shpeshta
-    top_idx = np.argsort(counts)[::-1][:15]
-    rezultatet_freq = {
-        f"{rezultatet_unique[i][0]}-{rezultatet_unique[i][1]}": int(counts[i])
-        for i in top_idx
-    }
-
-    # ── ZGJEDHJA E REZULTATIT (e korrigjuar kundër nënvlerësimit) ──
-    # Problem i njohur: modusi i Poisson jep gjithmonë pak gola.
-    # Zgjidhje: ndër top-5 rezultatet, zgjedh atë që është më afër
-    # totalit të pritur (xg_1 + xg_2), jo thjesht më të shpeshtin.
+    # ── ZGJEDHJA E REZULTATIT: midis top-5, me afer totalit te pritur ──
     total_pritur = xg_1 + xg_2
-
-    top5_idx = np.argsort(counts)[::-1][:5]
     kandidatet = []
-    for i in top5_idx:
-        g1c = int(rezultatet_unique[i][0])
-        g2c = int(rezultatet_unique[i][1])
-        freq = int(counts[i])
-        total_c = g1c + g2c
-        # Score: kombinim i frekuencës dhe afërsisë me totalin e pritur
-        diff_total = abs(total_c - total_pritur)
-        score = freq * (1.0 / (1.0 + diff_total * 0.5))
-        kandidatet.append((g1c, g2c, freq, score))
-
-    # Zgjedh kandidatin me score më të lartë
+    for _idx in _order[:5]:
+        _i = int(_idx // H.shape[1]); _j = int(_idx % H.shape[1])
+        _freq = float(_flat[_idx])
+        _difft = abs((_i + _j) - total_pritur)
+        _score = _freq * (1.0 / (1.0 + _difft * 0.5))
+        kandidatet.append((_i, _j, _freq, _score))
     kandidatet.sort(key=lambda x: x[3], reverse=True)
     rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
     rez_str  = f"{rez_g1}-{rez_g2}"
-    prob_max = freq_zgjedhur / iteracione
+    prob_max = float(freq_zgjedhur)
 
-    # ── TREGJET: probabiliteti i çdo tregu nga shpërndarja MC ──
-    total = gola_1 + gola_2
+    # ── TREGJET nga matrica (Dixon-Coles e perfshire) ──
+    _tot = _ii + _jj
     def _pf(mask):
-        return round(float(np.sum(mask)) / iteracione, 4)
+        return round(float(H[mask].sum()), 4)
     tregjet = {
         "1": prob_1x2["p1"], "X": prob_1x2["px"], "2": prob_1x2["p2"],
         "1X": round(prob_1x2["p1"] + prob_1x2["px"], 4),
         "X2": round(prob_1x2["px"] + prob_1x2["p2"], 4),
         "12": round(prob_1x2["p1"] + prob_1x2["p2"], 4),
-        "Over 1.5": _pf(total >= 2), "Under 1.5": _pf(total <= 1),
-        "Over 2.5": _pf(total >= 3), "Under 2.5": _pf(total <= 2),
-        "Over 3.5": _pf(total >= 4), "Under 3.5": _pf(total <= 3),
-        "GG": _pf((gola_1 > 0) & (gola_2 > 0)),
-        "NG": _pf((gola_1 == 0) | (gola_2 == 0)),
+        "Over 1.5": _pf(_tot >= 2), "Under 1.5": _pf(_tot <= 1),
+        "Over 2.5": _pf(_tot >= 3), "Under 2.5": _pf(_tot <= 2),
+        "Over 3.5": _pf(_tot >= 4), "Under 3.5": _pf(_tot <= 3),
+        "GG": _pf((_ii > 0) & (_jj > 0)),
+        "NG": _pf((_ii == 0) | (_jj == 0)),
     }
 
     return rez_str, round(prob_max, 4), rezultatet_freq, prob_1x2, tregjet
@@ -2662,6 +2707,18 @@ def apliko_kaosin_e_liges(emri_liges: str, vol_1: float = 15.0, vol_2: float = 1
 # MOTORI KRYESOR I ANALIZËS V2
 # ==========================================
 
+def llogarit_modulator(forma):
+    """MODULATORI — rregullim i xG-së në FUND, nga fakte të verifikueshme.
+    Aktive tani: regresion i serisë së fitoreve + kongjestioni (ndeshje në 14 ditë).
+    Hapësirë e ardhshme: formacione/lëndime, lëvizje kuotash, mot."""
+    k    = int(forma.get("k_wins_rresht", 0) or 0)
+    cong = int(forma.get("ndeshje_14d", 0) or 0)
+    streak_pen = 0.030 * max(0, k - 3)      # mean reversion pas serive të gjata
+    cong_pen   = 0.035 * max(0, cong - 3)   # lodhje nga kongjestioni
+    mod = 1.0 - min(0.20, streak_pen + cong_pen)
+    return round(mod, 3)
+
+
 def analizo_ndeshjen_premium_master(
     id_ndeshja, ekipi_1, ekipi_2,
     ekipi_1_id, ekipi_2_id,
@@ -2699,8 +2756,8 @@ def analizo_ndeshjen_premium_master(
     desp_2 = llogarit_desperation_index(ekipi_2_id, standings)
 
     # ── FORMA REALE (me cache) ──
-    forma_1 = merr_formen_reale(ekipi_1_id)
-    forma_2 = merr_formen_reale(ekipi_2_id)
+    forma_1 = merr_formen_reale(ekipi_1_id, emri_liges)
+    forma_2 = merr_formen_reale(ekipi_2_id, emri_liges)
 
     # ── XG TË AVANCUARA ──
     kaosi_liges = apliko_kaosin_e_liges(emri_liges, vol_1, vol_2)
@@ -2733,9 +2790,13 @@ def analizo_ndeshjen_premium_master(
         xg_1 *= 1.10
         xg_2 *= 1.10
 
+    # ── MODULATORI (lodhje + kongjestion) — aplikohet në FUND mbi xG ──
+    xg_1 *= llogarit_modulator(forma_1)
+    xg_2 *= llogarit_modulator(forma_2)
+
     # Kap brenda kufijve pas modifikimeve
-    xg_1 = float(np.clip(xg_1, 0.30, 3.50))
-    xg_2 = float(np.clip(xg_2, 0.30, 3.50))
+    xg_1 = float(np.clip(xg_1, 0.30, 5.00))
+    xg_2 = float(np.clip(xg_2, 0.30, 5.00))
 
     # ── MONTE CARLO V2 (numpy, 50k) ──
     _seed_ndeshja = int(hashlib.sha256(str(id_ndeshja).encode()).hexdigest()[:8], 16)
