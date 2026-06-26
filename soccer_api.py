@@ -1093,7 +1093,7 @@ def _gjenero_target_v2(pool, nr, koef_target, grupet_lejuara, tol=0.06):
         ops.sort(key=lambda o: o["prob"], reverse=True)
         ops = ops[:24]   # kufizo për shpejtësi
         matches.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "parashikimi": p.get("rezultati_sakt"),
-                        "ops": ops, "conf": ops[0]["prob"]})
+                        "liga": p.get("liga_emri"), "ops": ops, "conf": ops[0]["prob"]})
     if len(matches) < nr:
         return None
     matches.sort(key=lambda m: m["conf"], reverse=True)
@@ -1131,7 +1131,8 @@ def _gjenero_target_v2(pool, nr, koef_target, grupet_lejuara, tol=0.06):
         op = m["ops"][oi]
         ktot *= op["koef"]; ptot *= op["prob"]
         ndeshjet.append({"id": m.get("id"), "ndeshja": m["ndeshja"], "tregu": " + ".join(op["pjeset"]),
-                         "prob": round(op["prob"], 4), "koef": op["koef"]})
+                         "prob": round(op["prob"], 4), "koef": op["koef"],
+                         "parashikimi": m.get("parashikimi"), "liga": m.get("liga")})
     return {"ndeshjet": ndeshjet, "koef_total": round(ktot, 2),
             "prob": round(ptot, 4), "nr": len(ndeshjet)}
 
@@ -1930,11 +1931,15 @@ def pf_list():
     except Exception:
         rows = []
     name2id = {}
+    name_only2id = {}
     try:
         pr = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data&order=id.desc&limit=400",
                           headers=SUPABASE_SERVICE_HEADERS, timeout=8)
         for _p in (pr.json() if pr.status_code == 200 else []):
             name2id[(_p.get("ndeshja"), _p.get("data"))] = _p.get("id")
+            _nm = _p.get("ndeshja")
+            if _nm and _nm not in name_only2id:   # i pari = me i ri (order=id.desc)
+                name_only2id[_nm] = _p.get("id")
     except Exception:
         pass
     out = []
@@ -1944,7 +1949,7 @@ def pf_list():
                 "data": pf_row.get("data"), "hash_publik": pf_row.get("hash_publik"),
                 "statusi": pf_row.get("statusi"), "ekipi_1_id": pf_row.get("ekipi_1_id"),
                 "ekipi_2_id": pf_row.get("ekipi_2_id")}
-        item["match_id"] = name2id.get((pf_row.get("ndeshja"), pf_row.get("data")))
+        item["match_id"] = name2id.get((pf_row.get("ndeshja"), pf_row.get("data"))) or name_only2id.get(pf_row.get("ndeshja"))
         if pf_row.get("statusi") == "zbuluar":
             item["parashikimi"] = pf_row.get("parashikimi")
             item["server_seed"] = pf_row.get("server_seed")

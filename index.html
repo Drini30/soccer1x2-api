@@ -1909,6 +1909,8 @@ if (!gjuhaAktuale) {
         }
 
         function hapCheckout(id, ndeshja, rez, koef, cmimi, urlLemon) {
+            document.getElementById('modalContainerSize').style.maxWidth = '450px';
+            document.getElementById('modalOverlay').style.display = 'flex';
             document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].checkout;
             document.getElementById('modalTitle').style.color = "#fff";
             
