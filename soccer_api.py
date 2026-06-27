@@ -2019,8 +2019,12 @@ def _gjenero_pf():
         except Exception:
             pass
 
+_pf_premium_backfilled = False
+
+
 def _zbulo_pf():
     """Zbulon parashikimet e kyçura sapo ndeshja të mbarojë me rezultat real."""
+    global _pf_premium_backfilled
     fund = "FT,AET,PEN,AWD,WO"
     try:
         r = requests.get(f"{PF_URL}?select=id,ndeshja,data&statusi=eq.kycur",
@@ -2047,6 +2051,32 @@ def _zbulo_pf():
                     headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
                     json={"statusi": "zbuluar", "rezultati_real": mm[0].get("rezultati"),
                           "zbuluar_me": datetime.utcnow().isoformat()}, timeout=8)
+            except Exception:
+                pass
+            try:   # etiketo si is_premium → shfaqet te Historiku PPM
+                requests.patch(
+                    f"{SUPABASE_URL_PREDS}?ndeshja=eq.{requests.utils.quote(nd, safe='')}"
+                    + (f"&data=eq.{dt}" if dt else "") + "&is_premium=is.false",
+                    headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
+                    json={"is_premium": True}, timeout=8)
+            except Exception:
+                pass
+
+    # Backfill një-herësh: ndeshjet PPM tashmë të zbuluara → is_premium (që dalin te Historiku PPM)
+    if not _pf_premium_backfilled:
+        _pf_premium_backfilled = True
+        try:
+            rz = requests.get(f"{PF_URL}?select=ndeshja&statusi=eq.zbuluar",
+                              headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+            names = list({x.get("ndeshja") for x in (rz.json() if rz.status_code == 200 else []) if x.get("ndeshja")})
+        except Exception:
+            names = []
+        for nm in names:
+            try:
+                requests.patch(
+                    f"{SUPABASE_URL_PREDS}?ndeshja=eq.{requests.utils.quote(nm, safe='')}&is_premium=is.false",
+                    headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
+                    json={"is_premium": True}, timeout=8)
             except Exception:
                 pass
 
