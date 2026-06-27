@@ -1108,17 +1108,30 @@ def _legs_gjenerator(p, grupet_lejuara):
     # parashikimi 1X2 i algoritmit = ana me probabilitet më të lartë
     fav = max([("1", P("1")), ("X", P("X")), ("2", P("2"))], key=lambda x: x[1])[0]
     aligned = []
+    # Profili i parashikimit (nga skori) → përcakton agresivitetin e tregjeve
+    _pr = _parse_score(p.get("rezultati_sakt") or "")
+    _tot = (_pr[0] + _pr[1]) if _pr else None
+    _marg = abs(_pr[0] - _pr[1]) if _pr else 0
+    _dominim = _marg >= 2                              # 0:3, 1:3, 2:0... → dominim i qartë
     if "1x2" in grupet_lejuara and P(fav) > 0:
         aligned.append(fav)
-    if "dc" in grupet_lejuara:                       # vetëm double-chance që PËRMBAN favoritin
+    if "dc" in grupet_lejuara and not _dominim:       # DC VETËM kur JO dominim; te dominimi → favoriti/Over (jo timid)
         if fav == "1":
             aligned += ["1X", "12"]
         elif fav == "X":
             aligned += ["1X", "X2"]
         else:
             aligned += ["12", "X2"]
-    if "ou" in grupet_lejuara:                        # për çdo linjë, ana e favorizuar
-        for ln in ["1.5", "2.5", "3.5"]:
+    if "ou" in grupet_lejuara:                        # linja O/U e PËRPUTHUR me golat e parashikuara
+        if _tot is None:
+            ou_lines = ["1.5", "2.5", "3.5"]           # fallback: si më parë
+        elif _tot >= 4:
+            ou_lines = ["2.5", "3.5"]                  # dominim me shumë gola (1:3, 0:4)
+        elif _tot == 3:
+            ou_lines = ["2.5"]                         # 3 gola (0:3, 2:1, 1:2) → Over 2.5, jo 1.5
+        else:
+            ou_lines = ["1.5"]                         # ≤2 gola → Over/Under 1.5
+        for ln in ou_lines:
             o, u = P("Over " + ln), P("Under " + ln)
             if o > 0 or u > 0:
                 aligned.append("Over " + ln if o >= u else "Under " + ln)
@@ -1975,7 +1988,7 @@ def _gjenero_pf():
     fund = "FT,AET,PEN,AWD,WO,CANC,PST,ABD"
     try:
         r = requests.get(
-            f"{SUPABASE_URL_PREDS}?select=ndeshja,liga_emri,ora,data,rezultati_sakt,ekipi_1_id,ekipi_2_id"
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,ora,data,rezultati_sakt,ekipi_1_id,ekipi_2_id,is_premium"
             f"&data=in.({dt_sot},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.({fund})"
             f"&order=koef_rez_sakt.asc&limit=8",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -1986,6 +1999,14 @@ def _gjenero_pf():
         nd = p.get("ndeshja"); par = p.get("rezultati_sakt")
         if not nd or not par:
             continue
+        # Ndeshja PPM bëhet is_premium → shfaqet te Historiku PPM pasi të zbulohet
+        if not p.get("is_premium") and p.get("id"):
+            try:
+                requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{p['id']}",
+                               headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
+                               json={"is_premium": True}, timeout=8)
+            except Exception:
+                pass
         seed = secrets.token_hex(8)
         rec = {"ndeshja": nd, "liga_emri": p.get("liga_emri"), "data": p.get("data"),
                "ora": p.get("ora"), "parashikimi": par, "server_seed": seed,
