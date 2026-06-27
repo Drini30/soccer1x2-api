@@ -649,6 +649,75 @@ def _joint_prob(dist_gola, markets):
     return (hit / total) if total > 0 else None
 
 
+def _etiketa_margjines(dist_gola, e1="", e2=""):
+    """Nga shperndarja e skoreve nxjerr profilin e margjines (per AH +/-1.5).
+    Kthen {label, detaje, ah, tipi, kush, p} ose None."""
+    if not dist_gola:
+        return None
+    tot = ph2 = ph1 = px = pa1 = pa2 = 0.0
+    for sc, freq in dist_gola.items():
+        try:
+            f = float(freq)
+        except Exception:
+            continue
+        pr = _parse_score(sc)
+        if not pr:
+            continue
+        d = pr[0] - pr[1]
+        tot += f
+        if d >= 2:
+            ph2 += f
+        elif d == 1:
+            ph1 += f
+        elif d == 0:
+            px += f
+        elif d == -1:
+            pa1 += f
+        else:
+            pa2 += f
+    if tot <= 0:
+        return None
+    ph2 /= tot; ph1 /= tot; px /= tot; pa1 /= tot; pa2 /= tot
+    e1 = e1 or "Ekipi 1"; e2 = e2 or "Ekipi 2"
+    pw_h = ph1 + ph2; pw_a = pa1 + pa2
+    if pw_h >= pw_a:
+        fwin, fdom, fteam, funder = pw_h, ph2, e1, e2
+    else:
+        fwin, fdom, fteam, funder = pw_a, pa2, e2, e1
+    if fdom >= 0.35:
+        return {"tipi": "dominim", "kush": fteam, "p": round(fdom, 3),
+                "label": f"Dominim {fteam}", "detaje": "diferencë 2+ gola", "ah": f"{fteam} -1.5"}
+    if fwin >= 0.45:
+        return {"tipi": "ngushte", "kush": fteam, "p": round(fwin, 3),
+                "label": f"Fitore e ngushtë {fteam}", "detaje": "~1 gol diferencë", "ah": f"{funder} +1.5"}
+    return {"tipi": "ekuiliber", "kush": "", "p": round(px, 3),
+            "label": "Ekuilibër", "detaje": "ndeshje e ngushtë", "ah": "+1.5 të dyja"}
+
+
+def _marg_suffix_html(marg, gj):
+    """Etiketa e margjinës si HTML shumëgjuhësh (shtohet te analiza tekstuale)."""
+    if not marg:
+        return ""
+    tipi = marg.get("tipi"); kush = marg.get("kush", ""); ah = marg.get("ah", "")
+    TLAB = {
+        "dominim":   {"sq": "Dominim", "en": "Dominance", "de": "Dominanz", "fr": "Domination", "it": "Dominio"},
+        "ngushte":   {"sq": "Fitore e ngushtë", "en": "Narrow win", "de": "Knapper Sieg", "fr": "Victoire serrée", "it": "Vittoria di misura"},
+        "ekuiliber": {"sq": "Ekuilibër", "en": "Balanced", "de": "Ausgeglichen", "fr": "Équilibré", "it": "Equilibrato"},
+    }
+    DET = {
+        "dominim":   {"sq": "diferencë 2+ gola", "en": "2+ goal margin", "de": "2+ Tore Abstand", "fr": "écart de 2+ buts", "it": "scarto di 2+ gol"},
+        "ngushte":   {"sq": "~1 gol diferencë", "en": "~1 goal margin", "de": "~1 Tor Abstand", "fr": "écart de ~1 but", "it": "scarto di ~1 gol"},
+        "ekuiliber": {"sq": "ndeshje e ngushtë", "en": "tight match", "de": "enges Spiel", "fr": "match serré", "it": "partita equilibrata"},
+    }
+    tl = TLAB.get(tipi, {}).get(gj, "")
+    dl = DET.get(tipi, {}).get(gj, "")
+    head = tl + ((" " + kush) if kush else "")
+    ahpart = ""
+    if ah:
+        ahpart = " &middot; <b style='color:#3fb950;'>AH: " + ah + "</b>"
+    return "<br><b style='color:#d4af37;'>\U0001F4CA " + head + "</b> <span style='color:#8b949e;'>(" + dl + ")</span>" + ahpart
+
+
 def _legs_per_match(p, market_set):
     tregjet = p.get("tregjet") or {}
     odds = p.get("odds_reale") or {}
@@ -2545,6 +2614,16 @@ def _nxirr_odds_reale(bets):
                 cs[v] = od
         if cs:
             out["CS"] = cs
+    ah = gjej(33, "Asian Handicap")
+    if ah:
+        ahd = {}
+        for x in ah.get("values", []):
+            v = str(x.get("value", "")).strip()   # p.sh. "Home -1.5"
+            od = x.get("odd")
+            if v and od:
+                ahd[v] = od
+        if ahd:
+            out["AH"] = ahd
     return {k: v for k, v in out.items() if v is not None}
 
 
@@ -3031,6 +3110,12 @@ def analizo_ndeshjen_premium_master(
                 }
                 anal_dict[gj] = f"{manage_text[gj]}{ht_ft_text_gj}{vb_text_gj}"
 
+    # ── ETIKETA E MARGJINËS (AH ±1.5) → shtohet te analiza tekstuale ──
+    _marg = _etiketa_margjines(rezultatet_freq, ekipi_1, ekipi_2)
+    if _marg:
+        for _gj in anal_dict:
+            anal_dict[_gj] += _marg_suffix_html(_marg, _gj)
+
     koef_rez_sakt = min(40.0, (1 / prob_rez_sakt) * 0.85) if prob_rez_sakt > 0 else 10.0
 
     # ── BEST BET: tregu me probabilitetin më të lartë ──
@@ -3039,6 +3124,7 @@ def analizo_ndeshjen_premium_master(
     _best_p = float(tregjet_mc.get(_best_t, 0))
     best_bet = {"tregu": _best_t, "prob": round(_best_p, 4),
                 "koef": round(1.0 / _best_p, 2) if _best_p > 0 else None}
+    best_bet["margjina"] = _marg
 
     extradb = {
         "is_bllof":     eshte_bllof,
