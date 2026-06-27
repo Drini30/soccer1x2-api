@@ -2633,36 +2633,43 @@ if (!gjuhaAktuale) {
             const container = document.getElementById('rezultati');
             container.innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#8ba898; font-size:15px;">${ui[gjuhaAktuale].loading}</div></div>`;
             try {
-                let res = await fetch(`https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions?select=ndeshja,rezultati_sakt,rezultati,koef_rez_sakt,analiza_custom,koha_utc,data,ora_sakte&statusi=in.(FT,AET,PEN,AWD,WO)&is_premium=is.true&order=data.desc,ora_sakte.desc&limit=200`, {
-                    headers: {
-                        "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ",
-                        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
-                    }
-                });
+                let res = await fetch(`https://soccer1x2-api.onrender.com/api/arkiv?limit=300`);
                 let historiku = await res.json();
                 
                 if(!historiku || historiku.length === 0) {
                     container.innerHTML = `<div style="text-align:center; padding: 40px; width:100%; color:#8ba898;">${ui[gjuhaAktuale].noPurchases}</div>`;
                     return;
                 }
+
+                // Statistika e shpejtë (sa goditi)
+                let totEval = historiku.filter(n => n.goditi_1x2 !== null && n.goditi_1x2 !== undefined).length;
+                let hit1x2 = historiku.filter(n => n.goditi_1x2).length;
+                let hitSkor = historiku.filter(n => n.goditi_skor).length;
+                let pct = totEval ? Math.round(hit1x2 * 100 / totEval) : 0;
                 
                 let h = `<div class="matches-area" style="width:100%; max-width:800px; margin:0 auto; padding:10px;">`;
-                h += `<h3 style="color:#f2cc60; margin-bottom:15px; border-bottom:1px solid #30363d; padding-bottom:10px;">📊 ${ui[gjuhaAktuale].historyTab.toUpperCase()}</h3>`;
+                h += `<h3 style="color:#f2cc60; margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:10px;">📊 ${ui[gjuhaAktuale].historyTab.toUpperCase()}</h3>`;
+                h += `<div style="color:#8ba898; font-size:12px; margin-bottom:15px;">1X2: <b style="color:#7ee08a;">${hit1x2}/${totEval}</b> (${pct}%) &nbsp;·&nbsp; 🎯 ${ui[gjuhaAktuale].prediction}: <b style="color:#f2cc60;">${hitSkor}</b></div>`;
                 
                 historiku.forEach(n => {
-                    let paraSakt = n.rezultati_sakt; let rezReal = n.rezultati || "";
-                    let isWin = eshteBiletFituese(paraSakt, rezReal);
-                    let historyBadge = isWin ? `<div class="history-badge-win">✅ ${ui[gjuhaAktuale].won} (${ui[gjuhaAktuale].prediction}: ${paraSakt})</div>` : (rezReal ? `<div class="history-badge-loss">❌ ${ui[gjuhaAktuale].lost} (${ui[gjuhaAktuale].prediction}: ${paraSakt} | ${ui[gjuhaAktuale].real}: ${rezReal})</div>` : `<div style="color:#8ba898; font-size:12px; margin-top:5px;">${ui[gjuhaAktuale].pendingResult}</div>`);
+                    let par = n.parashikimi || "—";
+                    let ht = n.rezultati_ht || "—";
+                    let ft = n.rezultati_ft || "";
+                    let badge;
+                    if (n.goditi_skor) badge = `<div class="history-badge-win">🎯 ${ui[gjuhaAktuale].won} — ${par}</div>`;
+                    else if (n.goditi_1x2) badge = `<div class="history-badge-win">✅ 1X2 ✓ (${ui[gjuhaAktuale].prediction}: ${par} | ${ui[gjuhaAktuale].real}: ${ft})</div>`;
+                    else if (ft) badge = `<div class="history-badge-loss">❌ ${ui[gjuhaAktuale].lost} (${ui[gjuhaAktuale].prediction}: ${par} | ${ui[gjuhaAktuale].real}: ${ft})</div>`;
+                    else badge = `<div style="color:#8ba898; font-size:12px; margin-top:5px;">${ui[gjuhaAktuale].pendingResult}</div>`;
                     
-                    let txtAnaliza = n.analiza_custom ? (n.analiza_custom[gjuhaAktuale] || n.analiza_custom.en) : "";
-                    let tsPPM = n.koha_utc ? new Date(n.koha_utc).toLocaleString() : ((n.data||'') + (n.ora_sakte ? ' ' + n.ora_sakte : ''));
+                    let koefLine = n.koef_1 ? `1: ${n.koef_1} &nbsp; X: ${n.koef_x} &nbsp; 2: ${n.koef_2}` : "";
+                    let info = (n.data||'') + (n.ora ? ' ' + n.ora : '') + (n.liga ? ' · ' + n.liga : '');
                     
                     h += `<div class="ndeshje-box" style="margin-bottom:15px;">
                             <div style="font-weight:bold; color:#fff; font-size:14px; margin-bottom:5px;">${n.ndeshja}</div>
-                            <div style="color:#8ba898; font-size:11px; margin-bottom:6px;">🕐 ${tsPPM}</div>
-                            <div style="color:#58a6ff; font-size:12px; margin-bottom:8px;">${ui[gjuhaAktuale].odds}: <b style="color:#f2cc60;">${n.koef_rez_sakt}</b></div>
-                            <div class="ai-prediction-bar">📊 ${txtAnaliza}</div>
-                            ${historyBadge}
+                            <div style="color:#8ba898; font-size:11px; margin-bottom:6px;">🕐 ${info}</div>
+                            ${koefLine ? `<div style="color:#58a6ff; font-size:12px; margin-bottom:6px;">${koefLine}</div>` : ''}
+                            <div style="color:#c9d1d9; font-size:13px; margin-bottom:8px;">HT: <b>${ht}</b> &nbsp;·&nbsp; FT: <b style="color:#f2cc60;">${ft||'—'}</b></div>
+                            ${badge}
                           </div>`;
                 });
                 h += `</div>`;
