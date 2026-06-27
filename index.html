@@ -2342,6 +2342,21 @@ if (!gjuhaAktuale) {
         }
 
         let genNrMin = 2, genNrMax = 4;
+        let _genTicketLast = null, _vipComboLast = null;
+        function _saveLabel(){ return ({en:'Save to My Tickets',sq:'Ruaj te Bileta Ime',de:'In Meine Tickets',fr:'Enregistrer',it:'Salva'})[gjuhaAktuale]||'Save'; }
+        async function ruajGeneruar(tipi, btn){
+            if(!isLogged){ hapAuthModal('login'); return; }
+            var permb = (tipi==='ticket') ? _genTicketLast : _vipComboLast;
+            if(!permb){ return; }
+            var old = btn.innerHTML;
+            try{
+                btn.disabled=true; btn.innerHTML='\u23F3';
+                var r=await fetch(API_BASE+'/api/skedina/ruaj',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:perdoruesi.email,tipi:tipi,permbajtja:permb})});
+                var d=await r.json();
+                if(d.sukses){ btn.innerHTML = d.dyfishim ? '\u2713' : '\u2713 '+_saveLabel(); btn.style.background='#238636'; btn.style.color='#fff'; }
+                else { btn.disabled=false; btn.innerHTML=old; alert(d.arsye||'Gabim'); }
+            }catch(e){ btn.disabled=false; btn.innerHTML=old; alert('Gabim ne lidhje.'); }
+        }
         function genSelect(el) { el.parentElement.querySelectorAll('.gen-opt').forEach(b => b.classList.remove('active')); el.classList.add('active'); genNrMin = parseInt(el.dataset.min); genNrMax = parseInt(el.dataset.max); updateKoefGradient(); }
         function updateKoefGradient() {
             var sl = document.getElementById('genKoef'); if (!sl) return;
@@ -2489,13 +2504,13 @@ if (!gjuhaAktuale) {
                     return;
                 }
                 if (d.u_pagua && typeof d.portofoli!=='undefined') { perdoruesi.portofoli=d.portofoli; }
-                const s = d.skedina;
+                const s = d.skedina; _genTicketLast = s;
                 let rows = (s.ndeshjet||[]).map(n => `<div class="prod-leg"><span class="prod-leg-match">${n.liga ? `<span style="font-size:10px;color:#8ba898;">${n.liga}</span><br>` : ''}${n.ndeshja}${n.parashikimi ? `<br><span style="font-size:11px;color:#3fb950;font-weight:bold;">🎯 ${ui[gjuhaAktuale].result}: ${n.parashikimi}</span>` : ''}</span><span class="prod-leg-pick">${n.tregu} <b>@${n.koef}</b></span></div>`).join('');
                 var pp=Math.round((s.prob||0)*100);
                 var pc = pp>=25 ? '#3fb950' : (pp>=12 ? '#f2cc60' : '#f85149');
                 var paid = d.u_pagua ? `<div style="text-align:center;color:#3fb950;font-size:12px;font-weight:bold;margin-bottom:8px;">✓ U pagua $${d.cmimi||10} · bilanci: $${d.portofoli||0}</div>` : '';
                 var warn = (s.arritur === false) ? `<div style="background:rgba(242,204,96,0.08);border:1px solid #f2cc60;border-radius:6px;padding:8px 10px;margin-bottom:10px;color:#d4af37;font-size:11.5px;">&#9888; ${T.genNoTarget} <b>${s.koef_total}</b>.</div>` : '';
-                document.getElementById('genResult').innerHTML = paid + warn + `<div class="prod-slip">${rows}<div class="prod-slip-foot">${T.totalKoef}: <b>${s.koef_total}</b> · <span style="color:${pc};font-weight:bold;">${T.prob} ${pp}%</span> · ${s.nr} ${T.matches}</div></div><p class="prod-note">${T.genProbNote}</p>`;
+                document.getElementById('genResult').innerHTML = paid + warn + `<div class="prod-slip">${rows}<div class="prod-slip-foot">${T.totalKoef}: <b>${s.koef_total}</b> · <span style="color:${pc};font-weight:bold;">${T.prob} ${pp}%</span> · ${s.nr} ${T.matches}</div></div>` + `<button onclick="ruajGeneruar('ticket', this)" style="width:100%;margin-top:10px;background:#238636;color:#fff;border:none;padding:11px;border-radius:6px;font-weight:900;cursor:pointer;font-size:13px;">\u{1F4BE} ${_saveLabel()}</button>` + `<p class="prod-note">${T.genProbNote}</p>`;
             } catch(e) {
                 document.getElementById('genResult').innerHTML = `<p style="color:#f85149;text-align:center;">${T.loadErr}</p>`;
             }
@@ -2946,6 +2961,7 @@ if (!gjuhaAktuale) {
                     return;
                 }
                 if(d.u_pagua && typeof d.portofoli!=='undefined'){ perdoruesi.portofoli=d.portofoli; }
+                _vipComboLast = {nr:d.nr_ndeshje, rez:d.nr_rezultate, ndeshjet:d.ndeshjet, kombinimet:d.kombinimet};
                 let html='';
                 if(d.u_pagua){ html+='<div style="text-align:center; color:#3fb950; font-size:12px; font-weight:bold; margin-bottom:8px;">✓ U pagua $'+(d.cmimi||30)+' · bilanci: $'+(d.portofoli||0)+'</div>'; }
                 html+='<div style="font-size:12px; color:#8b949e; margin-bottom:10px; text-align:center;">'+d.nr_kombinimesh+' skedina • mbulimi ~'+d.mbulimi_perqind+'%</div>';
@@ -2955,6 +2971,7 @@ if (!gjuhaAktuale) {
                     k.skedina.forEach(function(s){ html+='<div style="font-size:12.5px; color:#e6edf3; padding:2px 0;">⚽ '+s.ndeshja+': <b style="color:#ffd700;">'+s.skor+'</b></div>'; });
                     html+='</div>';
                 });
+                html += '<button onclick="ruajGeneruar(\'combo\', this)" style="width:100%;margin-top:6px;background:#238636;color:#fff;border:none;padding:11px;border-radius:6px;font-weight:900;cursor:pointer;font-size:13px;">\u{1F4BE} '+_saveLabel()+'</button>';
                 box.innerHTML=html;
             }catch(e){ box.innerHTML='<p style="text-align:center; color:#ff7b72;">Gabim në lidhje.</p>'; }
         }

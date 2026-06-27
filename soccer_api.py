@@ -1189,7 +1189,7 @@ def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float, paguaj: bool =
     Kthen dict {ok, is_vip, falas, kerko_pagese, mungojne_kredite, portofoli, cmimi, arsye}."""
     fusha = "vipcombo_fundit" if produkt == "vipcombo" else "generate_fundit"
     emri = "VIP Combo" if produkt == "vipcombo" else "Generate Ticket"
-    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    dt = _data_lokale(0)
     is_vip = _eshte_vip(email)
     portofoli = 0.0
     fundit = None
@@ -1203,42 +1203,45 @@ def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float, paguaj: bool =
     except Exception:
         pass
 
-    # 1) VIP me falasin e ditës ende të papërdorur → gjenerim FALAS
-    if is_vip and fundit != dt:
+    # 1) VIP → akses i PAKUFIZUAR, falas (sa here te doje, cdo dite)
+    if is_vip:
         return {"ok": True, "is_vip": True, "falas": True,
                 "portofoli": portofoli, "cmimi": cmimi, "arsye": ""}
 
-    # 2) Duhet pagesë (jo-VIP, OSE VIP që e ka përdorur falasin sot) — pa kredite të mjaftueshme
+    # 2) Jo-VIP qe KA PAGUAR tashme sot → akses i pakufizuar sot, FALAS
+    if fundit == dt:
+        return {"ok": True, "is_vip": False, "falas": True,
+                "portofoli": portofoli, "cmimi": cmimi, "arsye": ""}
+
+    # 3) Jo-VIP, s'ka paguar sot, pa kredite te mjaftueshme
     if portofoli < cmimi:
         return {"ok": False, "is_vip": False, "falas": False, "mungojne_kredite": True,
                 "portofoli": portofoli, "cmimi": cmimi,
-                "arsye": f"{emri} kushton ${int(cmimi)}. Nuk ke kredite të mjaftueshme — mbush portofolin për të vazhduar."}
+                "arsye": f"{emri}: akses i pakufizuar për sot ${int(cmimi)}. Nuk ke kredite të mjaftueshme — mbush portofolin."}
 
-    # 3) Ka kredite por s'ka konfirmuar ende → kërko konfirmim (s'gjeneron, s'heq para)
+    # 4) Jo-VIP, ka kredite, s'ka konfirmuar → kerko konfirmim (1 here, pastaj pa fund)
     if not paguaj:
-        msg = (f"E përdore {emri} falas sot. Gjenero përsëri për ${int(cmimi)}?"
-               if is_vip else f"{emri} kushton ${int(cmimi)}.")
         return {"ok": False, "is_vip": False, "falas": False, "kerko_pagese": True,
-                "portofoli": portofoli, "cmimi": cmimi, "arsye": msg}
+                "portofoli": portofoli, "cmimi": cmimi,
+                "arsye": f"Paguaj ${int(cmimi)} një herë → gjenero PA FUND sot."}
 
-    # 4) Konfirmuar + ka kredite → vazhdo me pagesë
+    # 5) Konfirmuar + ka kredite → vazhdo (paguhet 1 here sot)
     return {"ok": True, "is_vip": False, "falas": False,
             "portofoli": portofoli, "cmimi": cmimi, "arsye": ""}
 
-def _konfirmo_perdorimin(email: str, produkt: str, cmimi: float, is_vip: bool, portofoli: float):
+def _konfirmo_perdorimin(email: str, produkt: str, cmimi: float, is_vip: bool, portofoli: float, falas: bool = False):
     """THIRRET VETËM PAS gjenerimit të suksesshëm.
-    VIP → shëno datën e sotme (konsumon falasin e ditës). Jo-VIP → zbrit çmimin nga portofoli.
-    Kthen portofolin e ri."""
+    VIP ose 'falas' (pagoi tashme sot) → s'ndryshon asgjë (akses i pakufizuar).
+    Jo-VIP hera e PARE sot → zbrit çmimin DHE shëno datën (day-pass → pa fund sot)."""
     fusha = "vipcombo_fundit" if produkt == "vipcombo" else "generate_fundit"
-    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    dt = _data_lokale(0)
     try:
-        if is_vip:
-            requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
-                           headers=SUPABASE_SERVICE_HEADERS, json={fusha: dt}, timeout=8)
-            return portofoli
+        if is_vip or falas:
+            return portofoli   # akses i pakufizuar — pa pagese te dyte
         ri = round(portofoli - cmimi, 2)
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
-                       headers=SUPABASE_SERVICE_HEADERS, json={"portofoli": ri}, timeout=8)
+                       headers=SUPABASE_SERVICE_HEADERS,
+                       json={"portofoli": ri, fusha: dt}, timeout=8)
         return ri
     except Exception:
         return portofoli
@@ -1460,6 +1463,32 @@ def skedina_ime_lista(email: str = ""):
     return {"sukses": True, "skedinat": rows}
 
 
+@app.post("/api/skedina/ruaj")
+def ruaj_skedinen_e_zgjedhur(payload: dict):
+    """Ruan MANUALISHT skedinen/combo-n qe perdoruesi ZGJEDH te luaje -> Bileta Ime."""
+    email = (payload.get("email") or "").lower().strip()
+    tipi = payload.get("tipi")
+    permb = payload.get("permbajtja") or {}
+    if not email or tipi not in ("ticket", "combo") or not permb:
+        return {"sukses": False, "arsye": "Të dhëna mungojnë."}
+    if tipi == "ticket":
+        nen = _nenshkrim_ticket(permb)
+    else:
+        nen = _nenshkrim_combo(permb.get("ndeshjet") or [], permb.get("nr", 2), permb.get("rez", 4))
+    # mos ruaj dy here te njejten
+    try:
+        ek = requests.get(f"{SKEDINA_IME_URL}?email=eq.{email}&nenshkrim=eq.{nen}&select=id&limit=1",
+                          headers=SUPABASE_SERVICE_HEADERS, timeout=6)
+        if ek.status_code == 200 and ek.json():
+            return {"sukses": True, "mesazhi": "Tashmë e ruajtur", "dyfishim": True}
+    except Exception:
+        pass
+    if "tipi" not in permb:
+        permb = dict(permb); permb["tipi"] = tipi
+    _ruaj_skedine_ime(email, tipi, permb, nen)
+    return {"sukses": True, "mesazhi": "U ruajt te Bileta Ime ✓"}
+
+
 @app.get("/api/gjenero")
 def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0):
     if not email or not email.strip():
@@ -1498,12 +1527,11 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         rifilluar = True
     if not sked:
         return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
-    _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"])
+    _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
     _ruaj_given_ids(email, "generate", [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
-    _permb_t = dict(sked); _permb_t["tipi"] = "ticket"
-    _ruaj_skedine_ime(email, "ticket", _permb_t, _nenshkrim_ticket(sked))
     return {"sukses": True, "skedina": sked, "rifilluar": rifilluar,
-            "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"]), "cmimi": CMIM_GENERATE,
+            "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
+            "cmimi": CMIM_GENERATE,
             "kerkesa": {"nr_min": nr, "nr_max": nr_max, "koef_target": koef, "tregjet": grupet}}
 
 
@@ -2124,14 +2152,13 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     for n in ndeshjet:
         mbulim *= sum(x["prob"] for x in n["rezultatet"])
     _ruaj_vip_combo(dt, nr, rez, ndeshjet)
-    _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"])
+    _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
     _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
-    _permb_c = {"tipi": "combo", "nr": nr, "rez": rez, "ndeshjet": ndeshjet, "kombinimet": kombinimet}
-    _ruaj_skedine_ime(email, "combo", _permb_c, _nenshkrim_combo(ndeshjet, nr, rez))
     return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez, "rifilluar": rifilluar,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet,
             "nr_kombinimesh": len(kombinimet),
-            "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"]), "cmimi": CMIM_VIPCOMBO,
+            "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
+            "cmimi": CMIM_VIPCOMBO,
             "mbulimi_perqind": round(mbulim * 100, 1)}
 
 
