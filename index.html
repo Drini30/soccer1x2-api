@@ -464,7 +464,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625L) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625M) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -1032,6 +1032,76 @@ if (!gjuhaAktuale) {
 
         const LIGAT_KRYESORE_SORT = ["World Cup", "Euro Championship", "Champions League", "Europa League", "Premier League", "La Liga", "Serie A", "Bundesliga", "Ligue 1", "Friendly", "Nations League", "Superliga"];
 
+        // ===================== LEGAL GATE (njoftim paraprak ligjor) =====================
+        const legalGate = {
+            en: {
+                title: "IMPORTANT LEGAL NOTICE",
+                intro: "Welcome to Soccer1X2 PRO. Before you enter, please read and acknowledge the following terms:",
+                p1: "We are strictly an independent sports data analytics platform. We provide advanced mathematical models, statistical probabilities, and predictive algorithms.",
+                p2: "We are NOT a bookmaker. We do NOT accept bets. We do NOT operate a gambling website.",
+                p3: "We don't push you to risk. But when you do, our data is here to help maximize your returns. All information provided is for analytical purposes only. By proceeding, you confirm you are 18+ and take full responsibility for your financial decisions.",
+                btn: "I UNDERSTAND & AGREE"
+            },
+            sq: {
+                title: "NJOFTIM I RËNDËSISHËM LIGJOR",
+                intro: "Mirë se vini në Soccer1X2 PRO. Para se të hyni, ju lutemi lexoni dhe pranoni kushtet e mëposhtme:",
+                p1: "Ne jemi rreptësisht një platformë e pavarur analizash të dhënash sportive. Ofrojmë modele matematikore të avancuara, probabilitete statistikore dhe algoritme parashikuese.",
+                p2: "Ne NUK jemi bukmejker. Ne NUK pranojmë baste. Ne NUK operojmë faqe bixhozi.",
+                p3: "Ne nuk ju shtyjmë drejt rrezikut. Por kur ju vendosni, të dhënat tona janë këtu për t'ju ndihmuar të maksimizoni kthimet tuaja. Të gjitha informacionet ofrohen vetëm për qëllime analitike. Duke vazhduar, ju konfirmoni se jeni 18+ dhe merrni përgjegjësi të plotë për vendimet tuaja financiare.",
+                btn: "E KUPTOJ DHE PRANOJ"
+            },
+            de: {
+                title: "WICHTIGER RECHTLICHER HINWEIS",
+                intro: "Willkommen bei Soccer1X2 PRO. Bevor Sie eintreten, lesen und bestätigen Sie bitte die folgenden Bedingungen:",
+                p1: "Wir sind ausschließlich eine unabhängige Plattform für Sportdatenanalyse. Wir bieten fortschrittliche mathematische Modelle, statistische Wahrscheinlichkeiten und Vorhersagealgorithmen.",
+                p2: "Wir sind KEIN Buchmacher. Wir nehmen KEINE Wetten an. Wir betreiben KEINE Glücksspielseite.",
+                p3: "Wir drängen Sie nicht zum Risiko. Aber wenn Sie es eingehen, helfen Ihnen unsere Daten, Ihre Erträge zu maximieren. Alle bereitgestellten Informationen dienen ausschließlich Analysezwecken. Indem Sie fortfahren, bestätigen Sie, dass Sie 18+ sind und die volle Verantwortung für Ihre finanziellen Entscheidungen übernehmen.",
+                btn: "ICH VERSTEHE UND STIMME ZU"
+            },
+            fr: {
+                title: "AVIS JURIDIQUE IMPORTANT",
+                intro: "Bienvenue sur Soccer1X2 PRO. Avant d'entrer, veuillez lire et accepter les conditions suivantes :",
+                p1: "Nous sommes strictement une plateforme indépendante d'analyse de données sportives. Nous fournissons des modèles mathématiques avancés, des probabilités statistiques et des algorithmes prédictifs.",
+                p2: "Nous ne sommes PAS un bookmaker. Nous n'acceptons PAS de paris. Nous n'exploitons PAS de site de jeux d'argent.",
+                p3: "Nous ne vous poussons pas au risque. Mais lorsque vous le prenez, nos données sont là pour vous aider à maximiser vos gains. Toutes les informations fournies sont uniquement à des fins analytiques. En continuant, vous confirmez avoir 18 ans ou plus et assumer l'entière responsabilité de vos décisions financières.",
+                btn: "JE COMPRENDS ET J'ACCEPTE"
+            },
+            it: {
+                title: "AVVISO LEGALE IMPORTANTE",
+                intro: "Benvenuto su Soccer1X2 PRO. Prima di entrare, leggi e accetta i seguenti termini:",
+                p1: "Siamo rigorosamente una piattaforma indipendente di analisi dei dati sportivi. Forniamo modelli matematici avanzati, probabilità statistiche e algoritmi predittivi.",
+                p2: "NON siamo un bookmaker. NON accettiamo scommesse. NON gestiamo un sito di gioco d'azzardo.",
+                p3: "Non ti spingiamo al rischio. Ma quando lo corri, i nostri dati sono qui per aiutarti a massimizzare i tuoi guadagni. Tutte le informazioni fornite sono solo a scopo analitico. Procedendo, confermi di avere 18+ anni e di assumerti la piena responsabilità delle tue decisioni finanziarie.",
+                btn: "HO CAPITO E ACCETTO"
+            }
+        };
+        function shfaqLegalGate(){
+            try { if (localStorage.getItem('s1x2_legal_ok') === '1') return; } catch(e){}
+            var L = (typeof legalGate !== 'undefined' && legalGate[gjuhaAktuale]) ? legalGate[gjuhaAktuale] : legalGate.en;
+            var ov = document.createElement('div');
+            ov.id = 'legalGate';
+            ov.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(8,15,30,0.97);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
+            ov.innerHTML =
+                '<div style="max-width:520px;width:100%;max-height:90vh;overflow-y:auto;background:#0d1b33;border:1px solid rgba(212,175,55,0.35);border-radius:14px;padding:26px 24px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">'
+                + '<div style="text-align:center;font-size:34px;margin-bottom:6px;">⚖️</div>'
+                + '<h2 style="text-align:center;color:#d4af37;font-size:18px;font-weight:900;letter-spacing:.5px;margin:0 0 14px;">' + L.title + '</h2>'
+                + '<p style="color:#c9d1d9;font-size:13px;line-height:1.6;margin:0 0 12px;">' + L.intro + '</p>'
+                + '<p style="color:#c9d1d9;font-size:13px;line-height:1.6;margin:0 0 12px;">' + L.p1 + '</p>'
+                + '<p style="color:#ff9b9b;font-size:13px;line-height:1.55;font-weight:700;background:rgba(248,81,73,0.08);border:1px solid rgba(248,81,73,0.3);border-radius:8px;padding:10px 12px;margin:0 0 12px;">' + L.p2 + '</p>'
+                + '<p style="color:#8ba898;font-size:12.5px;line-height:1.6;margin:0 0 18px;">' + L.p3 + '</p>'
+                + '<button onclick="pranoLegal()" style="width:100%;background:#d4af37;color:#0a162e;border:none;padding:13px;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;letter-spacing:.3px;">' + L.btn + '</button>'
+                + '</div>';
+            document.body.appendChild(ov);
+            document.body.style.overflow = 'hidden';
+        }
+        function pranoLegal(){
+            try { localStorage.setItem('s1x2_legal_ok', '1'); } catch(e){}
+            var ov = document.getElementById('legalGate');
+            if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+            document.body.style.overflow = '';
+        }
+        if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', shfaqLegalGate); } else { shfaqLegalGate(); }
+
         const ui = {
             en: {
                 loading: "Loading<span class='dot-anim'></span>", empty: "No matches available.", search: "Search team...", all: "All Matches", live: "LIVE", ticket: "My Ticket", historyTab: "📊 PPM History", analysis: "Analysis", ppm: "Pay Per Match", creditBack: "100% CREDIT BACK",
@@ -1596,7 +1666,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625L','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625M','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -3022,7 +3092,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625L</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625M</div>
     <script>
     (function(){
       function init(){
