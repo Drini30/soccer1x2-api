@@ -464,7 +464,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625K) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625L) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -1596,7 +1596,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625K','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625L','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2304,7 +2304,7 @@ if (!gjuhaAktuale) {
                 const d = await r.json();
                 if (d.unlocked) {
                     const s = d.skedina_ditore || {};
-                    let rows = (s.ndeshjet||[]).map(n => `<div class="prod-leg"><span class="prod-leg-match">${n.liga ? `<span style="font-size:10px;color:#8ba898;">${n.liga}</span><br>` : ''}${n.ndeshja}${n.parashikimi ? `<br><span style="font-size:11px;color:#3fb950;font-weight:bold;">🎯 ${ui[gjuhaAktuale].result}: ${n.parashikimi}</span>` : ''}</span><span class="prod-leg-pick">${n.tregu} <b>@${n.koef}</b></span></div>`).join('');
+                    let rows = (s.ndeshjet||[]).map(n => `<div class="prod-leg"><span class="prod-leg-match">${n.liga ? `<span style="font-size:10px;color:#8ba898;">${n.liga}</span><br>` : ''}${n.ndeshja}${n.parashikimi ? `<br><span style="font-size:11px;color:#3fb950;font-weight:bold;">🎯 ${ui[gjuhaAktuale].result}: ${n.parashikimi}</span>` : ''}</span><span class="prod-leg-pick">${_ppTreg(n.tregu)} <b>@${n.koef}</b></span></div>`).join('');
                     _modalHap('🎯 ' + T.prodSkedina, '#d4af37', `<div class="prod-slip">${rows}<div class="prod-slip-foot">${T.totalKoef}: <b>${s.koef_total}</b></div></div><p class="prod-note">${T.skedinaNote}</p>`);
                 } else {
                     _modalHap('🎯 ' + T.prodSkedina, '#d4af37', _lockedHtml(d, 'skedina'));
@@ -2491,6 +2491,9 @@ if (!gjuhaAktuale) {
                         <button class="gen-opt active" data-g="ou" onclick="genToggle(this)">Over/Under</button>
                         <button class="gen-opt active" data-g="gg" onclick="genToggle(this)">GG/NG</button>
                         <button class="gen-opt" data-g="dc" onclick="genToggle(this)">${T.mktDC}</button>
+                        <button class="gen-opt" data-g="cs" onclick="genToggle(this)">${T.mktCS}</button>
+                        <button class="gen-opt" data-g="htft" onclick="genToggle(this)">HT/FT</button>
+                        <button class="gen-opt" data-g="ah" onclick="genToggle(this)">AH</button>
                     </div>
                     <label class="gen-label">${_ux.genLeague}</label>
                     <select id="genLiga" class="gen-select">${ligaOpts}</select>
@@ -2501,6 +2504,12 @@ if (!gjuhaAktuale) {
             updateKoefGradient();
         }
 
+        function _ppTreg(m){
+            if(!m) return m;
+            var h = {sq:'Vendas',en:'Home',de:'Heim',fr:'Dom.',it:'Casa'}[gjuhaAktuale]||'Home';
+            var a = {sq:'Mysafir',en:'Away',de:'Ausw.',fr:'Ext.',it:'Trasf.'}[gjuhaAktuale]||'Away';
+            return String(m).replace(/\bHome\b/g,h).replace(/\bAway\b/g,a);
+        }
         async function gjeneroSkedine(paguaj) {
             paguaj = paguaj || 0;
             const T = _T();
@@ -2525,7 +2534,7 @@ if (!gjuhaAktuale) {
                 }
                 if (d.u_pagua && typeof d.portofoli!=='undefined') { perdoruesi.portofoli=d.portofoli; }
                 const s = d.skedina; _genTicketLast = s;
-                let rows = (s.ndeshjet||[]).map(n => `<div class="prod-leg"><span class="prod-leg-match">${n.liga ? `<span style="font-size:10px;color:#8ba898;">${n.liga}</span><br>` : ''}${n.ndeshja}${n.parashikimi ? `<br><span style="font-size:11px;color:#3fb950;font-weight:bold;">🎯 ${ui[gjuhaAktuale].result}: ${n.parashikimi}</span>` : ''}</span><span class="prod-leg-pick">${n.tregu} <b>@${n.koef}</b></span></div>`).join('');
+                let rows = (s.ndeshjet||[]).map(n => `<div class="prod-leg"><span class="prod-leg-match">${n.liga ? `<span style="font-size:10px;color:#8ba898;">${n.liga}</span><br>` : ''}${n.ndeshja}${n.parashikimi ? `<br><span style="font-size:11px;color:#3fb950;font-weight:bold;">🎯 ${ui[gjuhaAktuale].result}: ${n.parashikimi}</span>` : ''}</span><span class="prod-leg-pick">${_ppTreg(n.tregu)} <b>@${n.koef}</b></span></div>`).join('');
                 var pp=Math.round((s.prob||0)*100);
                 var pc = pp>=25 ? '#3fb950' : (pp>=12 ? '#f2cc60' : '#f85149');
                 var paid = d.u_pagua ? `<div style="text-align:center;color:#3fb950;font-size:12px;font-weight:bold;margin-bottom:8px;">✓ U pagua $${d.cmimi||10} · bilanci: $${d.portofoli||0}</div>` : '';
@@ -3013,7 +3022,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625K</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625L</div>
     <script>
     (function(){
       function init(){

@@ -764,6 +764,12 @@ def _grupi_tregut(m):
         return "ou"
     if m in ("GG", "NG"):
         return "btts"
+    if m.startswith("HT/FT"):
+        return "htft"
+    if m.startswith("AH "):
+        return "ah"
+    if m.startswith("CS "):
+        return "cs"
     return "tjeter"
 
 
@@ -1108,11 +1114,29 @@ GEN_LEG_FLOOR  = 0.25     # prob min për një leg të vetëm (përjashton baste
 GEN_DOPT_FLOOR = 0.18     # prob min për një double-option (dy tregje bashkë)
 
 
+def _prob_ah(dist, side, hcap, tot=0.0):
+    """Probabiliteti që favoriti mbulon handicap-in (nga shpërndarja e skoreve).
+    side='Home'/'Away'; hcap pozitiv (p.sh. 1.5 -> favoriti -1.5)."""
+    s = 0.0
+    for sc, freq in dist.items():
+        try:
+            h, a = map(int, str(sc).split("-"))
+        except Exception:
+            continue
+        marg = (h - a) if side == "Home" else (a - h)
+        if marg - hcap > 0:
+            s += float(freq or 0)
+    if tot and tot > 0:
+        s = s / tot
+    return round(s, 4)
+
+
 def _legs_gjenerator(p, grupet_lejuara):
     """Legs të PËRPUTHURA me parashikimin: VETËM ana e favorizuar e çdo tregu.
     Kurrë kundër favoritit (s'luan 'X2' te një favorit vendas, etj.)."""
     tregjet = p.get("tregjet") or {}
     odds = p.get("odds_reale") or {}
+    dist_gola = p.get("dist_gola") or {}
 
     def P(m):
         try:
@@ -1166,6 +1190,53 @@ def _legs_gjenerator(p, grupet_lejuara):
                 od_real = None
         od = od_real if (od_real and od_real > 1) else round(1.0 / prob, 2)
         legs.append({"market": m, "prob": prob, "koef": round(od, 2), "grup": _grupi_tregut(m)})
+
+    # ── TREGJE TË REJA: Rezultati i Saktë, HT/FT, AH ──
+    _dist_tot = sum(float(v or 0) for v in dist_gola.values()) if dist_gola else 0.0
+
+    # Rezultati i Saktë (CS)
+    if "cs" in grupet_lejuara:
+        sc = (p.get("rezultati_sakt") or "").strip()
+        if sc and "-" in sc:
+            prob_cs = float(dist_gola.get(sc, 0) or 0)
+            if _dist_tot > 0:
+                prob_cs = prob_cs / _dist_tot
+            if prob_cs > 0:
+                cs_odds = odds.get("CS") or {}
+                od_real = cs_odds.get(sc)
+                try:
+                    od_real = float(od_real) if od_real else None
+                except Exception:
+                    od_real = None
+                od = od_real if (od_real and od_real > 1) else round(1.0 / max(prob_cs, 0.001), 2)
+                legs.append({"market": "CS " + sc, "prob": round(prob_cs, 4), "koef": round(od, 2), "grup": "cs"})
+
+    # HT/FT — zgjedh qelizën më të mundshme (9 rezultatet)
+    if "htft" in grupet_lejuara:
+        htft = tregjet.get("ht_ft") or {}
+        if isinstance(htft, dict) and htft:
+            best_k = max(htft, key=lambda k: float(htft.get(k, 0) or 0))
+            prob_hf = float(htft.get(best_k, 0) or 0)
+            if prob_hf > 0:
+                od = round(1.0 / prob_hf, 2)
+                legs.append({"market": "HT/FT " + best_k, "prob": round(prob_hf, 4), "koef": round(od, 2), "grup": "htft"})
+
+    # AH — vetëm te favoriti (jo barazim), linja sipas margjinës
+    if "ah" in grupet_lejuara and fav in ("1", "2") and dist_gola:
+        ah_odds = odds.get("AH") or {}
+        side = "Home" if fav == "1" else "Away"
+        hcap = 1.5 if _dominim else 0.5
+        prob_ah = _prob_ah(dist_gola, side, hcap, _dist_tot)
+        if prob_ah > 0:
+            line_key = side + " -" + str(hcap)
+            od_real = ah_odds.get(line_key)
+            try:
+                od_real = float(od_real) if od_real else None
+            except Exception:
+                od_real = None
+            od = od_real if (od_real and od_real > 1) else round(1.0 / prob_ah, 2)
+            legs.append({"market": "AH " + side + " -" + str(hcap), "prob": round(prob_ah, 4), "koef": round(od, 2), "grup": "ah"})
+
     return legs
 
 
@@ -1181,6 +1252,8 @@ def _opsionet_ndeshje(p, grupet_lejuara):
             a, b = legs[i], legs[j]
             if a["grup"] == b["grup"]:
                 continue   # vetëm cross-group (rezultat + O/U + GG)
+            if a["grup"] in ("cs", "htft", "ah") or b["grup"] in ("cs", "htft", "ah"):
+                continue   # CS/HT-FT/AH korrelohen me 1X2/O/U -> vetëm single-leg (jo combo i fryrë)
             jp = _joint_prob(dist, [a["market"], b["market"]])
             if jp is None:
                 jp = a["prob"] * b["prob"]
@@ -1602,7 +1675,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     nr_max = max(nr, min(15, nr_max))
     koef = max(2.0, min(100.0, float(koef)))
     grupet = [g.strip().lower() for g in tregjet.split(",") if g.strip()]
-    grupet = [g for g in grupet if g in ("1x2", "dc", "ou", "gg")]   # PA rezultat të saktë
+    grupet = [g for g in grupet if g in ("1x2", "dc", "ou", "gg", "cs", "htft", "ah")]
     if not grupet:
         grupet = ["1x2", "ou", "gg"]
 
