@@ -1976,6 +1976,61 @@ VIP_COMBO_HIST_URL = f"{SUPABASE_BASE}/rest/v1/vip_combo_historik"
 
 # ===================== PROVABLY FAIR (commit-reveal) =====================
 PF_URL = f"{SUPABASE_BASE}/rest/v1/provably_fair"
+ARKIV_URL = f"{SUPABASE_BASE}/rest/v1/arkiv_rezultatesh"
+
+
+def _shenja_1x2(sc):
+    """1 / X / 2 nga një skor 'h-a' (ose None)."""
+    p = _parse_score(sc)
+    if not p:
+        return None
+    return "1" if p[0] > p[1] else ("2" if p[0] < p[1] else "X")
+
+
+def _num_opt(x):
+    try:
+        v = float(x)
+        return v if v == v else None   # filtro NaN
+    except Exception:
+        return None
+
+
+def _arkivo_ndeshje(pred, ht_str=None):
+    """Arkivon NJË ndeshje të mbaruar te arkiv_rezultatesh. Idempotent (match_id UNIQUE)."""
+    mid = str(pred.get("id") or "")
+    ft = pred.get("rezultati")
+    if not mid or not ft:
+        return
+    par = pred.get("rezultati_sakt") or ""
+    treg = pred.get("tregjet") or {}
+    rec = {
+        "match_id":     mid,
+        "ndeshja":      pred.get("ndeshja"),
+        "ekipi_1":      pred.get("ekipi_1"),
+        "ekipi_2":      pred.get("ekipi_2"),
+        "liga":         pred.get("liga_emri"),
+        "data":         pred.get("data"),
+        "ora":          pred.get("ora_sakte") or pred.get("ora"),
+        "koef_1":       _num_opt(pred.get("koef_1")),
+        "koef_x":       _num_opt(pred.get("koef_x")),
+        "koef_2":       _num_opt(pred.get("koef_2")),
+        "odds_reale":   pred.get("odds_reale") or {},
+        "parashikimi":  par,
+        "prob_1":       _num_opt(treg.get("1")),
+        "prob_x":       _num_opt(treg.get("X")),
+        "prob_2":       _num_opt(treg.get("2")),
+        "best_bet":     pred.get("best_bet") or {},
+        "rezultati_ht": ht_str,
+        "rezultati_ft": ft,
+        "goditi_1x2":   (_shenja_1x2(par) == _shenja_1x2(ft)) if (par and _shenja_1x2(par) and _shenja_1x2(ft)) else None,
+        "goditi_skor":  (_parse_score(par) == _parse_score(ft)) if (par and _parse_score(par) and _parse_score(ft)) else None,
+    }
+    try:
+        requests.post(ARKIV_URL,
+                      headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=ignore-duplicates"},
+                      json=rec, timeout=8)
+    except Exception:
+        pass
 
 def _pf_hash(ndeshja, parashikimi, seed):
     """Hash publik = sha256(ndeshja | parashikimi | server_seed)."""
@@ -3812,6 +3867,54 @@ def keep_alive_ping():
 # Lexon nga predictions ndeshjet që ende NUK kanë mbaruar,
 # kontrollon te API-Sports dhe i përditëson me rezultatin final.
 
+@app.get("/api/arkiv")
+def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0):
+    """Lexon arkivin e rezultateve (historik + eksport për kalibrim/trajnim)."""
+    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.desc&limit={max(1, min(limit, 2000))}"
+    if liga.strip():
+        q += f"&liga=eq.{requests.utils.quote(liga.strip(), safe='')}"
+    if vetem_goditje:
+        q += "&goditi_1x2=is.true"
+    try:
+        r = requests.get(q, headers=SUPABASE_SERVICE_HEADERS, timeout=12)
+        return r.json() if r.status_code == 200 else []
+    except Exception:
+        return []
+
+
+@app.get("/api/arkiv/rindertimi")
+def rindertimi_arkivit():
+    """Backfill një-herësh: arkivon ndeshjet e mbaruara që janë te predictions (HT nga API)."""
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,rezultati"
+            f"&statusi=in.(FT,AET,PEN,AWD,WO)&rezultati=not.is.null&order=data.desc&limit=2000",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=15)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    ht_map = {}
+    ids = [str(p.get("id")) for p in rows if p.get("id")]
+    for i in range(0, len(ids), 20):
+        batch = ids[i:i + 20]
+        try:
+            api_res = requests.get("https://v3.football.api-sports.io/fixtures",
+                                   headers=HEADERS, params={"ids": "-".join(batch)}, timeout=12)
+            for fx in api_res.json().get("response", []):
+                fid = str(fx["fixture"]["id"])
+                ht = (fx.get("score") or {}).get("halftime") or {}
+                if ht.get("home") is not None:
+                    ht_map[fid] = f"{ht.get('home')} - {ht.get('away')}"
+        except Exception:
+            pass
+    n = 0
+    for p in rows:
+        _arkivo_ndeshje(p, ht_map.get(str(p.get("id"))))
+        n += 1
+    return {"sukses": True, "arkivuara": n, "me_ht": len(ht_map)}
+
+
 @app.get("/api/refresh_results")
 def perditeso_rezultatet_perfunduara():
     """
@@ -3821,9 +3924,11 @@ def perditeso_rezultatet_perfunduara():
       Interval: 30 minuta (ose 60 min nëse ke API limit)
     """
     try:
-        # Merr të gjitha ndeshjet që nuk kanë mbaruar
+        # Merr të gjitha ndeshjet që nuk kanë mbaruar (me fushat për arkivim)
         res = requests.get(
-            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi&statusi=not.in.(FT,AET,PEN,AWD,WO)",
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet"
+            f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS,
             timeout=10
         )
@@ -3834,6 +3939,7 @@ def perditeso_rezultatet_perfunduara():
         if not ndeshjet_pa_mbaruar:
             return {"sukses": True, "perditesuara": 0, "mesazhi": "Të gjitha ndeshjet janë të përditësuara."}
 
+        preds_by_id = {str(p.get("id")): p for p in ndeshjet_pa_mbaruar}
         u_perditesuan = 0
         ende_aktive   = 0
         deshtuan      = 0
@@ -3883,6 +3989,17 @@ def perditeso_rezultatet_perfunduara():
                         u_perditesuan += 1
                     except:
                         deshtuan += 1
+                    # ── ARKIVO (përfshirë HT nga API) ──
+                    try:
+                        _ht = (fx.get("score") or {}).get("halftime") or {}
+                        _hth, _hta = _ht.get("home"), _ht.get("away")
+                        _ht_str = f"{_hth} - {_hta}" if _hth is not None else None
+                        _pred = preds_by_id.get(fix_id)
+                        if _pred is not None:
+                            _pred["rezultati"] = rezultati_str
+                            _arkivo_ndeshje(_pred, _ht_str)
+                    except Exception:
+                        pass
                 else:
                     ende_aktive += 1
 
