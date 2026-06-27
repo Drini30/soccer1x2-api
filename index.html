@@ -1989,6 +1989,14 @@ if (!gjuhaAktuale) {
                 </div>`;
         }
 
+        const uiVIP = {
+          en: {contains:"What's included", access:"Access", accessList:"All leagues · all markets · exact-score predictions · premium picks · provably-fair hash verification", howWorks:"How it works", howList:"$160 / month · auto-renews every 30 days · generate your own tickets anytime, every day — with the best results", rights:"Your rights", rightsCancel:"Cancel anytime — no questions asked", rightsPrivacy:"Your data is protected and private"},
+          sq: {contains:"Çfarë përmban", access:"Aksesi", accessList:"Të gjitha ligat · të gjitha tregjet · parashikime me skor të saktë · parashikime premium · verifikim hash provably-fair", howWorks:"Si funksionon", howList:"$160 / muaj · rinovohet automatikisht çdo 30 ditë · gjenero skedinat e tua në çdo kohë, çdo ditë — me rezultatet më të mira", rights:"Të drejtat e tua", rightsCancel:"Anulo në çdo kohë — pa pyetje", rightsPrivacy:"Të dhënat e tua janë të mbrojtura dhe private"},
+          de: {contains:"Enthalten", access:"Zugang", accessList:"Alle Ligen · alle Märkte · Vorhersagen mit genauem Ergebnis · Premium-Tipps · Provably-Fair-Hash-Verifizierung", howWorks:"So funktioniert es", howList:"$160 / Monat · verlängert sich alle 30 Tage · erstelle deine eigenen Tipps jederzeit, jeden Tag — mit den besten Ergebnissen", rights:"Deine Rechte", rightsCancel:"Jederzeit kündbar — ohne Nachfragen", rightsPrivacy:"Deine Daten sind geschützt und privat"},
+          fr: {contains:"Ce qui est inclus", access:"Accès", accessList:"Toutes les ligues · tous les marchés · pronostics au score exact · pronostics premium · vérification hash provably-fair", howWorks:"Comment ça marche", howList:"160 $ / mois · renouvellement tous les 30 jours · générez vos propres tickets à tout moment, chaque jour — avec les meilleurs résultats", rights:"Vos droits", rightsCancel:"Annulez à tout moment — sans condition", rightsPrivacy:"Vos données sont protégées et privées"},
+          it: {contains:"Cosa include", access:"Accesso", accessList:"Tutte le leghe · tutti i mercati · pronostici sul risultato esatto · pronostici premium · verifica hash provably-fair", howWorks:"Come funziona", howList:"$160 / mese · si rinnova ogni 30 giorni · genera le tue schedine quando vuoi, ogni giorno — con i migliori risultati", rights:"I tuoi diritti", rightsCancel:"Annulla quando vuoi — senza domande", rightsPrivacy:"I tuoi dati sono protetti e privati"}
+        };
+
         function hapVipAbonim() {
             if(!isLogged) { hapAuthModal('login'); return; }
             const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
@@ -1998,26 +2006,38 @@ if (!gjuhaAktuale) {
             document.getElementById('modalTitle').style.color = "#00e5ff";
             
             if(perdoruesi.isVip) {
-                let ditaSot = new Date().getDay();
-                if (ditaSot === 5 || ditaSot === 6 || ditaSot === 0) {
-                    document.getElementById('modalBody').innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#00e5ff; font-size:15px;"><i class="fa-solid fa-circle-notch fa-spin"></i> ${_ux.analyzing}</div></div>`;
-                    
-                    fetch('https://soccer1x2-api.onrender.com/api/vip_weekend')
-                    .then(res => res.json())
-                    .then(data => {
-                        if(data.is_ready === false || !data.skedina || data.skedina.length === 0) { shfaqMbrojtjenEKapitalit(); } 
-                        else {
-                            let totalOdds = 1.0; data.skedina.forEach(nd => { totalOdds *= parseFloat(nd.koef_rez_sakt); });
-                            if(data.skedina.length < 2 || totalOdds < 10.0) { shfaqMbrojtjenEKapitalit(); } 
-                            else {
-                                localStorage.setItem('skedina_pare_kete_jave', 'true'); kontrolloNjoftimet(); 
-                                document.getElementById('modalBody').innerHTML = gjeneroSkedinenVip(data.skedina, totalOdds);
-                            }
-                        }
-                    }).catch(err => { document.getElementById('modalBody').innerHTML = `<div style="text-align:center; color:#ff7b72;">${_ux.connFailed}</div>`; });
-                } else {
-                    document.getElementById('modalBody').innerHTML = `<div style="text-align:center; padding: 20px;"><i class="fa-solid fa-lock" style="font-size:40px; color:#da3633; margin-bottom:15px;"></i><h3 style="color:#da3633; margin-top:0;">${_ux.dataLocked}</h3><div style="color:#c9d1d9; font-size:14px; margin-bottom: 20px;">${_ux.premiumFridayOnly}</div><h4 style="color:#f2cc60; margin:0;">${_ux.comeBackFriday}</h4></div>`;
-                }
+                const V = uiVIP[gjuhaAktuale] || uiVIP.en;
+                let skad = "";
+                if(perdoruesi.vip_skadon_me){ try{ skad = new Date(perdoruesi.vip_skadon_me).toLocaleDateString(); }catch(e){ skad = perdoruesi.vip_skadon_me; } }
+                let statusRinovimi = perdoruesi.auto_rinovim ? "<span style='color:#3fb950;'>"+_ux.renewActive+"</span>" : "<span style='color:#da3633;'>"+_ux.renewCancelled+"</span>";
+                let btnCancel = perdoruesi.auto_rinovim ? `<button class="filter-btn active" style="background:#da3633; color:#fff; border:none; width:100%; margin-top:14px; padding:8px; font-size:12px;" onclick="anuloAbonimin()">${_ux.cancelSub}</button>` : "";
+                document.getElementById('modalBody').innerHTML = `
+                    <div style="text-align:left;">
+                        <div class="m-darkbox" style="padding:14px; border-radius:8px; margin-bottom:14px; border:1px solid #00e5ff;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="color:#00e5ff; font-weight:900; font-size:13px;">💎 ${_ux.vipSubLabel}</span>${statusRinovimi}
+                            </div>
+                            ${skad ? `<div style="color:#c9d1d9; font-size:12.5px; margin-top:6px;">${_ux.expiresOn} <b>${skad}</b></div>` : ''}
+                        </div>
+                        <div style="font-weight:800; color:#f2cc60; font-size:12px; margin-bottom:6px;">🎁 ${V.contains}</div>
+                        <ul class="m-lighttext" style="text-align:left; font-size:12.5px; line-height:1.9; list-style:none; padding:0; margin:0 0 14px;">
+                            <li>🎫 ${ui[gjuhaAktuale].vipInfo1}</li>
+                            <li>⚙️ ${ui[gjuhaAktuale].vipInfo2}</li>
+                            <li>🛟 ${ui[gjuhaAktuale].vipInfo3}</li>
+                            <li>🎯 ${ui[gjuhaAktuale].vipInfo4}</li>
+                        </ul>
+                        <div style="font-weight:800; color:#f2cc60; font-size:12px; margin-bottom:6px;">🔓 ${V.access}</div>
+                        <div class="m-lighttext" style="font-size:12.5px; line-height:1.7; margin-bottom:14px;">${V.accessList}</div>
+                        <div style="font-weight:800; color:#f2cc60; font-size:12px; margin-bottom:6px;">⚙️ ${V.howWorks}</div>
+                        <div class="m-lighttext" style="font-size:12.5px; line-height:1.7; margin-bottom:14px;">${V.howList}</div>
+                        <div style="font-weight:800; color:#f2cc60; font-size:12px; margin-bottom:6px;">✅ ${V.rights}</div>
+                        <ul class="m-lighttext" style="font-size:12.5px; line-height:1.8; list-style:none; padding:0; margin:0;">
+                            <li>↩️ ${V.rightsCancel}</li>
+                            <li>💰 ${_ux.creditBackSub}</li>
+                            <li>🔒 ${V.rightsPrivacy}</li>
+                        </ul>
+                        ${btnCancel}
+                    </div>`;
             } else {
                 document.getElementById('modalBody').innerHTML = `
                     <div style="text-align:center;">
@@ -2922,31 +2942,40 @@ if (!gjuhaAktuale) {
             const _ux=uiExtra[gjuhaAktuale]||uiExtra.en;
             if(!perdoruesi.isVip){
                 _modalHap('👑 VIP Combo', '#d4af37',
-                  '<div class="prod-lock-box" style="border-color:#d4af37;"><p>👑 VIP Combo është ekskluzivisht për anëtarët VIP. Kombinime me rezultate të sakta nga modeli.</p><button class="ppm-btn-buy" style="width:100%; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900;" onclick="hapVipAbonim()">'+T.beVip+'</button></div>');
+                  '<div class="prod-lock-box" style="border-color:#d4af37;"><p>'+VC().lock+'</p><button class="ppm-btn-buy" style="width:100%; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900;" onclick="hapVipAbonim()">'+T.beVip+'</button></div>');
                 return;
             }
             vipNr=2; vipRez=4;
             _modalHap('👑 VIP Combo', '#d4af37',
               '<div class="gen-form" id="vipComboForm">'
-              +'<label class="gen-label">Sa ndeshje?</label>'
+              +'<label class="gen-label">'+VC().howMatches+'</label>'
               +'<div class="gen-opts">'
-              +'<button class="gen-opt vc-nr active" data-v="2" onclick="vipSelectNr(this)">2 ndeshje</button>'
-              +'<button class="gen-opt vc-nr" data-v="3" onclick="vipSelectNr(this)">3 ndeshje</button>'
+              +'<button class="gen-opt vc-nr active" data-v="2" onclick="vipSelectNr(this)">2 '+VC().matches+'</button>'
+              +'<button class="gen-opt vc-nr" data-v="3" onclick="vipSelectNr(this)">3 '+VC().matches+'</button>'
               +'</div>'
-              +'<label class="gen-label" style="margin-top:12px;">Sa rezultate për ndeshje?</label>'
+              +'<label class="gen-label" style="margin-top:12px;">'+VC().howResults+'</label>'
               +'<div class="gen-opts">'
-              +'<button class="gen-opt vc-rez" data-v="3" onclick="vipSelectRez(this)">3 rezultate</button>'
-              +'<button class="gen-opt vc-rez active" data-v="4" onclick="vipSelectRez(this)">4 rezultate</button>'
+              +'<button class="gen-opt vc-rez" data-v="3" onclick="vipSelectRez(this)">3 '+VC().results+'</button>'
+              +'<button class="gen-opt vc-rez active" data-v="4" onclick="vipSelectRez(this)">4 '+VC().results+'</button>'
               +'</div>'
-              +'<button class="gen-opt" style="width:100%; margin-top:16px; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900; border:none;" onclick="gjeneroVipCombo()">👑 Gjenero VIP Combo</button>'
+              +'<button class="gen-opt" style="width:100%; margin-top:16px; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900; border:none;" onclick="gjeneroVipCombo()">👑 '+VC().genBtn+'</button>'
               +'<div id="vipComboRez" style="margin-top:14px;"></div>'
               +'</div>');
         }
 
+        const uiVC = {
+          en: {gen:"Generating...", bal:"Balance", genFor:"Generate for", topup:"Top up Wallet", err:"Error", paid:"Paid", balance:"balance", tickets:"tickets", coverage:"coverage", ticket:"Ticket", odds:"odds", connErr:"Connection error.", lock:"👑 VIP Combo is exclusively for VIP members. Combinations with exact results from the model.", howMatches:"How many matches?", matches:"matches", howResults:"How many results per match?", results:"results", genBtn:"Generate VIP Combo"},
+          sq: {gen:"Duke gjeneruar...", bal:"Bilanci", genFor:"Gjenero për", topup:"Mbush Portofolin", err:"Gabim", paid:"U pagua", balance:"bilanci", tickets:"skedina", coverage:"mbulimi", ticket:"Skedina", odds:"koef", connErr:"Gabim në lidhje.", lock:"👑 VIP Combo është ekskluzivisht për anëtarët VIP. Kombinime me rezultate të sakta nga modeli.", howMatches:"Sa ndeshje?", matches:"ndeshje", howResults:"Sa rezultate për ndeshje?", results:"rezultate", genBtn:"Gjenero VIP Combo"},
+          de: {gen:"Wird generiert...", bal:"Guthaben", genFor:"Generieren für", topup:"Guthaben aufladen", err:"Fehler", paid:"Bezahlt", balance:"Guthaben", tickets:"Tipps", coverage:"Abdeckung", ticket:"Tipp", odds:"Quote", connErr:"Verbindungsfehler.", lock:"👑 VIP Combo ist exklusiv für VIP-Mitglieder. Kombinationen mit exakten Ergebnissen aus dem Modell.", howMatches:"Wie viele Spiele?", matches:"Spiele", howResults:"Wie viele Ergebnisse pro Spiel?", results:"Ergebnisse", genBtn:"VIP Combo generieren"},
+          fr: {gen:"Génération...", bal:"Solde", genFor:"Générer pour", topup:"Recharger le portefeuille", err:"Erreur", paid:"Payé", balance:"solde", tickets:"tickets", coverage:"couverture", ticket:"Ticket", odds:"cote", connErr:"Erreur de connexion.", lock:"👑 VIP Combo est exclusivement pour les membres VIP. Combinaisons avec résultats exacts du modèle.", howMatches:"Combien de matchs ?", matches:"matchs", howResults:"Combien de résultats par match ?", results:"résultats", genBtn:"Générer VIP Combo"},
+          it: {gen:"Generazione...", bal:"Saldo", genFor:"Genera per", topup:"Ricarica il portafoglio", err:"Errore", paid:"Pagato", balance:"saldo", tickets:"schedine", coverage:"copertura", ticket:"Schedina", odds:"quota", connErr:"Errore di connessione.", lock:"👑 VIP Combo è esclusivo per i membri VIP. Combinazioni con risultati esatti dal modello.", howMatches:"Quante partite?", matches:"partite", howResults:"Quanti risultati per partita?", results:"risultati", genBtn:"Genera VIP Combo"}
+        };
+        function VC(){ return uiVC[gjuhaAktuale] || uiVC.en; }
+
         async function gjeneroVipCombo(paguaj){
             paguaj = paguaj || 0;
             const box=document.getElementById('vipComboRez');
-            box.innerHTML='<p style="text-align:center; color:#8b949e;">Duke gjeneruar...</p>';
+            box.innerHTML='<p style="text-align:center; color:#8b949e;">'+VC().gen+'</p>';
             try{
                 const r=await fetch(API_BASE+'/api/vip-combo?email='+encodeURIComponent(perdoruesi.email)+'&nr='+vipNr+'&rez='+vipRez+'&paguaj='+paguaj);
                 const d=await r.json();
@@ -2954,33 +2983,33 @@ if (!gjuhaAktuale) {
                     if(d.kerko_pagese){
                         box.innerHTML='<div style="text-align:center; background:#0d1117; border:1px solid #d4af37; border-radius:8px; padding:14px;">'
                           +'<p style="color:#e6edf3; font-size:13px; margin-bottom:4px;">'+(d.arsye||'')+'</p>'
-                          +'<p style="color:#8b949e; font-size:11px; margin-bottom:10px;">Bilanci: $'+(d.portofoli||0)+'</p>'
-                          +'<button class="gen-opt" style="width:100%; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900; border:none;" onclick="gjeneroVipCombo(1)">👑 Gjenero për $'+(d.cmimi||30)+'</button>'
+                          +'<p style="color:#8b949e; font-size:11px; margin-bottom:10px;">'+VC().bal+': $'+(d.portofoli||0)+'</p>'
+                          +'<button class="gen-opt" style="width:100%; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900; border:none;" onclick="gjeneroVipCombo(1)">👑 '+VC().genFor+' $'+(d.cmimi||30)+'</button>'
                           +'</div>';
                     } else if(d.mungojne_kredite){
                         box.innerHTML='<div style="text-align:center; background:#0d1117; border:1px solid #f85149; border-radius:8px; padding:14px;">'
                           +'<p style="color:#ff7b72; font-size:13px; margin-bottom:10px;">'+(d.arsye||'')+'</p>'
-                          +'<button class="ppm-btn-buy" style="width:100%; background:#d4af37; color:#000; font-weight:900;" onclick="mbyllModal(); hapTopUp();">➕ Mbush Portofolin</button>'
+                          +'<button class="ppm-btn-buy" style="width:100%; background:#d4af37; color:#000; font-weight:900;" onclick="mbyllModal(); hapTopUp();">➕ '+VC().topup+'</button>'
                           +'</div>';
                     } else {
-                        box.innerHTML='<p style="text-align:center; color:#ff7b72;">'+(d.arsye||'Gabim')+'</p>';
+                        box.innerHTML='<p style="text-align:center; color:#ff7b72;">'+(d.arsye||VC().err)+'</p>';
                     }
                     return;
                 }
                 if(d.u_pagua && typeof d.portofoli!=='undefined'){ perdoruesi.portofoli=d.portofoli; }
                 _vipComboLast = {nr:d.nr_ndeshje, rez:d.nr_rezultate, ndeshjet:d.ndeshjet, kombinimet:d.kombinimet};
                 let html='';
-                if(d.u_pagua){ html+='<div style="text-align:center; color:#3fb950; font-size:12px; font-weight:bold; margin-bottom:8px;">✓ U pagua $'+(d.cmimi||30)+' · bilanci: $'+(d.portofoli||0)+'</div>'; }
-                html+='<div style="font-size:12px; color:#8b949e; margin-bottom:10px; text-align:center;">'+d.nr_kombinimesh+' skedina • mbulimi ~'+d.mbulimi_perqind+'%</div>';
+                if(d.u_pagua){ html+='<div style="text-align:center; color:#3fb950; font-size:12px; font-weight:bold; margin-bottom:8px;">✓ '+VC().paid+' $'+(d.cmimi||30)+' · '+VC().balance+': $'+(d.portofoli||0)+'</div>'; }
+                html+='<div style="font-size:12px; color:#8b949e; margin-bottom:10px; text-align:center;">'+d.nr_kombinimesh+' '+VC().tickets+' • '+VC().coverage+' ~'+d.mbulimi_perqind+'%</div>';
                 d.kombinimet.forEach(function(k,i){
                     html+='<div style="background:#0d1117; border:1px solid #d4af37; border-radius:8px; padding:8px 10px; margin-bottom:8px;">';
-                    html+='<div style="display:flex; justify-content:space-between; font-weight:bold; color:#ffd700; font-size:12px; margin-bottom:5px;"><span>Skedina #'+(i+1)+'</span><span>koef '+k.koef_total+'</span></div>';
+                    html+='<div style="display:flex; justify-content:space-between; font-weight:bold; color:#ffd700; font-size:12px; margin-bottom:5px;"><span>'+VC().ticket+' #'+(i+1)+'</span><span>'+VC().odds+' '+k.koef_total+'</span></div>';
                     k.skedina.forEach(function(s){ html+='<div style="font-size:12.5px; color:#e6edf3; padding:2px 0;">⚽ '+s.ndeshja+': <b style="color:#ffd700;">'+s.skor+'</b></div>'; });
                     html+='</div>';
                 });
                 html += '<button onclick="ruajGeneruar(\'combo\', this)" style="width:100%;margin-top:6px;background:#238636;color:#fff;border:none;padding:11px;border-radius:6px;font-weight:900;cursor:pointer;font-size:13px;">\u{1F4BE} '+_saveLabel()+'</button>';
                 box.innerHTML=html;
-            }catch(e){ box.innerHTML='<p style="text-align:center; color:#ff7b72;">Gabim në lidhje.</p>'; }
+            }catch(e){ box.innerHTML='<p style="text-align:center; color:#ff7b72;">'+VC().connErr+'</p>'; }
         }
 
     </script>

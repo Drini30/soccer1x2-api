@@ -23,6 +23,9 @@ import secrets
 XGB_MODEL_HOME = None
 XGB_MODEL_AWAY = None
 XGB_GATI = False
+XGB_MODEL_HOME_HT = None
+XGB_MODEL_AWAY_HT = None
+XGB_HT_GATI = False
 
 # Rendi EKZAKT i features siç u trajnua modeli (mos e ndrysho!)
 XGB_FEATURES = [
@@ -52,7 +55,7 @@ XGB_DEFAULTS = {
 
 def _ngarko_modelet_xgb():
     """Ngarkon modelet XGBoost një herë në nisje. Fail-safe."""
-    global XGB_MODEL_HOME, XGB_MODEL_AWAY, XGB_GATI
+    global XGB_MODEL_HOME, XGB_MODEL_AWAY, XGB_GATI, XGB_MODEL_HOME_HT, XGB_MODEL_AWAY_HT, XGB_HT_GATI
     try:
         import xgboost as xgb
         rruga_home = os.path.join(os.path.dirname(__file__), "model_gola_home.json")
@@ -66,6 +69,18 @@ def _ngarko_modelet_xgb():
             print("✅ Modelet XGBoost u ngarkuan — Hybrid AKTIV.")
         else:
             print("⚠️ Modelet XGBoost nuk u gjetën — përdoret vetëm formula matematikore.")
+        # Modelet HT (gjysmë-fushë) — për tregun HT/FT
+        rruga_home_ht = os.path.join(os.path.dirname(__file__), "model_gola_home_ht.json")
+        rruga_away_ht = os.path.join(os.path.dirname(__file__), "model_gola_away_ht.json")
+        if os.path.exists(rruga_home_ht) and os.path.exists(rruga_away_ht):
+            XGB_MODEL_HOME_HT = xgb.XGBRegressor()
+            XGB_MODEL_HOME_HT.load_model(rruga_home_ht)
+            XGB_MODEL_AWAY_HT = xgb.XGBRegressor()
+            XGB_MODEL_AWAY_HT.load_model(rruga_away_ht)
+            XGB_HT_GATI = True
+            print("✅ Modelet HT u ngarkuan — HT/FT AKTIV.")
+        else:
+            print("⚠️ Modelet HT nuk u gjetën — HT/FT joaktiv.")
     except Exception as e:
         print(f"⚠️ XGBoost nuk u ngarkua ({e}) — fallback te formula.")
         XGB_GATI = False
@@ -2614,7 +2629,7 @@ def llogarit_xg_hybrid(
     Kthen: (xg_1, xg_2, burimi)
     """
     if not XGB_GATI:
-        return xg_math_1, xg_math_2, "math"
+        return xg_math_1, xg_math_2, "math", None, None
 
     try:
         # Tipi i ndeshjes (0=ligë, 1=kupë klubesh, 2=kombëtare)
@@ -2659,6 +2674,17 @@ def llogarit_xg_hybrid(
         xgb_h = float(XGB_MODEL_HOME.predict(vektori)[0])
         xgb_a = float(XGB_MODEL_AWAY.predict(vektori)[0])
 
+        # Fraksioni HT — sa pjesë e golave FT pritet në gjysmën e parë (nga modelet HT)
+        frac_ht_1 = frac_ht_2 = None
+        if XGB_HT_GATI and XGB_MODEL_HOME_HT is not None:
+            try:
+                xght_h = float(XGB_MODEL_HOME_HT.predict(vektori)[0])
+                xght_a = float(XGB_MODEL_AWAY_HT.predict(vektori)[0])
+                frac_ht_1 = float(np.clip(xght_h / max(0.30, xgb_h), 0.20, 0.65))
+                frac_ht_2 = float(np.clip(xght_a / max(0.30, xgb_a), 0.20, 0.65))
+            except Exception:
+                frac_ht_1 = frac_ht_2 = None
+
         # Kombinim: 55% XGBoost + 45% math
         W_XGB = 0.55
         xg_1 = W_XGB * xgb_h + (1 - W_XGB) * xg_math_1
@@ -2666,12 +2692,12 @@ def llogarit_xg_hybrid(
 
         xg_1 = float(np.clip(xg_1, 0.30, 5.00))
         xg_2 = float(np.clip(xg_2, 0.30, 5.00))
-        return round(xg_1, 3), round(xg_2, 3), "hybrid"
+        return round(xg_1, 3), round(xg_2, 3), "hybrid", frac_ht_1, frac_ht_2
 
     except Exception as e:
         # Çdo gabim → fallback i sigurt te math
         print(f"⚠️ Hybrid dështoi ({e}) — fallback math.")
-        return xg_math_1, xg_math_2, "math"
+        return xg_math_1, xg_math_2, "math", None, None
 
 
 def _percakto_tipi_ndeshjes(emri_liges: str) -> int:
@@ -2771,6 +2797,40 @@ def _best_bet_value(tregjet, odds_reale):
 
 RHO_DC = -0.12  # Dixon-Coles: korrelacioni i skoreve te uleta (0 = Poisson i paster)
 
+
+def _ht_ft_distribuim(xg_ht_1, xg_ht_2, xg_2h_1, xg_2h_2, max_g=6):
+    """
+    Shpërndarja e përbashkët HT/FT -> 9 rezultate (1/1, 1/X, ... 2/2).
+    Poisson convolution: gjysma e parë + gjysma e dytë (e pavarur).
+    Kthen dict {"1/1": prob, ...} (probabilitete 0-1, shuma=1).
+    """
+    def _pois(lam, kmax):
+        out = []; p = math.exp(-lam)
+        for k in range(kmax + 1):
+            out.append(p); p = p * lam / (k + 1)
+        return out
+    ph_ht = _pois(xg_ht_1, max_g); pa_ht = _pois(xg_ht_2, max_g)
+    ph_2h = _pois(xg_2h_1, max_g); pa_2h = _pois(xg_2h_2, max_g)
+    cells = {k: 0.0 for k in ["1/1","1/X","1/2","X/1","X/X","X/2","2/1","2/X","2/2"]}
+    def _sgn(h, a):
+        return "1" if h > a else ("2" if a > h else "X")
+    for hh in range(max_g + 1):
+        for ah in range(max_g + 1):
+            p_ht = ph_ht[hh] * pa_ht[ah]
+            if p_ht < 1e-9:
+                continue
+            s_ht = _sgn(hh, ah)
+            for h2 in range(max_g + 1):
+                for a2 in range(max_g + 1):
+                    p = p_ht * ph_2h[h2] * pa_2h[a2]
+                    if p < 1e-10:
+                        continue
+                    cells[s_ht + "/" + _sgn(hh + h2, ah + a2)] += p
+    tot = sum(cells.values())
+    if tot > 0:
+        for k in cells:
+            cells[k] = round(cells[k] / tot, 4)
+    return cells
 
 def simulim_monte_carlo_v2(
     xg_1: float, xg_2: float,
@@ -2999,7 +3059,7 @@ def analizo_ndeshjen_premium_master(
     )
 
     # ── HYBRID: kombino me XGBoost (nëse gati; ndryshe mban math) ──
-    xg_1, xg_2, burimi_xg = llogarit_xg_hybrid(
+    xg_1, xg_2, burimi_xg, _frac_ht_1, _frac_ht_2 = llogarit_xg_hybrid(
         forma_1, forma_2, p1_real, p2_real,
         k1, kx, k2, emri_liges,
         xg_1, xg_2
@@ -3032,6 +3092,17 @@ def analizo_ndeshjen_premium_master(
     rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
         xg_1, xg_2, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja
     )
+
+    # ── HT/FT (nëse modelet HT janë gati) — shpërndarja gjysmë+fund ──
+    if _frac_ht_1 is not None and _frac_ht_2 is not None:
+        _xg_ht_1 = max(0.05, _frac_ht_1 * xg_1)
+        _xg_ht_2 = max(0.05, _frac_ht_2 * xg_2)
+        _xg_2h_1 = max(0.05, xg_1 - _xg_ht_1)
+        _xg_2h_2 = max(0.05, xg_2 - _xg_ht_2)
+        try:
+            tregjet_mc["ht_ft"] = _ht_ft_distribuim(_xg_ht_1, _xg_ht_2, _xg_2h_1, _xg_2h_2)
+        except Exception as _e:
+            print(f"⚠️ HT/FT dështoi ({_e})")
 
     try:
         g1, g2 = map(int, rez_sakt.split("-"))
