@@ -2633,7 +2633,7 @@ if (!gjuhaAktuale) {
             const container = document.getElementById('rezultati');
             container.innerHTML = `<div class="loading-container"><div class="loading-title" style="color:#8ba898; font-size:15px;">${ui[gjuhaAktuale].loading}</div></div>`;
             try {
-                let res = await fetch(`https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions?select=*&statusi=in.(FT,AET,PEN,AWD,WO)&is_premium=is.true&order=data.desc,ora_sakte.desc&limit=50`, {
+                let res = await fetch(`https://oqfhlyybwwkjbkvfpsxi.supabase.co/rest/v1/predictions?select=ndeshja,rezultati_sakt,rezultati,koef_rez_sakt,analiza_custom,koha_utc,data,ora_sakte&statusi=in.(FT,AET,PEN,AWD,WO)&is_premium=is.true&order=data.desc,ora_sakte.desc&limit=200`, {
                     headers: {
                         "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ",
                         "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xZmhseXlid3dramJrdmZwc3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMDU0NjksImV4cCI6MjA5NjU4MTQ2OX0.H1YFz3z9Ew3WofYbbvarP4V5rm99UjkY2mm1p2w4MBQ"
