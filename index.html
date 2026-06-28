@@ -465,7 +465,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625N) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625O) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -1667,7 +1667,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625N','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625O','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -1737,7 +1737,7 @@ if (!gjuhaAktuale) {
         }
 
         // ===================== GOOGLE LOGIN (OAuth) =====================
-        const GOOGLE_CLIENT_ID = 'VENDOS_GOOGLE_CLIENT_ID';  // <-- Client ID nga Google Cloud Console
+        const GOOGLE_CLIENT_ID = '64003620744-hqet4c7un183q78dbts7abqke3aq3r7i.apps.googleusercontent.com';  // <-- Client ID nga Google Cloud Console
         let googleTokenClient = null;
         function nisGoogleClient(){
             if (GOOGLE_CLIENT_ID.indexOf('VENDOS_') === 0) return;
@@ -3130,7 +3130,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625N</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625O</div>
     <script>
     (function(){
       function init(){
