@@ -465,7 +465,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625R) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625S) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -719,6 +719,27 @@
         /* ===== FUND SKEDINA IME ===== */
         .pf-buy{ width:100%; margin-top:8px; background:linear-gradient(90deg,#1f6feb,#388bfd); color:#fff; border:none; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; }
         .pf-buy:hover{ filter:brightness(1.08); }
+        /* ===== HERO 2-KOLONA: logo+butona majtas, performanca djathtas ===== */
+        .hero-banner{ height:auto !important; min-height:300px; }
+        .hero-content{ flex-direction:row !important; align-items:center !important; justify-content:space-between !important; gap:24px; padding:44px 32px 26px !important; max-width:1280px; margin:0 auto; }
+        .hero-left{ flex:0 0 40%; max-width:40%; }
+        .hero-right{ flex:1; min-width:0; }
+        .hero-content .hero-logo{ font-size:48px !important; transform:none !important; justify-content:flex-start !important; }
+        .hero-content .hero-logo .x12{ font-size:24px !important; }
+        .hero-content .hero-tag{ text-align:left; margin-top:8px !important; letter-spacing:.28em !important; }
+        .hero-btns{ display:flex; flex-direction:column; gap:10px; margin-top:20px; }
+        .hero-btns .prod-btn{ width:100%; justify-content:center !important; }
+        .hero-icons{ position:absolute; top:14px; right:18px; z-index:6; display:flex; gap:14px; align-items:center; background:rgba(4,7,15,.55); padding:6px 13px; border-radius:20px; border:1px solid rgba(212,175,55,.28); }
+        .hero-icons i{ cursor:pointer; transition:transform .15s; }
+        .hero-icons i:hover{ transform:scale(1.15); }
+        @media (max-width:900px){
+          .hero-content{ flex-direction:column !important; align-items:stretch !important; padding:38px 16px 18px !important; }
+          .hero-left, .hero-right{ flex:none !important; max-width:100% !important; }
+          .hero-content .hero-logo{ font-size:40px !important; justify-content:center !important; }
+          .hero-content .hero-tag{ text-align:center; }
+          .hero-btns{ margin-top:14px; }
+          .hero-icons{ top:10px; right:10px; gap:12px; }
+        }
     </style>
 </head>
 <body>
@@ -764,8 +785,8 @@
                 </div>
             </div>
 
-            <div class="hero-banner" aria-hidden="true">
-              <div class="hero-scene">
+            <div class="hero-banner">
+              <div class="hero-scene" aria-hidden="true">
                 <div class="hero-sky"></div>
                 <div class="hero-stands"></div>
                 <div class="hero-crowd"></div>
@@ -779,10 +800,25 @@
                 <div class="hero-mote m1"></div><div class="hero-mote m2"></div><div class="hero-mote m3"></div>
               </div>
               <div class="hero-content">
-                <div class="hero-logo-rise">
-                  <div class="hero-logo"><span class="soc">SOCCER</span><span class="x12">1X2</span><span class="pro">PRO</span></div>
+                <div class="hero-left">
+                  <div class="hero-logo-rise">
+                    <div class="hero-logo"><span class="soc">SOCCER</span><span class="x12">1X2</span><span class="pro">PRO</span></div>
+                  </div>
+                  <div class="hero-tag" id="lblHeroTag">Pasion &middot; Analiz&euml; &middot; Adrenalin&euml;</div>
+                  <div class="hero-btns">
+                    <button class="prod-btn prod-vip" onclick="verifikoAksesin(hapVipCombo)"><i class="fa-solid fa-crown"></i> <span id="lblProdVipCombo">VIP Combo</span></button>
+                    <button class="prod-btn prod-vip" onclick="verifikoAksesin(hapGjeneratorin)">⚙️ <span id="lblProdGjenero">Gjenero Skedinën</span></button>
+                    <button class="prod-btn" onclick="hapHistorikun()">📊 <span id="lblProdHistorik">Historiku</span></button>
+                  </div>
                 </div>
-                <div class="hero-tag" id="lblHeroTag">Pasion &middot; Analiz&euml; &middot; Adrenalin&euml;</div>
+                <div class="hero-right">
+                  <div id="performancaBox"></div>
+                </div>
+                <div class="hero-icons">
+                  <i class="fa-solid fa-crown vip-diamond" id="ttVip" title="VIP Sub" style="color:#ffd700; font-size:21px;" onclick="verifikoAksesin(hapVipAbonim)"></i>
+                  <i class="fa-brands fa-telegram icon-tg" id="ttTg" title="Komuniteti" style="color:#3aa0e0; font-size:21px;" onclick="hapKomunitetin()"></i>
+                  <i class="fa-solid fa-basket-shopping icon-donate" id="ttDonate" title="Donate" style="font-size:21px;" onclick="hapDonacionet()"></i>
+                </div>
               </div>
             </div>
             <div class="sticky-zone">
@@ -793,15 +829,8 @@
                 </div>
                 <div class="filtra-qender">
                     <button class="prod-btn" onclick="verifikoAksesin(hapSkedinenDites)">🎯 <span id="lblProdSkedina">Skedina e Ditës</span></button>
-                    <button class="prod-btn prod-vip" onclick="verifikoAksesin(hapVipCombo)"><i class="fa-solid fa-crown"></i> <span id="lblProdVipCombo">VIP Combo</span></button>
-                    <button class="prod-btn prod-vip" onclick="verifikoAksesin(hapGjeneratorin)">⚙️ <span id="lblProdGjenero">Gjenero Skedinën</span></button>
-                    <button class="prod-btn" onclick="hapHistorikun()">📊 <span id="lblProdHistorik">Historiku</span></button>
                 </div>
-                <div class="filtra-actions-right">
-                    <i class="fa-solid fa-crown vip-diamond" id="ttVip" title="VIP Sub" style="color:#ffd700; font-size:23px;" onclick="verifikoAksesin(hapVipAbonim)"></i>
-                    <i class="fa-brands fa-telegram action-sub-icon icon-tg" id="ttTg" title="Komuniteti" style="color:#0088cc; font-size:23px;" onclick="hapKomunitetin()"></i>
-                    <i class="fa-solid fa-basket-shopping action-sub-icon icon-donate" id="ttDonate" title="Donate" onclick="hapDonacionet()"></i>
-                </div>
+                <div class="filtra-actions-right"></div>
             </div>
             <div class="vip-banner" id="vipBanner" style="display:none;">
                 <div class="vip-banner-content">
@@ -1667,7 +1696,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625R','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625S','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -3249,7 +3278,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625R</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625S</div>
     <script>
     (function(){
       function init(){
