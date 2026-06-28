@@ -465,7 +465,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625Q) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625R) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -1667,7 +1667,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625Q','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625R','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -1801,6 +1801,62 @@ if (!gjuhaAktuale) {
                 if(_rt){ setTimeout(function(){ hapResetForm(_rt); }, 400); }
             } catch(e){}
         });
+
+        // ===================== PERFORMANCA E MODELIT (nga arkivi) =====================
+        async function renderPerformanca(){
+            var box = document.getElementById('performancaBox');
+            if(!box) return;
+            try {
+                var r = await fetch(API_BASE + '/api/performanca');
+                var d = await r.json();
+                var m = d.metrikat || {};
+                var recent = d.recent || [];
+                var mostra = d.mostra || 0;
+                if(mostra < 1){ box.style.display = 'none'; return; }
+                function bar(label, val, dim){
+                    var col = dim ? '#6e7681' : '#d4af37';
+                    var lc = dim ? '#8b949e' : '#c9d1d9';
+                    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">'
+                        + '<div style="width:92px;font-size:12px;color:' + lc + ';flex-shrink:0;">' + label + '</div>'
+                        + '<div style="flex:1;height:8px;background:#1c2b44;border-radius:4px;overflow:hidden;"><div style="width:' + val + '%;height:100%;background:' + col + ';"></div></div>'
+                        + '<div style="width:34px;font-size:12px;color:' + col + ';font-weight:600;text-align:right;">' + val + '%</div>'
+                        + '</div>';
+                }
+                var proofRows = '';
+                for(var i = 0; i < recent.length; i++){
+                    var x = recent[i];
+                    var hit = x.goditi_1x2;
+                    var ikona = hit === true ? '<i class="fa-solid fa-check" style="color:#3fb950;"></i>'
+                              : (hit === false ? '<i class="fa-solid fa-xmark" style="color:#f85149;"></i>' : '');
+                    proofRows += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05);">'
+                        + '<div><div style="font-size:13px;color:#fff;">' + (x.ndeshja || '') + '</div>'
+                        + '<div style="font-size:11px;color:#8b949e;">' + (ui[gjuhaAktuale].perfPred || 'Parashikim') + ': ' + (x.parashikimi || '') + '</div></div>'
+                        + '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;color:#c9d1d9;">' + (x.rezultati || '') + '</span>' + ikona + '</div>'
+                        + '</div>';
+                }
+                box.innerHTML =
+                    '<div style="background:#0d1b33;border:1px solid rgba(212,175,55,0.35);border-radius:14px;padding:18px;">'
+                    + '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">'
+                    +   '<div><div style="font-size:16px;font-weight:600;color:#fff;">' + (ui[gjuhaAktuale].perfTitle || 'Performanca e Modelit') + '</div>'
+                    +   '<div style="font-size:11px;color:#8b949e;margin-top:2px;"><i class="fa-solid fa-shield-halved" style="color:#3fb950;"></i> ' + (ui[gjuhaAktuale].perfVerified || 'E verifikuar automatikisht') + (d.perditesuar ? ' &bull; ' + d.perditesuar : '') + '</div></div>'
+                    +   '<div style="font-size:10px;color:#0a162e;background:#3fb950;padding:3px 9px;border-radius:14px;font-weight:600;letter-spacing:.5px;">LIVE</div>'
+                    + '</div>'
+                    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'
+                    +   '<div style="background:#0a162e;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:34px;font-weight:600;color:#d4af37;line-height:1;">' + (m.x1x2 || 0) + '%</div><div style="font-size:11px;color:#c9d1d9;margin-top:4px;">' + (ui[gjuhaAktuale].perf1x2 || 'Fitues 1X2') + '</div></div>'
+                    +   '<div style="background:#0a162e;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:34px;font-weight:600;color:#d4af37;line-height:1;">' + (m.brenda1gol || 0) + '%</div><div style="font-size:11px;color:#c9d1d9;margin-top:4px;">' + (ui[gjuhaAktuale].perfGol || 'Brenda 1 goli') + '</div></div>'
+                    + '</div>'
+                    + '<div style="font-size:12px;color:#8b949e;margin-bottom:11px;">' + (ui[gjuhaAktuale].perfAll || 'Të gjitha tregjet — pa fshehur asgjë') + '</div>'
+                    + bar(ui[gjuhaAktuale].perf1x2 || 'Fitues 1X2', m.x1x2 || 0, false)
+                    + bar(ui[gjuhaAktuale].perfGol || '1 gol', m.brenda1gol || 0, false)
+                    + bar('GG / NG', m.ggng || 0, false)
+                    + bar('Over/Under', m.ou || 0, false)
+                    + bar(ui[gjuhaAktuale].perfScore || 'Skor saktë', m.skor || 0, true)
+                    + (proofRows ? '<div style="font-size:12px;color:#8b949e;margin:15px 0 9px;">' + (ui[gjuhaAktuale].perfProof || 'Provë — ndeshjet e fundit (kontrollo vetë)') + '</div>' + proofRows : '')
+                    + '<div style="font-size:11px;color:#8b949e;text-align:center;margin:15px 0 0;line-height:1.5;">' + (ui[gjuhaAktuale].perfHonest || 'Ne nuk pretendojmë 90%. Shifra reale, të verifikueshme') + ' &mdash; ' + mostra + ' ' + (ui[gjuhaAktuale].perfMatches || 'ndeshje') + '.</div>'
+                    + '</div>';
+            } catch(e){ if(box) box.style.display = 'none'; }
+        }
+        document.addEventListener('DOMContentLoaded', function(){ try { renderPerformanca(); } catch(e){} });
 
         // ===================== GOOGLE LOGIN (OAuth) =====================
         const GOOGLE_CLIENT_ID = '64003620744-hqet4c7un183q78dbts7abqke3aq3r7i.apps.googleusercontent.com';  // <-- Client ID nga Google Cloud Console
@@ -3193,7 +3249,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625Q</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625R</div>
     <script>
     (function(){
       function init(){

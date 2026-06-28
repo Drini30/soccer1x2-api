@@ -4237,6 +4237,67 @@ def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0):
         return []
 
 
+@app.get("/api/performanca")
+def performanca_modelit(limit: int = 1000):
+    """Metrikat e sakteseise nga arkivi (per seksionin publik Performanca e Modelit)."""
+    try:
+        r = requests.get(
+            f"{ARKIV_URL}?select=ndeshja,liga,data,parashikimi,rezultati_ft,goditi_1x2,goditi_skor"
+            f"&order=data.desc,ora.desc&limit={max(1, min(limit, 2000))}",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=12)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    n1 = n1ok = ns = nsok = ng1 = ng1ok = ngg = nggok = nou = nouok = 0
+    for row in rows:
+        par = _parse_score(row.get("parashikimi") or "")
+        ft = _parse_score(row.get("rezultati_ft") or "")
+        if row.get("goditi_1x2") is not None:
+            n1 += 1
+            if row.get("goditi_1x2"):
+                n1ok += 1
+        if row.get("goditi_skor") is not None:
+            ns += 1
+            if row.get("goditi_skor"):
+                nsok += 1
+        if par and ft:
+            ng1 += 1
+            if abs(par[0] - ft[0]) <= 1 and abs(par[1] - ft[1]) <= 1:
+                ng1ok += 1
+            ngg += 1
+            if (par[0] > 0 and par[1] > 0) == (ft[0] > 0 and ft[1] > 0):
+                nggok += 1
+            nou += 1
+            if ((par[0] + par[1]) > 2.5) == ((ft[0] + ft[1]) > 2.5):
+                nouok += 1
+    def pct(o, n):
+        return round(100 * o / n) if n else 0
+    recent = []
+    for row in rows:
+        if row.get("parashikimi") and row.get("rezultati_ft"):
+            recent.append({
+                "ndeshja": row.get("ndeshja"),
+                "liga": row.get("liga"),
+                "parashikimi": row.get("parashikimi"),
+                "rezultati": row.get("rezultati_ft"),
+                "goditi_1x2": row.get("goditi_1x2"),
+            })
+        if len(recent) >= 6:
+            break
+    return {
+        "metrikat": {
+            "x1x2": pct(n1ok, n1),
+            "brenda1gol": pct(ng1ok, ng1),
+            "ggng": pct(nggok, ngg),
+            "ou": pct(nouok, nou),
+            "skor": pct(nsok, ns),
+        },
+        "mostra": n1,
+        "recent": recent,
+        "perditesuar": rows[0].get("data") if rows else None,
+    }
+
+
 @app.get("/api/arkiv/rindertimi")
 def rindertimi_arkivit():
     """Backfill një-herësh: arkivon ndeshjet e mbaruara që janë te predictions (HT nga API)."""
