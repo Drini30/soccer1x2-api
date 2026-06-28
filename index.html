@@ -465,7 +465,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625O) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625Q) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -1667,7 +1667,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625O','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625Q','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -1727,7 +1727,8 @@ if (!gjuhaAktuale) {
                         <label>${ui[gjuhaAktuale].email}</label>
                         <input type="email" id="resetEmail" class="card-input" placeholder="mail@example.com">
                     </div>
-                    <button class="ppm-btn-buy" style="background:#58a6ff; color:#fff; width:100%; margin-top:15px;" onclick="alert('Link sent to email!')">
+                    <div id="resetMsg" style="font-size:12px; margin-top:10px; display:none;"></div>
+                    <button id="btnReset" class="ppm-btn-buy" style="background:#58a6ff; color:#fff; width:100%; margin-top:15px;" onclick="dergoResetLink()">
                         ${ui[gjuhaAktuale].resetBtn}
                     </button>
                     <div style="margin-top:15px; font-size:12px;">
@@ -1735,6 +1736,71 @@ if (!gjuhaAktuale) {
                     </div>
                 </div>`;
         }
+
+        // ===================== FORGOT / RESET PASSWORD =====================
+        async function dergoResetLink(){
+            var email = (document.getElementById('resetEmail').value || '').trim();
+            var msg = document.getElementById('resetMsg');
+            var btn = document.getElementById('btnReset');
+            var rx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if(!rx.test(email)){ if(msg){ msg.style.color='#ff7b72'; msg.innerText = ui[gjuhaAktuale].invalidEmail; msg.style.display='block'; } return; }
+            if(btn){ btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; }
+            try {
+                await fetch(API_BASE + '/api/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: email }) });
+                if(msg){ msg.style.color='#3fb950'; msg.innerText = (ui[gjuhaAktuale].resetSent || 'Nëse email-i ekziston, do marrësh një link në email.'); msg.style.display='block'; }
+                if(btn){ btn.innerHTML = ui[gjuhaAktuale].resetBtn; }
+            } catch(e){
+                if(msg){ msg.style.color='#ff7b72'; msg.innerText = 'Gabim në lidhje.'; msg.style.display='block'; }
+                if(btn){ btn.disabled = false; btn.innerHTML = ui[gjuhaAktuale].resetBtn; }
+            }
+        }
+        var _resetToken = '';
+        function hapResetForm(token){
+            _resetToken = token;
+            document.getElementById('modalContainerSize').style.maxWidth = '400px';
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].newPassTitle || 'Vendos fjalëkalim të ri';
+            document.getElementById('modalTitle').style.color = '#58a6ff';
+            document.getElementById('modalBody').innerHTML =
+                '<div class="checkout-box" style="margin-top:0;">'
+                + '<div class="input-group"><label>' + (ui[gjuhaAktuale].newPass || 'Fjalëkalimi i ri') + '</label><input type="password" id="newPass1" class="card-input" placeholder="••••••••"></div>'
+                + '<div class="input-group"><label>' + (ui[gjuhaAktuale].newPassConfirm || 'Konfirmo fjalëkalimin') + '</label><input type="password" id="newPass2" class="card-input" placeholder="••••••••"></div>'
+                + '<div id="newPassMsg" style="font-size:12px; margin-top:8px; display:none;"></div>'
+                + '<button id="btnNewPass" class="ppm-btn-buy" style="background:#238636; color:#fff; width:100%; margin-top:15px;" onclick="dergoResetPassword()">' + (ui[gjuhaAktuale].savePass || 'Ruaj fjalëkalimin') + '</button>'
+                + '</div>';
+        }
+        async function dergoResetPassword(){
+            var token = _resetToken;
+            var p1 = document.getElementById('newPass1').value || '';
+            var p2 = document.getElementById('newPass2').value || '';
+            var msg = document.getElementById('newPassMsg');
+            var btn = document.getElementById('btnNewPass');
+            function gabim(t){ if(msg){ msg.style.color='#ff7b72'; msg.innerText = t; msg.style.display='block'; } }
+            if(p1.length < 6){ gabim(ui[gjuhaAktuale].passShort || 'Fjalëkalimi duhet të paktën 6 karaktere.'); return; }
+            if(p1 !== p2){ gabim(ui[gjuhaAktuale].passMismatch || 'Fjalëkalimet nuk përputhen.'); return; }
+            if(btn){ btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; }
+            try {
+                var r = await fetch(API_BASE + '/api/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: token, password: p1 }) });
+                var d = await r.json();
+                if(d.sukses){
+                    if(msg){ msg.style.color='#3fb950'; msg.innerText = (ui[gjuhaAktuale].passReset || 'Fjalëkalimi u rivendos! Tani mund të hysh.'); msg.style.display='block'; }
+                    try { history.replaceState(null, '', location.pathname); } catch(e){}
+                    setTimeout(function(){ hapAuthModal('login'); }, 1600);
+                } else {
+                    gabim(d.mesazhi || 'Link i pavlefshëm ose i skaduar.');
+                    if(btn){ btn.disabled = false; btn.innerHTML = ui[gjuhaAktuale].savePass || 'Ruaj fjalëkalimin'; }
+                }
+            } catch(e){
+                gabim('Gabim në lidhje.');
+                if(btn){ btn.disabled = false; btn.innerHTML = ui[gjuhaAktuale].savePass || 'Ruaj fjalëkalimin'; }
+            }
+        }
+        window.addEventListener('load', function(){
+            try {
+                var _rt = new URLSearchParams(location.search).get('reset');
+                if(_rt){ setTimeout(function(){ hapResetForm(_rt); }, 400); }
+            } catch(e){}
+        });
 
         // ===================== GOOGLE LOGIN (OAuth) =====================
         const GOOGLE_CLIENT_ID = '64003620744-hqet4c7un183q78dbts7abqke3aq3r7i.apps.googleusercontent.com';  // <-- Client ID nga Google Cloud Console
@@ -1819,9 +1885,6 @@ if (!gjuhaAktuale) {
                     </div>
                     <button class="ppm-btn-buy" style="background:#fff; color:#1c2128; width:100%; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid #d0d7de;" onclick="loginSocial('google')">
                         <i class="fa-brands fa-google" style="color:#ea4335;"></i> ${ui[gjuhaAktuale].withGoogle || 'Vazhdo me Google'}
-                    </button>
-                    <button class="ppm-btn-buy" style="background:#000; color:#fff; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="loginSocial('apple')">
-                        <i class="fa-brands fa-apple"></i> ${ui[gjuhaAktuale].withApple || 'Vazhdo me Apple'}
                     </button>
                     <div style="text-align:center; margin-top:15px; font-size:12px; color:#8ba898;">
                         ${switchText} <span style="color:#58a6ff; cursor:pointer; font-weight:bold;" onclick="hapAuthModal('${switchAction}')">${switchLink}</span>
@@ -3130,7 +3193,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625O</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625Q</div>
     <script>
     (function(){
       function init(){

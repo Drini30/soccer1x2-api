@@ -1,7 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks, Request, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 import random
 import math
@@ -173,8 +173,36 @@ class LoginData(BaseModel):
 class GoogleLoginInput(BaseModel):
     access_token: str = ""
 
+class ForgotInput(BaseModel):
+    email: str = ""
+
+class ResetInput(BaseModel):
+    token: str = ""
+    password: str = ""
+
 # ── SIGURIA: helpers për hashim + service headers + admin ──
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
+
+# ── EMAIL (Resend) ──
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "SOCCER1X2 PRO <noreply@soccer1x2pro.com>")
+SITE_URL = os.environ.get("SITE_URL", "https://soccer1x2pro.com")
+
+def _dergo_email(to_email, subject, html):
+    """Dergon nje email permes Resend. Kthen (ok, mesazh)."""
+    if not RESEND_API_KEY:
+        return False, "Email service jo i konfiguruar."
+    try:
+        r = requests.post("https://api.resend.com/emails",
+                          headers={"Authorization": f"Bearer {RESEND_API_KEY}",
+                                   "Content-Type": "application/json"},
+                          json={"from": EMAIL_FROM, "to": [to_email],
+                                "subject": subject, "html": html}, timeout=10)
+        if r.status_code in (200, 201):
+            return True, "OK"
+        return False, f"Resend {r.status_code}: {r.text[:200]}"
+    except Exception as e:
+        return False, str(e)
 
 SUPABASE_SERVICE_HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
@@ -298,6 +326,67 @@ def google_login(data: GoogleLoginInput):
     if ins.status_code in (200, 201, 204):
         u = dict(user_payload); u.pop("password", None)
         return {"sukses": True, "perdoruesi": u}
+    return {"sukses": False, "mesazhi": "Gabim databaze."}
+
+
+@app.post("/api/forgot-password")
+def forgot_password(data: ForgotInput):
+    """Gjeneron token reset-i dhe dergon link me email. Kthen gjithmone sukses (privatesi)."""
+    email_clean = (data.email or "").lower().strip()
+    ok = {"sukses": True, "mesazhi": "Nese email-i ekziston, do marresh nje link."}
+    if not email_clean:
+        return ok
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS)
+    if res.status_code != 200 or not res.json():
+        return ok  # mos zbulo qe email-i nuk ekziston
+    token = os.urandom(32).hex()
+    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    try:
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS,
+                       json={"reset_token": token, "reset_expires": expires})
+    except Exception:
+        return ok
+    link = f"{SITE_URL}/?reset={token}"
+    html = (
+        '<div style="background:#0a162e;padding:30px;font-family:Arial,sans-serif;">'
+        '<div style="max-width:480px;margin:0 auto;background:#0d1b33;border:1px solid rgba(212,175,55,0.3);border-radius:12px;padding:28px;">'
+        '<h2 style="color:#d4af37;text-align:center;margin:0 0 16px;">SOCCER1X2 PRO</h2>'
+        '<p style="color:#c9d1d9;font-size:14px;line-height:1.6;">Kerkove te rivendosesh fjalekalimin. Kliko butonin me poshte (vlen per 1 ore):</p>'
+        '<div style="text-align:center;margin:24px 0;">'
+        f'<a href="{link}" style="background:#d4af37;color:#0a162e;text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:bold;display:inline-block;">Rivendos fjalekalimin</a>'
+        '</div>'
+        '<p style="color:#8ba898;font-size:12px;line-height:1.5;">Nese nuk e kerkove ti, injoroje kete email. Linku skadon per 1 ore.</p>'
+        f'<p style="color:#5a6b7a;font-size:11px;word-break:break-all;">{link}</p>'
+        '</div></div>'
+    )
+    _dergo_email(email_clean, "Rivendos fjalekalimin — SOCCER1X2 PRO", html)
+    return ok
+
+
+@app.post("/api/reset-password")
+def reset_password(data: ResetInput):
+    """Verifikon token-in (jo te skaduar) dhe vendos fjalekalimin e ri."""
+    token = (data.token or "").strip()
+    pw = data.password or ""
+    if not token or len(pw) < 6:
+        return {"sukses": False, "mesazhi": "Te dhena te pavlefshme (fjalekalimi min 6 karaktere)."}
+    res = requests.get(f"{SUPABASE_URL_USERS}?reset_token=eq.{token}", headers=SUPABASE_SERVICE_HEADERS)
+    if res.status_code != 200 or not res.json():
+        return {"sukses": False, "mesazhi": "Link i pavlefshem ose i skaduar."}
+    u = res.json()[0]
+    expires = u.get("reset_expires")
+    try:
+        if expires:
+            exp_dt = datetime.fromisoformat(str(expires).replace("Z", "+00:00"))
+            if exp_dt < datetime.now(timezone.utc):
+                return {"sukses": False, "mesazhi": "Link i skaduar. Kerko nje te ri."}
+    except Exception:
+        pass
+    email_clean = u.get("email")
+    upd = requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS,
+                         json={"password": _hash_fjalekalimi(pw), "reset_token": None, "reset_expires": None})
+    if upd.status_code in (200, 201, 204):
+        return {"sukses": True, "mesazhi": "Fjalekalimi u rivendos! Tani mund te hysh."}
     return {"sukses": False, "mesazhi": "Gabim databaze."}
 
 
