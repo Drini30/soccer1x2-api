@@ -42,6 +42,8 @@ XGB_FEATURES = [
     "home_rest_days", "away_rest_days",
     "odd_home", "odd_draw", "odd_away",
     "tipi_ndeshjes",
+    "ah_line", "ah_home_odd", "ah_away_odd",
+    "ou25_over", "ou25_under",
 ]
 
 # Vlera mesatare (nga trajnimi) për features që s'i kemi live.
@@ -51,6 +53,8 @@ XGB_DEFAULTS = {
     "home_avg_red": 0.10, "away_avg_red": 0.10,
     "home_volatility": 1.47, "away_volatility": 1.47,
     "home_rest_days": 7.0, "away_rest_days": 7.0,
+    "ah_line": 0.0, "ah_home_odd": 1.90, "ah_away_odd": 1.90,
+    "ou25_over": 1.90, "ou25_under": 1.90,
 }
 
 def _ngarko_modelet_xgb():
@@ -2820,12 +2824,64 @@ def llogarit_xg_te_perparuara(
 # MODULI 3.5: HYBRID — XGBOOST + FALLBACK
 # ==========================================
 
+def _f_safe(v, d):
+    """float(v) ose default d nese None/i pavlefshem."""
+    try:
+        if v is None:
+            return d
+        return float(v)
+    except Exception:
+        return d
+
+
+def _ah_kryesore(ah_dict):
+    """Nga dict-i AH live ({'Home -0.5': 1.9, 'Away +0.5': 1.9, ...}) zgjedh linjen
+    kryesore (me te balancuaren) -> (line, home_odd, away_odd). None nese s'gjendet."""
+    if not ah_dict:
+        return None
+    home_odds, away_odds = {}, {}
+    for k, v in ah_dict.items():
+        try:
+            od = float(v)
+        except Exception:
+            continue
+        parts = str(k).rsplit(" ", 1)
+        if len(parts) != 2:
+            continue
+        side = parts[0].strip().lower()
+        hc = parts[1].strip().replace("+", "")
+        try:
+            hcv = float(hc)
+        except Exception:
+            continue
+        if "home" in side:
+            home_odds[hcv] = od
+        elif "away" in side:
+            away_odds[hcv] = od
+    best = None
+    for L, ho in home_odds.items():
+        ao = away_odds.get(-L)
+        if ao is None:
+            continue
+        bal = abs(ho - ao)
+        if best is None or bal < best[0]:
+            best = (bal, L, ho, ao)
+    if best is None:
+        if home_odds:
+            L = min(home_odds, key=lambda x: abs(x))
+            return (L, home_odds[L], None)
+        return None
+    return (best[1], best[2], best[3])
+
+
 def llogarit_xg_hybrid(
     forma_1: dict, forma_2: dict,
     p1_real: float, p2_real: float,
     k1: float, kx: float, k2: float,
     emri_liges: str,
     xg_math_1: float, xg_math_2: float,
+    ah_line=None, ah_home=None, ah_away=None,
+    ou_over=None, ou_under=None,
 ) -> tuple:
     """
     HYBRID: kombinon XGBoost (nëse gati) me xG matematikore.
@@ -2874,6 +2930,11 @@ def llogarit_xg_hybrid(
             "away_rest_days": XGB_DEFAULTS["away_rest_days"],
             "odd_home": k1, "odd_draw": kx, "odd_away": k2,
             "tipi_ndeshjes": tipi,
+            "ah_line": _f_safe(ah_line, XGB_DEFAULTS["ah_line"]),
+            "ah_home_odd": _f_safe(ah_home, XGB_DEFAULTS["ah_home_odd"]),
+            "ah_away_odd": _f_safe(ah_away, XGB_DEFAULTS["ah_away_odd"]),
+            "ou25_over": _f_safe(ou_over, XGB_DEFAULTS["ou25_over"]),
+            "ou25_under": _f_safe(ou_under, XGB_DEFAULTS["ou25_under"]),
         }
         vektori = np.array([[vlerat[f] for f in XGB_FEATURES]], dtype=float)
 
@@ -3219,7 +3280,7 @@ def analizo_ndeshjen_premium_master(
     ekipi_1_id, ekipi_2_id,
     k1_str, kx_str, k2_str,
     emri_liges, standings,
-    dna_1=None, dna_2=None
+    dna_1=None, dna_2=None, odds_full=None
 ):
     """
     Versioni V2 i plotë — zëvendëson funksionin origjinal.
@@ -3265,10 +3326,20 @@ def analizo_ndeshjen_premium_master(
     )
 
     # ── HYBRID: kombino me XGBoost (nëse gati; ndryshe mban math) ──
+    # ── AH (linja kryesore) + O/U 2.5 nga odds reale -> veçori per XGBoost ──
+    _ahk = _ah_kryesore((odds_full or {}).get("AH")) if odds_full else None
+    _ah_l = _ahk[0] if _ahk else None
+    _ah_h = _ahk[1] if _ahk else None
+    _ah_a = _ahk[2] if _ahk else None
+    _ou_o = (odds_full or {}).get("Over 2.5") if odds_full else None
+    _ou_u = (odds_full or {}).get("Under 2.5") if odds_full else None
+
     xg_1, xg_2, burimi_xg, _frac_ht_1, _frac_ht_2 = llogarit_xg_hybrid(
         forma_1, forma_2, p1_real, p2_real,
         k1, kx, k2, emri_liges,
-        xg_1, xg_2
+        xg_1, xg_2,
+        ah_line=_ah_l, ah_home=_ah_h, ah_away=_ah_a,
+        ou_over=_ou_o, ou_under=_ou_u
     )
 
     # Apliko clutch
@@ -4038,7 +4109,8 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
                             id_ndeshja, ekipi_1, ekipi_2,
                             n["teams"]["home"]["id"], n["teams"]["away"]["id"],
                             k1, kx, k2, emri_liges, standings,
-                            dna_1=dna_1, dna_2=dna_2
+                            dna_1=dna_1, dna_2=dna_2,
+                            odds_full=bet365_odds.get(id_ndeshja, {})
                         )
                         base_match.update({
                             "analiza_custom": analiza_custom,
@@ -4785,14 +4857,9 @@ def merr_vip_weekend():
                             continue
                         try:
                             bets = item["bookmakers"][0]["bets"]
-                            mw = next((b for b in bets if b["id"] == 1), None)
-                            if mw:
-                                v = mw["values"]
-                                k1 = next((x["odd"] for x in v if x["value"] == "Home"), None)
-                                kx = next((x["odd"] for x in v if x["value"] == "Draw"), None)
-                                k2 = next((x["odd"] for x in v if x["value"] == "Away"), None)
-                                if k1 and kx and k2:
-                                    odds_dite[fix_id] = {"1": k1, "X": kx, "2": k2}
+                            parsed = _nxirr_odds_reale(bets)
+                            if parsed.get("1") and parsed.get("X") and parsed.get("2"):
+                                odds_dite[fix_id] = parsed
                         except:
                             pass
                     paging = res_odds.get("paging", {})
@@ -4827,7 +4894,8 @@ def merr_vip_weekend():
                 analiza, bes, rez_sakt, koef_str, extradb = analizo_ndeshjen_premium_master(
                     id_ndeshja, ekipi_1, ekipi_2,
                     n["teams"]["home"]["id"], n["teams"]["away"]["id"],
-                    k1, kx, k2, emri_liges, [], dna_1=dna_1, dna_2=dna_2
+                    k1, kx, k2, emri_liges, [], dna_1=dna_1, dna_2=dna_2,
+                    odds_full=odds_dite.get(id_ndeshja, {})
                 )
 
                 try:
