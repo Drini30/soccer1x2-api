@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SOCCER1X2 PRO - Sports Data Analytics</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
@@ -464,7 +465,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625M) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625N) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -1666,7 +1667,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625M','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625N','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -1735,8 +1736,45 @@ if (!gjuhaAktuale) {
                 </div>`;
         }
 
+        // ===================== GOOGLE LOGIN (OAuth) =====================
+        const GOOGLE_CLIENT_ID = 'VENDOS_GOOGLE_CLIENT_ID';  // <-- Client ID nga Google Cloud Console
+        let googleTokenClient = null;
+        function nisGoogleClient(){
+            if (GOOGLE_CLIENT_ID.indexOf('VENDOS_') === 0) return;
+            if (!(window.google && google.accounts && google.accounts.oauth2)) { setTimeout(nisGoogleClient, 400); return; }
+            try {
+                googleTokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: GOOGLE_CLIENT_ID,
+                    scope: 'openid email profile',
+                    callback: function(resp){ if (resp && resp.access_token) { dergoGoogleToken(resp.access_token); } }
+                });
+            } catch(e) {}
+        }
+        window.addEventListener('load', nisGoogleClient);
+        async function dergoGoogleToken(accessToken){
+            try {
+                var r = await fetch(API_BASE + '/api/google-login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ access_token: accessToken }) });
+                var d = await r.json();
+                if (d.sukses) {
+                    isLogged = true; perdoruesi = d.perdoruesi;
+                    ruajTeDhenat();
+                    var ab = document.getElementById('authBlockUI'); if (ab) ab.style.display = 'none';
+                    mbyllModal(); vizatoNdeshjet(); setTimeout(kontrolloFitoret, 1500);
+                } else {
+                    alert(d.mesazhi || 'Google login dështoi.');
+                }
+            } catch(e) {
+                alert('Gabim në lidhje me Google.');
+            }
+        }
         function loginSocial(provider) {
-            alert((ui[gjuhaAktuale].socialSoon) || 'Hyrja me Google/Apple po konfigurohet (kërkon OAuth në backend). Do aktivizohet së shpejti.');
+            if (provider === 'google') {
+                if (GOOGLE_CLIENT_ID.indexOf('VENDOS_') === 0) { alert('Google login nuk është konfiguruar ende.'); return; }
+                if (!googleTokenClient) { nisGoogleClient(); alert('Po ngarkohet Google, provoni sërish për një moment.'); return; }
+                googleTokenClient.requestAccessToken();
+                return;
+            }
+            alert((ui[gjuhaAktuale].socialSoon) || 'Hyrja me Apple po konfigurohet. Do aktivizohet së shpejti.');
         }
 
         function hapAuthModal(type) {
@@ -3092,7 +3130,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625M</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625N</div>
     <script>
     (function(){
       function init(){
