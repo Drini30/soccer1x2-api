@@ -1281,14 +1281,18 @@ def _legs_gjenerator(p, grupet_lejuara):
         except Exception:
             return 0.0
 
-    # parashikimi 1X2 i algoritmit = ana me probabilitet më të lartë
-    fav = max([("1", P("1")), ("X", P("X")), ("2", P("2"))], key=lambda x: x[1])[0]
-    aligned = []
-    # Profili i parashikimit (nga skori) → përcakton agresivitetin e tregjeve
+    # Profili i parashikimit (nga skori i parashikuar)
     _pr = _parse_score(p.get("rezultati_sakt") or "")
     _tot = (_pr[0] + _pr[1]) if _pr else None
     _marg = abs(_pr[0] - _pr[1]) if _pr else 0
     _dominim = _marg >= 2                              # 0:3, 1:3, 2:0... → dominim i qartë
+    # 1X2 i PËRPUTHUR me skorin e parashikuar (kurrë kundër parashikimit):
+    #   vendas > mik → "1", mik > vendas → "2", barazim → "X".
+    if _pr:
+        fav = "1" if _pr[0] > _pr[1] else ("2" if _pr[0] < _pr[1] else "X")
+    else:
+        fav = max([("1", P("1")), ("X", P("X")), ("2", P("2"))], key=lambda x: x[1])[0]
+    aligned = []
     if "1x2" in grupet_lejuara and P(fav) > 0:
         aligned.append(fav)
     if "dc" in grupet_lejuara and not _dominim:       # DC VETËM kur JO dominim; te dominimi → favoriti/Over (jo timid)
@@ -1348,12 +1352,14 @@ def _legs_gjenerator(p, grupet_lejuara):
                 od = od_real if (od_real and od_real > 1) else round(1.0 / max(prob_cs, 0.001), 2)
                 legs.append({"market": "CS " + sc, "prob": round(prob_cs, 4), "koef": round(od, 2), "grup": "cs"})
 
-    # HT/FT — zgjedh qelizën më të mundshme (9 rezultatet)
+    # HT/FT — qeliza më e mundshme, POR pjesa FT (pas "/") të përputhet me parashikimin (fav)
     if "htft" in grupet_lejuara:
         htft = tregjet.get("ht_ft") or {}
         if isinstance(htft, dict) and htft:
-            best_k = max(htft, key=lambda k: float(htft.get(k, 0) or 0))
-            prob_hf = float(htft.get(best_k, 0) or 0)
+            koherente = {k: v for k, v in htft.items() if str(k).split("/")[-1] == fav}
+            burimi_hf = koherente if koherente else htft   # fallback nëse s'ka qelizë koherente
+            best_k = max(burimi_hf, key=lambda k: float(burimi_hf.get(k, 0) or 0))
+            prob_hf = float(burimi_hf.get(best_k, 0) or 0)
             if prob_hf > 0:
                 od = round(1.0 / prob_hf, 2)
                 legs.append({"market": "HT/FT " + best_k, "prob": round(prob_hf, 4), "koef": round(od, 2), "grup": "htft"})
