@@ -170,6 +170,9 @@ class LoginData(BaseModel):
     password: str
     name: str = ""
 
+class GoogleLoginInput(BaseModel):
+    access_token: str = ""
+
 # ── SIGURIA: helpers për hashim + service headers + admin ──
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 
@@ -255,6 +258,47 @@ def login_perdorues(data: LoginData):
             pass
     u.pop("password", None)
     return {"sukses": True, "perdoruesi": u}
+
+
+@app.post("/api/google-login")
+def google_login(data: GoogleLoginInput):
+    """Hyrje me Google: verifikon access_token-in me Google userinfo, gjen/krijon perdoruesin."""
+    tok = (data.access_token or "").strip()
+    if not tok:
+        return {"sukses": False, "mesazhi": "Token mungon."}
+    try:
+        r = requests.get("https://www.googleapis.com/oauth2/v3/userinfo",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=8)
+    except Exception:
+        return {"sukses": False, "mesazhi": "Gabim verifikimi me Google."}
+    if r.status_code != 200:
+        return {"sukses": False, "mesazhi": "Token i pavlefshem."}
+    info = r.json()
+    email_clean = (info.get("email") or "").lower().strip()
+    if not email_clean:
+        return {"sukses": False, "mesazhi": "Email mungon nga Google."}
+    if str(info.get("email_verified", "")).lower() not in ("true", "1"):
+        return {"sukses": False, "mesazhi": "Email i paverifikuar."}
+    emri = info.get("given_name") or (info.get("name") or email_clean.split("@")[0])
+    mbiemri = info.get("family_name") or ""
+    res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS)
+    if res.status_code == 200 and res.json():
+        u = res.json()[0]
+        u.pop("password", None)
+        return {"sukses": True, "perdoruesi": u}
+    # Perdorues i ri (password i rastesishem; hyn vetem me Google derisa te beje reset)
+    user_payload = {
+        "email": email_clean,
+        "password": _hash_fjalekalimi(os.urandom(24).hex()),
+        "emri": emri, "mbiemri": mbiemri,
+        "portofoli": 10.0, "isVip": False, "vip_skadon_me": None,
+        "auto_rinovim": False, "blerjet": []
+    }
+    ins = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_SERVICE_HEADERS, json=user_payload)
+    if ins.status_code in (200, 201, 204):
+        u = dict(user_payload); u.pop("password", None)
+        return {"sukses": True, "perdoruesi": u}
+    return {"sukses": False, "mesazhi": "Gabim databaze."}
 
 
 @app.post("/api/update_user")
