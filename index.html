@@ -465,7 +465,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625U) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625V) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -1696,7 +1696,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625U','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625V','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2160,7 +2160,7 @@ if (!gjuhaAktuale) {
                 let koefFloat = parseFloat(nd.koef_rez_sakt);
                 let emriSigurt = nd.ndeshja.replace(/'/g, "\'");
                 
-                let cmimiDinamik = 20.00;   // çmim FIKS për çdo ndeshje
+                let cmimiDinamik = 10.00;   // çmim FIKS për çdo ndeshje
                 let linkuBase = LINKS.PPM_TIER1;
 
                 // Injektimi i te dhenave ne linkun e LemonSqueezy
@@ -2255,11 +2255,11 @@ if (!gjuhaAktuale) {
         }
 
         const uiVIP = {
-          en: {contains:"What's included", info1:"Full access to VIP Combo",info2:"Full access to Generate",info3:"Full access to premium analyses",info4:"Real-time notifications",info5:"Priority support 24/7",info6:"High-confidence predictions (75%–92%)", access:"Access", accessList:"All leagues · all markets · exact-score predictions · premium picks · provably-fair hash verification", howWorks:"How it works", howList:"Free for 1 week (cancel anytime during the trial) · then $69.90/month · auto-renews · generate your tickets anytime", rights:"Your rights", rightsCancel:"Cancel anytime — no questions asked", rightsPrivacy:"Your data is protected and private"},
-          sq: {contains:"Çfarë përmban", info1:"Akses i plotë në VIP Combo",info2:"Akses i plotë në Gjenero Skedinën",info3:"Akses i plotë në analizat premium",info4:"Njoftime në kohë reale",info5:"Suport prioritar 24/7",info6:"Parashikime me besim të lartë (75%–92%)", access:"Aksesi", accessList:"Të gjitha ligat · të gjitha tregjet · parashikime me skor të saktë · parashikime premium · verifikim hash provably-fair", howWorks:"Si funksionon", howList:"Falas për 1 javë (anulim brenda provës) · pastaj $69.90/muaj · rinovohet automatikisht · gjenero skedinat në çdo kohë", rights:"Të drejtat e tua", rightsCancel:"Anulo në çdo kohë — pa pyetje", rightsPrivacy:"Të dhënat e tua janë të mbrojtura dhe private"},
-          de: {contains:"Enthalten", info1:"Voller Zugriff auf VIP Combo",info2:"Voller Zugriff auf Ticket-Generierung",info3:"Voller Zugriff auf Premium-Analysen",info4:"Echtzeit-Benachrichtigungen",info5:"Prioritäts-Support 24/7",info6:"Vorhersagen mit hoher Sicherheit (75%–92%)", access:"Zugang", accessList:"Alle Ligen · alle Märkte · Vorhersagen mit genauem Ergebnis · Premium-Tipps · Provably-Fair-Hash-Verifizierung", howWorks:"So funktioniert es", howList:"1 Woche kostenlos (jederzeit kündbar während der Testphase) · danach $69.90/Monat · verlängert sich automatisch · erstelle deine Tickets jederzeit", rights:"Deine Rechte", rightsCancel:"Jederzeit kündbar — ohne Nachfragen", rightsPrivacy:"Deine Daten sind geschützt und privat"},
-          fr: {contains:"Ce qui est inclus", info1:"Accès complet au VIP Combo",info2:"Accès complet à la Génération",info3:"Accès complet aux analyses premium",info4:"Notifications en temps réel",info5:"Support prioritaire 24/7",info6:"Pronostics à haute confiance (75%–92%)", access:"Accès", accessList:"Toutes les ligues · tous les marchés · pronostics au score exact · pronostics premium · vérification hash provably-fair", howWorks:"Comment ça marche", howList:"Gratuit pendant 1 semaine (annulation à tout moment pendant l'essai) · puis $69.90/mois · renouvellement automatique · générez vos tickets à tout moment", rights:"Vos droits", rightsCancel:"Annulez à tout moment — sans condition", rightsPrivacy:"Vos données sont protégées et privées"},
-          it: {contains:"Cosa include", info1:"Accesso completo a VIP Combo",info2:"Accesso completo alla Generazione",info3:"Accesso completo alle analisi premium",info4:"Notifiche in tempo reale",info5:"Supporto prioritario 24/7",info6:"Pronostici ad alta affidabilità (75%–92%)", access:"Accesso", accessList:"Tutte le leghe · tutti i mercati · pronostici sul risultato esatto · pronostici premium · verifica hash provably-fair", howWorks:"Come funziona", howList:"Gratis per 1 settimana (annullamento in qualsiasi momento durante la prova) · poi $69.90/mese · si rinnova automaticamente · genera le tue schedine quando vuoi", rights:"I tuoi diritti", rightsCancel:"Annulla quando vuoi — senza domande", rightsPrivacy:"I tuoi dati sono protetti e privati"}
+          en: {contains:"What's included", info1:"Full access to VIP Combo",info2:"Full access to Generate",info3:"Full access to premium analyses",info4:"Real-time notifications",info5:"Priority support 24/7",info6:"High-confidence predictions (75%–92%)", access:"Access", accessList:"All leagues · all markets · exact-score predictions · premium picks · provably-fair hash verification", howWorks:"How it works", howList:"Free for 1 week (cancel anytime during the trial) · then $69.90/month · auto-renews · generate your tickets anytime", rights:"Your rights", rightsCancel:"Cancel anytime — no questions asked", rightsPrivacy:"Your data is protected and private",trialTitle:"Get a FREE 1-week trial",trialSub:"Then $69.90/month · cancel anytime",trialBtn:"Start free trial",trialLater:"Maybe later"},
+          sq: {contains:"Çfarë përmban", info1:"Akses i plotë në VIP Combo",info2:"Akses i plotë në Gjenero Skedinën",info3:"Akses i plotë në analizat premium",info4:"Njoftime në kohë reale",info5:"Suport prioritar 24/7",info6:"Parashikime me besim të lartë (75%–92%)", access:"Aksesi", accessList:"Të gjitha ligat · të gjitha tregjet · parashikime me skor të saktë · parashikime premium · verifikim hash provably-fair", howWorks:"Si funksionon", howList:"Falas për 1 javë (anulim brenda provës) · pastaj $69.90/muaj · rinovohet automatikisht · gjenero skedinat në çdo kohë", rights:"Të drejtat e tua", rightsCancel:"Anulo në çdo kohë — pa pyetje", rightsPrivacy:"Të dhënat e tua janë të mbrojtura dhe private",trialTitle:"Provë FALAS 1-javore",trialSub:"Pastaj $69.90/muaj · anulim në çdo kohë",trialBtn:"Fillo provën falas",trialLater:"Më vonë"},
+          de: {contains:"Enthalten", info1:"Voller Zugriff auf VIP Combo",info2:"Voller Zugriff auf Ticket-Generierung",info3:"Voller Zugriff auf Premium-Analysen",info4:"Echtzeit-Benachrichtigungen",info5:"Prioritäts-Support 24/7",info6:"Vorhersagen mit hoher Sicherheit (75%–92%)", access:"Zugang", accessList:"Alle Ligen · alle Märkte · Vorhersagen mit genauem Ergebnis · Premium-Tipps · Provably-Fair-Hash-Verifizierung", howWorks:"So funktioniert es", howList:"1 Woche kostenlos (jederzeit kündbar während der Testphase) · danach $69.90/Monat · verlängert sich automatisch · erstelle deine Tickets jederzeit", rights:"Deine Rechte", rightsCancel:"Jederzeit kündbar — ohne Nachfragen", rightsPrivacy:"Deine Daten sind geschützt und privat",trialTitle:"GRATIS 1-Wochen-Testphase",trialSub:"Danach $69.90/Monat · jederzeit kündbar",trialBtn:"Testphase starten",trialLater:"Vielleicht später"},
+          fr: {contains:"Ce qui est inclus", info1:"Accès complet au VIP Combo",info2:"Accès complet à la Génération",info3:"Accès complet aux analyses premium",info4:"Notifications en temps réel",info5:"Support prioritaire 24/7",info6:"Pronostics à haute confiance (75%–92%)", access:"Accès", accessList:"Toutes les ligues · tous les marchés · pronostics au score exact · pronostics premium · vérification hash provably-fair", howWorks:"Comment ça marche", howList:"Gratuit pendant 1 semaine (annulation à tout moment pendant l'essai) · puis $69.90/mois · renouvellement automatique · générez vos tickets à tout moment", rights:"Vos droits", rightsCancel:"Annulez à tout moment — sans condition", rightsPrivacy:"Vos données sont protégées et privées",trialTitle:"Essai GRATUIT d'1 semaine",trialSub:"Puis $69.90/mois · annulation à tout moment",trialBtn:"Démarrer l'essai",trialLater:"Plus tard"},
+          it: {contains:"Cosa include", info1:"Accesso completo a VIP Combo",info2:"Accesso completo alla Generazione",info3:"Accesso completo alle analisi premium",info4:"Notifiche in tempo reale",info5:"Supporto prioritario 24/7",info6:"Pronostici ad alta affidabilità (75%–92%)", access:"Accesso", accessList:"Tutte le leghe · tutti i mercati · pronostici sul risultato esatto · pronostici premium · verifica hash provably-fair", howWorks:"Come funziona", howList:"Gratis per 1 settimana (annullamento in qualsiasi momento durante la prova) · poi $69.90/mese · si rinnova automaticamente · genera le tue schedine quando vuoi", rights:"I tuoi diritti", rightsCancel:"Annulla quando vuoi — senza domande", rightsPrivacy:"I tuoi dati sono protetti e privati",trialTitle:"Prova GRATUITA di 1 settimana",trialSub:"Poi $69.90/mese · annulla quando vuoi",trialBtn:"Inizia la prova",trialLater:"Più tardi"}
         };
 
         function hapVipAbonim() {
@@ -2677,7 +2677,7 @@ if (!gjuhaAktuale) {
             var pmid=p.match_id;
             if(!pmid){ var pm=(typeof ndeshjetPremium!=="undefined"?ndeshjetPremium:[]).find(function(m){return m.ndeshja===p.ndeshja;}); pmid=pm?pm.id:null; }
             if(!pmid){ alert("Kjo ndeshje s'eshte e disponueshme per blerje."); return; }
-            hapCheckout(pmid, p.ndeshja, "", "", 20, "");
+            hapCheckout(pmid, p.ndeshja, "", "", 10, "");
         }
         function renderPFHash(box){
             const _ux=uiExtra[gjuhaAktuale]||uiExtra.en;
@@ -2693,7 +2693,7 @@ if (!gjuhaAktuale) {
                     let mid;
                     if(zb){ mid='<div class="pf-locked"><i class="fa-solid fa-lock-open"></i> <span class="pf-scr-open">'+(p.parashikimi||'?')+'</span></div>'+(p.rezultati_real?('<div class="pf-real">Real: '+p.rezultati_real+'</div>'):''); }
                     else if(blere){ mid='<div class="pf-locked"><i class="fa-solid fa-lock-open"></i> <span class="pf-scr-open">'+(blere.rezultati||'?')+'</span></div>'; }
-                    else if(pmid){ mid='<div class="pf-locked"><i class="fa-solid fa-lock"></i> <span class="pf-scr">?:?</span></div><button class="pf-buy" onclick="blejPFPick('+idx+')"><i class="fa-solid fa-unlock"></i> '+(_ux.buyReveal||'Buy to reveal')+' ($20)</button>'; }
+                    else if(pmid){ mid='<div class="pf-locked"><i class="fa-solid fa-lock"></i> <span class="pf-scr">?:?</span></div><button class="pf-buy" onclick="blejPFPick('+idx+')"><i class="fa-solid fa-unlock"></i> '+(_ux.buyReveal||'Buy to reveal')+' ($10)</button>'; }
                     else { mid='<div class="pf-locked"><i class="fa-solid fa-lock"></i> <span class="pf-scr">0:0</span></div>'; }
                     html+='<div class="pf-match"><div class="pf-teams">'+nd+'</div>'+mid+'<button class="pf-proof" onclick="verifikoPF('+p.id+')"><i class="fa-solid fa-fingerprint"></i> Proof / Hash</button></div>';
                 });
@@ -2739,9 +2739,32 @@ if (!gjuhaAktuale) {
             } catch(e) {}
         }
 
+        function hapTrialUpsell(){
+            if(document.getElementById("trialUpsellOv")) return;
+            var V = uiVIP[gjuhaAktuale] || uiVIP.en;
+            var ov = document.createElement("div");
+            ov.id = "trialUpsellOv";
+            ov.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(2,6,15,.85);display:flex;align-items:center;justify-content:center;padding:16px;";
+            ov.innerHTML = '<div style="background:#0d1b33;border:1px solid #00e5ff;border-radius:14px;max-width:380px;width:100%;padding:22px;text-align:center;box-shadow:0 0 40px rgba(0,229,255,.25);">'
+              + '<i class="fa-solid fa-gem vip-diamond" style="font-size:38px;margin-bottom:10px;display:block;color:#00e5ff;"></i>'
+              + '<div style="font-size:19px;font-weight:800;color:#fff;margin-bottom:4px;">'+V.trialTitle+'</div>'
+              + '<div style="font-size:12px;color:#8b949e;margin-bottom:16px;">'+V.trialSub+'</div>'
+              + '<ul style="text-align:left;font-size:12.5px;line-height:1.9;list-style:none;padding:0;margin:0 0 18px;color:#c9d1d9;">'
+              + '<li>👑 '+V.info1+'</li><li>⚙️ '+V.info2+'</li><li>📊 '+V.info3+'</li>'
+              + '<li>🔔 '+V.info4+'</li><li>🛟 '+V.info5+'</li><li>🎯 '+V.info6+'</li></ul>'
+              + '<button class="ppm-btn-buy" style="width:100%;background:#00e5ff;color:#000;font-size:15px;border-radius:8px;padding:12px;font-weight:800;" onclick="mbyllTrialUpsell();hapVipAbonim();">'+V.trialBtn+'</button>'
+              + '<button onclick="mbyllTrialUpsell()" style="margin-top:10px;background:none;border:none;color:#8b949e;font-size:12px;cursor:pointer;">'+V.trialLater+'</button>'
+              + '</div>';
+            document.body.appendChild(ov);
+        }
+        function mbyllTrialUpsell(){
+            var ov = document.getElementById("trialUpsellOv");
+            if(ov) ov.remove();
+        }
         function hapGjeneratorin() {
             const T = _T();
             genNrMin = 2; genNrMax = 4;
+            if(!perdoruesi.isVip){ setTimeout(hapTrialUpsell, 130); }
             const _ux = uiExtra[gjuhaAktuale]||uiExtra.en;
             let ligaOpts = `<option value="">${_ux.allLeagues}</option>`;
             _modalHap('⚙️ ' + T.prodGjenero, '#58a6ff', `
@@ -3221,6 +3244,7 @@ if (!gjuhaAktuale) {
             if(!perdoruesi.isVip){
                 _modalHap('👑 VIP Combo', '#d4af37',
                   '<div class="prod-lock-box" style="border-color:#d4af37;"><p>'+VC().lock+'</p><button class="ppm-btn-buy" style="width:100%; background:linear-gradient(180deg,#ffd700,#b8860b); color:#1a1200; font-weight:900;" onclick="hapVipAbonim()">'+T.beVip+'</button></div>');
+                setTimeout(hapTrialUpsell, 130);
                 return;
             }
             vipNr=2; vipRez=4;
@@ -3291,7 +3315,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625U</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625V</div>
     <script>
     (function(){
       function init(){
