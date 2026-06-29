@@ -1802,6 +1802,106 @@ def ruaj_skedinen_e_zgjedhur(payload: dict):
     return {"sukses": True, "mesazhi": "U ruajt te Bileta Ime ✓"}
 
 
+def _tregu_kategoria(par):
+    """Kategoria e tregut nga teksti i parashikimit."""
+    import re as _re
+    x = str(par or "").strip()
+    if x.upper().startswith("HT/FT"):
+        return "HT/FT"
+    if x.startswith("Over") or x.startswith("Under"):
+        return "O/U"
+    if x in ("GG", "NG"):
+        return "GG/NG"
+    if x in ("1", "X", "2"):
+        return "1X2"
+    if x in ("1X", "12", "X2"):
+        return "DC"
+    if x.upper().startswith("AH") or "Handicap" in x:
+        return "AH"
+    if _re.match(r"^\d+\s*-\s*\d+$", x):
+        return "CS"
+    return "?"
+
+
+def _rendit_pozicionet(pool, key_nd="ndeshja", key_lg="liga_emri"):
+    """Pozicionet sipas besueshmerise (zbritese): (gpos, gtot, lpos, ltot)."""
+    ranked = sorted([p for p in pool if p.get("besueshmeria") is not None],
+                    key=lambda p: float(p.get("besueshmeria") or 0), reverse=True)
+    gpos = {p.get(key_nd): i + 1 for i, p in enumerate(ranked)}
+    gtot = len(ranked)
+    by_lg = {}
+    for p in ranked:
+        by_lg.setdefault(p.get(key_lg), []).append(p)
+    lpos, ltot = {}, {}
+    for lg, items in by_lg.items():
+        for i, p in enumerate(items):
+            lpos[p.get(key_nd)] = i + 1
+            ltot[p.get(key_nd)] = len(items)
+    return gpos, gtot, lpos, ltot
+
+
+def _ruaj_gjenero_legs(email, sked, pool):
+    """Ruan kembet e nje skedine Gjenero te skedina_gjenero."""
+    try:
+        legs = (sked or {}).get("ndeshjet") or []
+        if not legs:
+            return
+        pmap = {p.get("ndeshja"): p for p in pool}
+        gpos, gtot, lpos, ltot = _rendit_pozicionet(pool)
+        sid = "G:" + hashlib.md5(("|".join(str(l.get("ndeshja", "")) for l in legs) + os.urandom(6).hex()).encode()).hexdigest()[:16]
+        rows = []
+        for i, l in enumerate(legs):
+            nd = l.get("ndeshja")
+            pm = pmap.get(nd, {})
+            pj = l.get("pjeset") or []
+            par = pj[0] if pj else ""
+            rows.append({
+                "skedina_id": sid, "user_email": (email or None),
+                "pozicioni_leg": i + 1, "total_legs": len(legs),
+                "match_id": (str(pm.get("id")) if pm.get("id") is not None else None),
+                "ndeshja": nd, "liga": l.get("liga"),
+                "pozicioni_global": gpos.get(nd), "total_global": gtot,
+                "pozicioni_liga": lpos.get(nd), "total_liga": ltot.get(nd),
+                "tregu": _tregu_kategoria(par), "parashikimi": par,
+                "koeficienti": l.get("koef"), "besueshmeria": pm.get("besueshmeria"),
+            })
+        requests.post(f"{SUPABASE_BASE}/rest/v1/skedina_gjenero",
+                      headers=SUPABASE_SERVICE_HEADERS, json=rows, timeout=10)
+    except Exception as e:
+        print(f"⚠️ Ruajtja skedina_gjenero deshtoi: {e}")
+
+
+def _ruaj_vip_legs(email, ndeshjet, pool):
+    """Ruan ndeshjet e nje VIP Combo te skedina_vip (set skoresh)."""
+    try:
+        if not ndeshjet:
+            return
+        pmap = {p.get("ndeshja"): p for p in pool}
+        gpos, gtot, lpos, ltot = _rendit_pozicionet(pool)
+        sid = "V:" + hashlib.md5(("|".join(str(n.get("ndeshja", "")) for n in ndeshjet) + os.urandom(6).hex()).encode()).hexdigest()[:16]
+        rows = []
+        for i, n in enumerate(ndeshjet):
+            nd = n.get("ndeshja")
+            pm = pmap.get(nd, {})
+            rezt = n.get("rezultatet") or []
+            skoret = "|".join(str(r.get("skor", "")) for r in rezt)
+            koef0 = (rezt[0].get("koef") if rezt else None)
+            rows.append({
+                "skedina_id": sid, "user_email": (email or None),
+                "pozicioni_leg": i + 1, "total_legs": len(ndeshjet),
+                "match_id": (str(n.get("id")) if n.get("id") is not None else None),
+                "ndeshja": nd, "liga": n.get("liga_emri"),
+                "pozicioni_global": gpos.get(nd), "total_global": gtot,
+                "pozicioni_liga": lpos.get(nd), "total_liga": ltot.get(nd),
+                "tregu": "CS", "parashikimi": skoret,
+                "koeficienti": koef0, "besueshmeria": pm.get("besueshmeria"),
+            })
+        requests.post(f"{SUPABASE_BASE}/rest/v1/skedina_vip",
+                      headers=SUPABASE_SERVICE_HEADERS, json=rows, timeout=10)
+    except Exception as e:
+        print(f"⚠️ Ruajtja skedina_vip deshtoi: {e}")
+
+
 @app.get("/api/gjenero")
 def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0):
     if not email or not email.strip():
@@ -1822,7 +1922,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if not grupet:
         grupet = ["1x2", "ou", "gg"]
 
-    gen_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt"
+    gen_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt,besueshmeria"
                f"&best_bet=not.is.null&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300")
     if liga and liga.strip():
         gen_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
@@ -1842,6 +1942,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
     _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
     _ruaj_given_ids(email, "generate", [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
+    _ruaj_gjenero_legs(email, sked, pool)
     return {"sukses": True, "skedina": sked, "rifilluar": rifilluar,
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
             "cmimi": CMIM_GENERATE,
@@ -2516,7 +2617,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     nr = 3 if int(nr) == 3 else 2
     rez = 3 if int(rez) == 3 else 4
     dt = _data_lokale(0); dt_neser = _data_lokale(1)
-    vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola"
+    vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria"
               f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null"
               f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20")
     if liga and liga.strip():
@@ -2560,6 +2661,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     _ruaj_vip_combo(dt, nr, rez, ndeshjet)
     _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
     _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
+    _ruaj_vip_legs(email, ndeshjet, rows)
     return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez, "rifilluar": rifilluar,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet,
             "nr_kombinimesh": len(kombinimet),
