@@ -722,10 +722,10 @@
         /* ===== HERO 2-KOLONA: logo+butona majtas, performanca djathtas ===== */
         .hero-banner{ height:auto !important; min-height:300px; }
         .hero-content{ flex-direction:row !important; align-items:center !important; justify-content:space-between !important; gap:24px; padding:44px 32px 26px !important; max-width:1280px; margin:0 auto; }
-        .hero-left{ flex:0 0 40%; max-width:40%; }
+        .hero-left{ flex:0 0 44%; max-width:44%; }
         .hero-right{ flex:1; min-width:0; }
-        .hero-content .hero-logo{ font-size:48px !important; transform:none !important; justify-content:flex-start !important; }
-        .hero-content .hero-logo .x12{ font-size:24px !important; }
+        .hero-content .hero-logo{ font-size:62px !important; transform:none !important; justify-content:flex-start !important; }
+        .hero-content .hero-logo .x12{ font-size:30px !important; }
         .hero-content .hero-tag{ text-align:left; margin-top:8px !important; letter-spacing:.28em !important; }
         .hero-btns{ display:flex; flex-direction:column; gap:10px; margin-top:20px; }
         .hero-btns .prod-btn{ width:100%; justify-content:center !important; }
@@ -1880,7 +1880,6 @@ if (!gjuhaAktuale) {
                     + bar('GG / NG', m.ggng || 0, false)
                     + bar('Over/Under', m.ou || 0, false)
                     + bar(ui[gjuhaAktuale].perfScore || 'Skor saktë', m.skor || 0, true)
-                    + (proofRows ? '<div style="font-size:12px;color:#8b949e;margin:15px 0 9px;">' + (ui[gjuhaAktuale].perfProof || 'Provë — ndeshjet e fundit (kontrollo vetë)') + '</div>' + proofRows : '')
                     + '<div style="font-size:11px;color:#8b949e;text-align:center;margin:15px 0 0;line-height:1.5;">' + (ui[gjuhaAktuale].perfHonest || 'Ne nuk pretendojmë 90%. Shifra reale, të verifikueshme') + ' &mdash; ' + mostra + ' ' + (ui[gjuhaAktuale].perfMatches || 'ndeshje') + '.</div>'
                     + '</div>';
             } catch(e){ if(box) box.style.display = 'none'; }
