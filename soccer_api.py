@@ -1494,6 +1494,24 @@ def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara
 CMIM_VIPCOMBO = 30.0   # jo-VIP paguan kaq për 1 VIP Combo
 CMIM_GENERATE = 10.0   # jo-VIP paguan kaq për 1 Generate Ticket
 
+# PRAGU I BESUESHMËRISË PËR VIP: abonentët VIP marrin VETËM ndeshje me besueshmëri
+# >= këtë vlerë (pretendimi "75–92%" te veçoritë VIP). Një ndeshje me 65% nuk i
+# gjenerohet VIP-it. Jo-VIP-i (që paguan) merr të gjitha ndeshjet pa këtë filtër.
+# Drini: ule në 70.0 nëse del shumë restriktive (pak ndeshje kualifikohen).
+BESU_PRAG_VIP = 75.0
+
+def _filtro_besu(pool, prag=BESU_PRAG_VIP):
+    """Mban vetëm ndeshjet me besueshmëri >= prag. Përdoret për skedinat VIP."""
+    out = []
+    for p in pool:
+        b = p.get("besueshmeria")
+        try:
+            if b is not None and float(b) >= prag:
+                out.append(p)
+        except (TypeError, ValueError):
+            pass
+    return out
+
 def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float, paguaj: bool = False):
     """KONTROLLON pa ndryshuar asgjë (pa zbritur para, pa shënuar datën).
     produkt: 'vipcombo' ose 'generate'.
@@ -1927,17 +1945,32 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if liga and liga.strip():
         gen_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     res = requests.get(gen_url, headers=SUPABASE_SERVICE_HEADERS)
-    pool = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
+    pool_plot = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
+    pool_hi = _filtro_besu(pool_plot)   # vetëm ndeshje me besueshmëri >= 75
 
-    # LARMIA: përjashto ndeshjet e dhëna më parë sot këtij përdoruesi
     given = _merr_given_ids(email, "generate")
-    pool_f = [p for p in pool if p.get("id") not in given]
-    sked = _gjenero_skedine_fleksibel(pool_f, nr, nr_max, koef, grupet)
-    rifilluar = False
-    if not sked and given:
-        _rivendos_given(email, "generate")
-        sked = _gjenero_skedine_fleksibel(pool, nr, nr_max, koef, grupet)
-        rifilluar = True
+
+    def _provo_gjen(pool_x):
+        """Ndërton skedinë nga pool_x; rivendos 'given' dhe riprovon nëse s'del."""
+        pf = [p for p in pool_x if p.get("id") not in given]
+        s = _gjenero_skedine_fleksibel(pf, nr, nr_max, koef, grupet)
+        rif = False
+        if not s and given:
+            _rivendos_given(email, "generate")
+            s = _gjenero_skedine_fleksibel(pool_x, nr, nr_max, koef, grupet)
+            rif = True
+        return s, rif
+
+    # TË DY provojnë fillimisht ndeshjet me besueshmëri >= 75 (pretendimi 75–92%)
+    sked, rifilluar = _provo_gjen(pool_hi)
+    pool = pool_hi
+    if not sked:
+        if _drejta["is_vip"]:
+            # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
+            return {"sukses": False, "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të lartë (≥75%) për këto parametra. Provo më vonë."}
+        # Jo-VIP (që paguan): kalon tek ndeshjet e tjera
+        sked, rifilluar = _provo_gjen(pool_plot)
+        pool = pool_plot
     if not sked:
         return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
     _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
@@ -2131,7 +2164,7 @@ def _zgjidh_skedine_ditore(data_str, nr=3, prob_max=0.90, koef_min=3.0):
        (tregu me i mire per secilen ndeshje). Kthen pikat + koef_total."""
     try:
         r = requests.get(
-            f"{SUPABASE_URL_PREDS}?select=ndeshja,ora,liga_emri,tregjet,odds_reale,rezultati_sakt"
+            f"{SUPABASE_URL_PREDS}?select=ndeshja,ora,liga_emri,tregjet,odds_reale,rezultati_sakt,besueshmeria"
             f"&data=eq.{data_str}&tregjet=not.is.null"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -2140,6 +2173,10 @@ def _zgjidh_skedine_ditore(data_str, nr=3, prob_max=0.90, koef_min=3.0):
         for p in rows:
             tg_ = p.get("tregjet") or {}
             od = p.get("odds_reale") or {}
+            try:
+                besu_p = float(p.get("besueshmeria")) if p.get("besueshmeria") is not None else None
+            except (TypeError, ValueError):
+                besu_p = None
             bm = None
             for m in PICK_MARKETS:
                 try:
@@ -2158,20 +2195,24 @@ def _zgjidh_skedine_ditore(data_str, nr=3, prob_max=0.90, koef_min=3.0):
                     bm = {"ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
                           "liga": p.get("liga_emri"), "tregu": m,
                           "tregu_emri": _emri_tregut(m, p.get("ndeshja")),
-                          "prob": prob, "koef": koef}
+                          "prob": prob, "koef": koef, "besu": besu_p}
             if bm:
                 kand.append(bm)
         if len(kand) < 2:
             return None
+        # PREFERENCA E BESUESHMËRISË: ndeshjet ≥75 kanë përparësi; nëse s'mjaftojnë, kalon tek të tjerat (soft)
+        prag = BESU_PRAG_VIP
+        def _hi(c):
+            return c.get("besu") is not None and c["besu"] >= prag
         nr = min(nr, len(kand))
         # LIMITI: koef total >= koef_min. Floor per pick = koef_min^(1/nr) e garanton.
         floor = koef_min ** (1.0 / nr) if koef_min and koef_min > 1.0 else 1.0
         eligible = [c for c in kand if c["koef"] >= floor]
-        eligible.sort(key=lambda x: x["prob"], reverse=True)
+        eligible.sort(key=lambda x: (_hi(x), x["prob"]), reverse=True)
         if len(eligible) >= nr:
             zgjedhur = eligible[:nr]            # me te bindurit qe kalojne limitin
         else:
-            kand.sort(key=lambda x: x["koef"], reverse=True)
+            kand.sort(key=lambda x: (_hi(x), x["koef"]), reverse=True)
             zgjedhur = kand[:nr]                # s'ka mjaft -> maksimizo koefin
         if len(zgjedhur) < 2:
             return None
@@ -2623,15 +2664,31 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     if liga and liga.strip():
         vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(vc_url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
-    rows = r.json() if r.status_code == 200 else []
-    # LARMIA: përjashto ndeshjet e dhëna më parë sot këtij përdoruesi
+    rows_plot = r.json() if r.status_code == 200 else []
+    rows_hi = _filtro_besu(rows_plot)   # vetëm ndeshje me besueshmëri >= 75
+
     given = _merr_given_ids(email, "vipcombo")
-    ndeshjet = _ndeshjet_vipcombo([p for p in rows if p.get("id") not in given], nr, rez)
-    rifilluar = False
-    if len(ndeshjet) < nr and given:
-        _rivendos_given(email, "vipcombo")
-        ndeshjet = _ndeshjet_vipcombo(rows, nr, rez)
-        rifilluar = True
+
+    def _provo_vc(rows_x):
+        """Zgjedh ndeshjet për VIP Combo nga rows_x; rivendos 'given' dhe riprovon."""
+        nd = _ndeshjet_vipcombo([p for p in rows_x if p.get("id") not in given], nr, rez)
+        rif = False
+        if len(nd) < nr and given:
+            _rivendos_given(email, "vipcombo")
+            nd = _ndeshjet_vipcombo(rows_x, nr, rez)
+            rif = True
+        return nd, rif
+
+    # TË DY provojnë fillimisht ndeshjet me besueshmëri >= 75 (pretendimi 75–92%)
+    ndeshjet, rifilluar = _provo_vc(rows_hi)
+    rows = rows_hi
+    if len(ndeshjet) < nr:
+        if _drejta["is_vip"]:
+            # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
+            return {"sukses": False, "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të lartë (≥75%). Provo më vonë."}
+        # Jo-VIP (që paguan): kalon tek ndeshjet e tjera
+        ndeshjet, rifilluar = _provo_vc(rows_plot)
+        rows = rows_plot
     if len(ndeshjet) < nr:
         return {"sukses": False, "arsye": f"Nuk ka {nr} ndeshje me rezultate të sakta sot."}
 
