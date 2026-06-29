@@ -465,7 +465,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625S) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625U) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -721,7 +721,7 @@
         .pf-buy:hover{ filter:brightness(1.08); }
         /* ===== HERO 2-KOLONA: logo+butona majtas, performanca djathtas ===== */
         .hero-banner{ height:auto !important; min-height:300px; }
-        .hero-content{ flex-direction:row !important; align-items:center !important; justify-content:space-between !important; gap:24px; padding:44px 32px 26px !important; max-width:1280px; margin:0 auto; }
+        .hero-content{ flex-direction:row !important; align-items:center !important; justify-content:space-between !important; gap:24px; padding:56px 32px 26px !important; max-width:1280px; margin:0 auto; }
         .hero-left{ flex:0 0 44%; max-width:44%; }
         .hero-right{ flex:1; min-width:0; }
         .hero-content .hero-logo{ font-size:62px !important; transform:none !important; justify-content:flex-start !important; }
@@ -729,7 +729,7 @@
         .hero-content .hero-tag{ text-align:left; margin-top:8px !important; letter-spacing:.28em !important; }
         .hero-btns{ display:flex; flex-direction:column; gap:10px; margin-top:20px; }
         .hero-btns .prod-btn{ width:100%; justify-content:center !important; }
-        .hero-icons{ position:absolute; top:14px; right:18px; z-index:6; display:flex; gap:14px; align-items:center; background:rgba(4,7,15,.55); padding:6px 13px; border-radius:20px; border:1px solid rgba(212,175,55,.28); }
+        .hero-icons{ position:absolute; top:6px; right:18px; z-index:6; display:flex; gap:14px; align-items:center; background:rgba(4,7,15,.55); padding:6px 13px; border-radius:20px; border:1px solid rgba(212,175,55,.28); }
         .hero-icons i{ cursor:pointer; transition:transform .15s; }
         .hero-icons i:hover{ transform:scale(1.15); }
         @media (max-width:900px){
@@ -1696,7 +1696,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625S','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625U','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -1742,6 +1742,7 @@ if (!gjuhaAktuale) {
             }
             if(document.getElementById('modalOverlay').style.display === 'flex') mbyllModal();
             perditesoVipBanner();
+            try { renderPerformanca(); } catch(e){}
         }
 
         function klikoIkoneNjeriut() { if(isLogged) hapProfilin(); else hapAuthModal('login'); }
@@ -1832,9 +1833,17 @@ if (!gjuhaAktuale) {
         });
 
         // ===================== PERFORMANCA E MODELIT (nga arkivi) =====================
+        var PERF_TR = {
+            en:{title:'Performance',verified:'Auto-verified',x1x2:'1X2 Winner',gol:'Within 1 goal',all:'All markets',score:'Exact score',botPre:'Model performance, expressed as percentages over',botPost:'matches'},
+            sq:{title:'Performanca',verified:'E verifikuar automatikisht',x1x2:'Fitues 1X2',gol:'Brenda 1 goli',all:'Të gjitha tregjet',score:'Skor saktë',botPre:'Performanca e modelit, e pasqyruar në përqindje për',botPost:'ndeshje'},
+            de:{title:'Leistung',verified:'Automatisch verifiziert',x1x2:'1X2-Sieger',gol:'Innerhalb 1 Tor',all:'Alle Märkte',score:'Genaues Ergebnis',botPre:'Modell-Leistung, ausgedrückt in Prozent über',botPost:'Spiele'},
+            fr:{title:'Performance',verified:'Vérifié automatiquement',x1x2:'Vainqueur 1X2',gol:'À 1 but près',all:'Tous les marchés',score:'Score exact',botPre:'Performance du modèle, exprimée en pourcentage sur',botPost:'matchs'},
+            it:{title:'Performance',verified:'Verificato automaticamente',x1x2:'Vincitore 1X2',gol:'Entro 1 gol',all:'Tutti i mercati',score:'Risultato esatto',botPre:'Performance del modello, espressa in percentuale su',botPost:'partite'}
+        };
         async function renderPerformanca(){
             var box = document.getElementById('performancaBox');
             if(!box) return;
+            var T = PERF_TR[gjuhaAktuale] || PERF_TR.en;
             try {
                 var r = await fetch(API_BASE + '/api/performanca');
                 var d = await r.json();
@@ -1842,6 +1851,7 @@ if (!gjuhaAktuale) {
                 var recent = d.recent || [];
                 var mostra = d.mostra || 0;
                 if(mostra < 1){ box.style.display = 'none'; return; }
+                box.style.display = '';
                 function bar(label, val, dim){
                     var col = dim ? '#6e7681' : '#d4af37';
                     var lc = dim ? '#8b949e' : '#c9d1d9';
@@ -1866,21 +1876,21 @@ if (!gjuhaAktuale) {
                 box.innerHTML =
                     '<div style="background:#0d1b33;border:1px solid rgba(212,175,55,0.35);border-radius:14px;padding:18px;">'
                     + '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">'
-                    +   '<div><div style="font-size:16px;font-weight:600;color:#fff;">' + (ui[gjuhaAktuale].perfTitle || 'Performanca e Modelit') + '</div>'
-                    +   '<div style="font-size:11px;color:#8b949e;margin-top:2px;"><i class="fa-solid fa-shield-halved" style="color:#3fb950;"></i> ' + (ui[gjuhaAktuale].perfVerified || 'E verifikuar automatikisht') + (d.perditesuar ? ' &bull; ' + d.perditesuar : '') + '</div></div>'
+                    +   '<div><div style="font-size:16px;font-weight:600;color:#fff;">' + T.title + '</div>'
+                    +   '<div style="font-size:11px;color:#8b949e;margin-top:2px;"><i class="fa-solid fa-shield-halved" style="color:#3fb950;"></i> ' + T.verified + (d.perditesuar ? ' &bull; ' + d.perditesuar : '') + '</div></div>'
                     +   '<div style="font-size:10px;color:#0a162e;background:#3fb950;padding:3px 9px;border-radius:14px;font-weight:600;letter-spacing:.5px;">LIVE</div>'
                     + '</div>'
                     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'
-                    +   '<div style="background:#0a162e;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:34px;font-weight:600;color:#d4af37;line-height:1;">' + (m.x1x2 || 0) + '%</div><div style="font-size:11px;color:#c9d1d9;margin-top:4px;">' + (ui[gjuhaAktuale].perf1x2 || 'Fitues 1X2') + '</div></div>'
-                    +   '<div style="background:#0a162e;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:34px;font-weight:600;color:#d4af37;line-height:1;">' + (m.brenda1gol || 0) + '%</div><div style="font-size:11px;color:#c9d1d9;margin-top:4px;">' + (ui[gjuhaAktuale].perfGol || 'Brenda 1 goli') + '</div></div>'
+                    +   '<div style="background:#0a162e;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:34px;font-weight:600;color:#d4af37;line-height:1;">' + (m.x1x2 || 0) + '%</div><div style="font-size:11px;color:#c9d1d9;margin-top:4px;">' + (T.x1x2) + '</div></div>'
+                    +   '<div style="background:#0a162e;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:34px;font-weight:600;color:#d4af37;line-height:1;">' + (m.brenda1gol || 0) + '%</div><div style="font-size:11px;color:#c9d1d9;margin-top:4px;">' + (T.gol) + '</div></div>'
                     + '</div>'
-                    + '<div style="font-size:12px;color:#8b949e;margin-bottom:11px;">' + (ui[gjuhaAktuale].perfAll || 'Të gjitha tregjet — pa fshehur asgjë') + '</div>'
-                    + bar(ui[gjuhaAktuale].perf1x2 || 'Fitues 1X2', m.x1x2 || 0, false)
-                    + bar(ui[gjuhaAktuale].perfGol || '1 gol', m.brenda1gol || 0, false)
+                    + '<div style="font-size:12px;color:#8b949e;margin-bottom:11px;">' + T.all + '</div>'
+                    + bar(T.x1x2, m.x1x2 || 0, false)
+                    + bar(T.gol, m.brenda1gol || 0, false)
                     + bar('GG / NG', m.ggng || 0, false)
                     + bar('Over/Under', m.ou || 0, false)
-                    + bar(ui[gjuhaAktuale].perfScore || 'Skor saktë', m.skor || 0, true)
-                    + '<div style="font-size:11px;color:#8b949e;text-align:center;margin:15px 0 0;line-height:1.5;">' + (ui[gjuhaAktuale].perfHonest || 'Ne nuk pretendojmë 90%. Shifra reale, të verifikueshme') + ' &mdash; ' + mostra + ' ' + (ui[gjuhaAktuale].perfMatches || 'ndeshje') + '.</div>'
+                    + bar(T.score, m.skor || 0, true)
+                    + '<div style="font-size:11px;color:#8b949e;text-align:center;margin:15px 0 0;line-height:1.5;">' + T.botPre + ' ' + mostra + ' ' + T.botPost + '.</div>'
                     + '</div>';
             } catch(e){ if(box) box.style.display = 'none'; }
         }
@@ -2245,11 +2255,11 @@ if (!gjuhaAktuale) {
         }
 
         const uiVIP = {
-          en: {contains:"What's included", access:"Access", accessList:"All leagues · all markets · exact-score predictions · premium picks · provably-fair hash verification", howWorks:"How it works", howList:"$160 / month · auto-renews every 30 days · generate your own tickets anytime, every day — with the best results", rights:"Your rights", rightsCancel:"Cancel anytime — no questions asked", rightsPrivacy:"Your data is protected and private"},
-          sq: {contains:"Çfarë përmban", access:"Aksesi", accessList:"Të gjitha ligat · të gjitha tregjet · parashikime me skor të saktë · parashikime premium · verifikim hash provably-fair", howWorks:"Si funksionon", howList:"$160 / muaj · rinovohet automatikisht çdo 30 ditë · gjenero skedinat e tua në çdo kohë, çdo ditë — me rezultatet më të mira", rights:"Të drejtat e tua", rightsCancel:"Anulo në çdo kohë — pa pyetje", rightsPrivacy:"Të dhënat e tua janë të mbrojtura dhe private"},
-          de: {contains:"Enthalten", access:"Zugang", accessList:"Alle Ligen · alle Märkte · Vorhersagen mit genauem Ergebnis · Premium-Tipps · Provably-Fair-Hash-Verifizierung", howWorks:"So funktioniert es", howList:"$160 / Monat · verlängert sich alle 30 Tage · erstelle deine eigenen Tipps jederzeit, jeden Tag — mit den besten Ergebnissen", rights:"Deine Rechte", rightsCancel:"Jederzeit kündbar — ohne Nachfragen", rightsPrivacy:"Deine Daten sind geschützt und privat"},
-          fr: {contains:"Ce qui est inclus", access:"Accès", accessList:"Toutes les ligues · tous les marchés · pronostics au score exact · pronostics premium · vérification hash provably-fair", howWorks:"Comment ça marche", howList:"160 $ / mois · renouvellement tous les 30 jours · générez vos propres tickets à tout moment, chaque jour — avec les meilleurs résultats", rights:"Vos droits", rightsCancel:"Annulez à tout moment — sans condition", rightsPrivacy:"Vos données sont protégées et privées"},
-          it: {contains:"Cosa include", access:"Accesso", accessList:"Tutte le leghe · tutti i mercati · pronostici sul risultato esatto · pronostici premium · verifica hash provably-fair", howWorks:"Come funziona", howList:"$160 / mese · si rinnova ogni 30 giorni · genera le tue schedine quando vuoi, ogni giorno — con i migliori risultati", rights:"I tuoi diritti", rightsCancel:"Annulla quando vuoi — senza domande", rightsPrivacy:"I tuoi dati sono protetti e privati"}
+          en: {contains:"What's included", info1:"Full access to VIP Combo",info2:"Full access to Generate",info3:"Full access to premium analyses",info4:"Real-time notifications",info5:"Priority support 24/7",info6:"High-confidence predictions (75%–92%)", access:"Access", accessList:"All leagues · all markets · exact-score predictions · premium picks · provably-fair hash verification", howWorks:"How it works", howList:"Free for 1 week (cancel anytime during the trial) · then $69.90/month · auto-renews · generate your tickets anytime", rights:"Your rights", rightsCancel:"Cancel anytime — no questions asked", rightsPrivacy:"Your data is protected and private"},
+          sq: {contains:"Çfarë përmban", info1:"Akses i plotë në VIP Combo",info2:"Akses i plotë në Gjenero Skedinën",info3:"Akses i plotë në analizat premium",info4:"Njoftime në kohë reale",info5:"Suport prioritar 24/7",info6:"Parashikime me besim të lartë (75%–92%)", access:"Aksesi", accessList:"Të gjitha ligat · të gjitha tregjet · parashikime me skor të saktë · parashikime premium · verifikim hash provably-fair", howWorks:"Si funksionon", howList:"Falas për 1 javë (anulim brenda provës) · pastaj $69.90/muaj · rinovohet automatikisht · gjenero skedinat në çdo kohë", rights:"Të drejtat e tua", rightsCancel:"Anulo në çdo kohë — pa pyetje", rightsPrivacy:"Të dhënat e tua janë të mbrojtura dhe private"},
+          de: {contains:"Enthalten", info1:"Voller Zugriff auf VIP Combo",info2:"Voller Zugriff auf Ticket-Generierung",info3:"Voller Zugriff auf Premium-Analysen",info4:"Echtzeit-Benachrichtigungen",info5:"Prioritäts-Support 24/7",info6:"Vorhersagen mit hoher Sicherheit (75%–92%)", access:"Zugang", accessList:"Alle Ligen · alle Märkte · Vorhersagen mit genauem Ergebnis · Premium-Tipps · Provably-Fair-Hash-Verifizierung", howWorks:"So funktioniert es", howList:"1 Woche kostenlos (jederzeit kündbar während der Testphase) · danach $69.90/Monat · verlängert sich automatisch · erstelle deine Tickets jederzeit", rights:"Deine Rechte", rightsCancel:"Jederzeit kündbar — ohne Nachfragen", rightsPrivacy:"Deine Daten sind geschützt und privat"},
+          fr: {contains:"Ce qui est inclus", info1:"Accès complet au VIP Combo",info2:"Accès complet à la Génération",info3:"Accès complet aux analyses premium",info4:"Notifications en temps réel",info5:"Support prioritaire 24/7",info6:"Pronostics à haute confiance (75%–92%)", access:"Accès", accessList:"Toutes les ligues · tous les marchés · pronostics au score exact · pronostics premium · vérification hash provably-fair", howWorks:"Comment ça marche", howList:"Gratuit pendant 1 semaine (annulation à tout moment pendant l'essai) · puis $69.90/mois · renouvellement automatique · générez vos tickets à tout moment", rights:"Vos droits", rightsCancel:"Annulez à tout moment — sans condition", rightsPrivacy:"Vos données sont protégées et privées"},
+          it: {contains:"Cosa include", info1:"Accesso completo a VIP Combo",info2:"Accesso completo alla Generazione",info3:"Accesso completo alle analisi premium",info4:"Notifiche in tempo reale",info5:"Supporto prioritario 24/7",info6:"Pronostici ad alta affidabilità (75%–92%)", access:"Accesso", accessList:"Tutte le leghe · tutti i mercati · pronostici sul risultato esatto · pronostici premium · verifica hash provably-fair", howWorks:"Come funziona", howList:"Gratis per 1 settimana (annullamento in qualsiasi momento durante la prova) · poi $69.90/mese · si rinnova automaticamente · genera le tue schedine quando vuoi", rights:"I tuoi diritti", rightsCancel:"Annulla quando vuoi — senza domande", rightsPrivacy:"I tuoi dati sono protetti e privati"}
         };
 
         function hapVipAbonim() {
@@ -2276,10 +2286,12 @@ if (!gjuhaAktuale) {
                         </div>
                         <div style="font-weight:800; color:#f2cc60; font-size:12px; margin-bottom:6px;">🎁 ${V.contains}</div>
                         <ul class="m-lighttext" style="text-align:left; font-size:12.5px; line-height:1.9; list-style:none; padding:0; margin:0 0 14px;">
-                            <li>🎫 ${ui[gjuhaAktuale].vipInfo1}</li>
-                            <li>⚙️ ${ui[gjuhaAktuale].vipInfo2}</li>
-                            <li>🛟 ${ui[gjuhaAktuale].vipInfo3}</li>
-                            <li>🎯 ${ui[gjuhaAktuale].vipInfo4}</li>
+                            <li>👑 ${V.info1}</li>
+                            <li>⚙️ ${V.info2}</li>
+                            <li>📊 ${V.info3}</li>
+                            <li>🔔 ${V.info4}</li>
+                            <li>🛟 ${V.info5}</li>
+                            <li>🎯 ${V.info6}</li>
                         </ul>
                         <div style="font-weight:800; color:#f2cc60; font-size:12px; margin-bottom:6px;">🔓 ${V.access}</div>
                         <div class="m-lighttext" style="font-size:12.5px; line-height:1.7; margin-bottom:14px;">${V.accessList}</div>
@@ -2288,21 +2300,23 @@ if (!gjuhaAktuale) {
                         <div style="font-weight:800; color:#f2cc60; font-size:12px; margin-bottom:6px;">✅ ${V.rights}</div>
                         <ul class="m-lighttext" style="font-size:12.5px; line-height:1.8; list-style:none; padding:0; margin:0;">
                             <li>↩️ ${V.rightsCancel}</li>
-                            <li>💰 ${_ux.creditBackSub}</li>
                             <li>🔒 ${V.rightsPrivacy}</li>
                         </ul>
                         ${btnCancel}
                     </div>`;
             } else {
+                const V = uiVIP[gjuhaAktuale] || uiVIP.en;
                 document.getElementById('modalBody').innerHTML = `
                     <div style="text-align:center;">
                         <i class="fa-solid fa-gem vip-diamond" style="font-size:40px; margin-bottom:15px; display:block;"></i>
                         <div class="m-darkbox" style="padding:20px; border-radius:8px; margin-bottom:20px;">
                             <ul class="m-lighttext" style="text-align:left; font-size:13px; line-height:2; list-style-type:none; padding:0; margin:0;">
-                                <li>🎫 <b>${ui[gjuhaAktuale].vipInfo1}</b></li>
-                                <li>⚙️ <b>${ui[gjuhaAktuale].vipInfo2}</b></li>
-                                <li>🛟 <b>${ui[gjuhaAktuale].vipInfo3}</b></li>
-                                <li>🎁 <b>${ui[gjuhaAktuale].vipInfo4}</b></li>
+                                <li>👑 <b>${V.info1}</b></li>
+                                <li>⚙️ <b>${V.info2}</b></li>
+                                <li>📊 <b>${V.info3}</b></li>
+                                <li>🔔 <b>${V.info4}</b></li>
+                                <li>🛟 <b>${V.info5}</b></li>
+                                <li>🎯 <b>${V.info6}</b></li>
                             </ul>
                         </div>
                         <button id="btnAbonohu" class="ppm-btn-buy" style="background:#00e5ff; color:#000; width:100%; font-size:16px; border-radius:8px; padding:12px;" onclick="hapCheckoutVip()">
@@ -2324,7 +2338,7 @@ if (!gjuhaAktuale) {
 
         function hapCheckoutVip() {
             document.getElementById('modalTitle').innerText = ui[gjuhaAktuale].checkout;
-            let cmimi = 160;
+            let cmimi = 69.90;
             let fullUrl = `${LINKS.VIP}?checkout[email]=${encodeURIComponent(perdoruesi.email)}&checkout[custom][user_email]=${encodeURIComponent(perdoruesi.email)}&checkout[custom][type]=vip`;
             
             let btnPortofol = ``;
@@ -3277,7 +3291,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625S</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625U</div>
     <script>
     (function(){
       function init(){
