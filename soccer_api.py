@@ -474,6 +474,8 @@ PPM_TIER1 = 20.0    # çmim FIKS $20 për ndeshje
 PPM_TIER2 = 20.0
 PPM_TIER3 = 20.0
 CMIMI_DITORE = 10.0   # zhbllokon Skedinën + Kombinimin e Ditës
+CMIMI_TRIAL  = 4.90   # provë 1-javore me pagesë (jo falas — bllokon llogari fallso)
+TRIAL_DITE   = 7
 
 CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "")
 CRYPTOMUS_PAYMENT_KEY = os.environ.get("CRYPTOMUS_PAYMENT_KEY", "")
@@ -596,7 +598,7 @@ def _crypto_info(order_id):
 def crypto_krijo_fature(payload: dict):
     email = payload.get("email", "").lower().strip()
     tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm"
-    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore"):
+    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial"):
         return {"sukses": False, "mesazhi": "Të dhëna të pavlefshme"}
 
     match_id = payload.get("match_id")
@@ -604,6 +606,8 @@ def crypto_krijo_fature(payload: dict):
 
     if tipi == "vip":
         shuma = CMIMI_VIP
+    elif tipi == "trial":
+        shuma = CMIMI_TRIAL
     elif tipi == "ditore":
         shuma = CMIMI_DITORE
     elif tipi in ("topup", "donate"):
@@ -704,6 +708,17 @@ async def crypto_webhook(request: Request):
                 pass
         update["isVip"] = True
         update["vip_skadon_me"] = (baza + timedelta(days=VIP_DITE)).strftime("%Y-%m-%d")
+    elif tipi == "trial":
+        baza = datetime.utcnow()
+        if u.get("vip_skadon_me"):
+            try:
+                d = datetime.strptime(str(u["vip_skadon_me"])[:10], "%Y-%m-%d")
+                if d > baza:
+                    baza = d
+            except Exception:
+                pass
+        update["isVip"] = True
+        update["vip_skadon_me"] = (baza + timedelta(days=TRIAL_DITE)).strftime("%Y-%m-%d")
     elif tipi == "donate":
         pass  # donacion — s'ndryshon llogarinë
     elif tipi == "ditore":
