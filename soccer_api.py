@@ -109,6 +109,39 @@ TELEGRAM_CRON_KEY = os.environ.get("TELEGRAM_CRON_KEY", "")
 HEADERS = {"x-apisports-key": API_KEY}
 _ngjyra_live_cache = {}
 
+def _api_sports_get(endpoint, params=None, retries=3, timeout=10):
+    """Thirrje E QËNDRUESHME te API-Football me retry + backoff eksponencial.
+    Kthen JSON (dict) ose None nëse të gjitha përpjekjet dështojnë.
+    Trajtimi i rate-limit (429) dhe gabimeve të serverit (5xx) me ri-provë.
+    endpoint: p.sh. 'fixtures', 'odds', 'fixtures/statistics'."""
+    import time as _t
+    url = f"https://v3.football.api-sports.io/{endpoint}"
+    last = None
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, headers=HEADERS, params=params or {}, timeout=timeout)
+            if r.status_code == 200:
+                data = r.json()
+                errs = data.get("errors")
+                # rate-limit i raportuar brenda 200 → ri-provë me backoff
+                if errs and isinstance(errs, dict) and any(
+                    ("limit" in str(v).lower() or "rate" in str(v).lower()) for v in errs.values()):
+                    last = errs
+                    _t.sleep(1.5 * (attempt + 1))
+                    continue
+                return data
+            if r.status_code in (429, 500, 502, 503, 504):
+                last = f"HTTP {r.status_code}"
+                _t.sleep(1.5 * (attempt + 1))
+                continue
+            last = f"HTTP {r.status_code}"
+            return None
+        except Exception as e:
+            last = e
+            _t.sleep(1.0 * (attempt + 1))
+    print(f"[API-SPORTS] Dështoi '{endpoint}' pas {retries} përpjekjesh: {last}")
+    return None
+
 SUPABASE_BASE = os.environ.get(
     "SUPABASE_URL", "https://oqfhlyybwwkjbkvfpsxi.supabase.co"
 ).rstrip("/")
@@ -4091,41 +4124,54 @@ _LIVE_STATUSES_SET = {"1H","HT","2H","ET","BT","P","SUSP","INT","LIVE"}
 _LIVE_REFRESH_TS = {}
 
 def _me_live_fresh(payload, data_target):
-    """Rifreskon statusin/minuten/rezultatin e ndeshjeve LIVE direkt nga API-Sports,
-    sepse cache-i mund t'i mbajë 'live minuta 1' edhe pasi kanë mbaruar."""
+    """Rifreskon ndeshjet LIVE ekzistuese DHE injekton live të reja që mungojnë në skedinë
+    (p.sh. ndeshje që filluan pas gjenerimit nga cron-i). Kështu live-t shfaqen GJITHMONË."""
     try:
-        if not payload or data_target != datetime.utcnow().strftime('%Y-%m-%d'):
-            return payload
-        ref = {}
-        for liga in payload:
-            for nd in liga.get("ndeshjet", []):
-                if nd.get("statusi") in _LIVE_STATUSES_SET:
-                    ref[str(nd.get("id"))] = nd
-        if not ref:
+        if payload is None:
+            payload = []
+        if data_target != datetime.utcnow().strftime('%Y-%m-%d'):
             return payload
         now = time.time()
         if now - _LIVE_REFRESH_TS.get(data_target, 0) < 25:
             return payload  # u rifreskua së fundmi
         _LIVE_REFRESH_TS[data_target] = now
-        live_ids = list(ref.keys())
-        for i in range(0, len(live_ids), 20):
-            batch = live_ids[i:i+20]
+        # Indekso TË GJITHA ndeshjet ekzistuese sipas id
+        ekzistuese = {}
+        for liga in payload:
+            for nd in liga.get("ndeshjet", []):
+                ekzistuese[str(nd.get("id"))] = nd
+        # Merr TË GJITHA ndeshjet live nga API (me retry)
+        data = _api_sports_get("fixtures", {"live": "all"}, retries=2, timeout=8)
+        if not data or "response" not in data:
+            return payload
+        te_reja = []
+        for fx in data["response"]:
             try:
-                api = requests.get("https://v3.football.api-sports.io/fixtures",
-                                   headers=HEADERS, params={"ids": "-".join(batch)}, timeout=8)
-                fixtures = api.json().get("response", [])
+                fid = str(fx["fixture"]["id"])
+                st  = fx["fixture"]["status"]
+                gh  = fx["goals"]["home"]; ga = fx["goals"]["away"]
+                rez = f"{gh if gh is not None else 0} - {ga if ga is not None else 0}"
+                if fid in ekzistuese:
+                    nd = ekzistuese[fid]
+                    nd["statusi"]   = st.get("short") or nd.get("statusi")
+                    nd["minuta"]    = st.get("elapsed") or 0
+                    nd["rezultati"] = rez
+                else:
+                    e1 = fx["teams"]["home"]["name"].replace("'", "")
+                    e2 = fx["teams"]["away"]["name"].replace("'", "")
+                    te_reja.append({
+                        "id": fid, "liga_id": fx["league"]["id"], "sezoni": fx["league"].get("season"),
+                        "ekipi_1": e1, "ekipi_2": e2, "ndeshja": f"{e1} vs {e2}",
+                        "ora_sakte": "", "koha_utc": fx["fixture"]["date"],
+                        "statusi": st.get("short") or "1H", "minuta": st.get("elapsed") or 0,
+                        "rezultati": rez, "koef_1": "N/A", "koef_x": "N/A", "koef_2": "N/A",
+                        "analiza_custom": None, "is_motd": False, "is_premium": False,
+                    })
             except Exception:
                 continue
-            for fx in fixtures:
-                nd = ref.get(str(fx["fixture"]["id"]))
-                if not nd:
-                    continue
-                st = fx["fixture"]["status"]
-                nd["statusi"] = st.get("short") or nd.get("statusi")
-                nd["minuta"]  = st.get("elapsed") or 0
-                gh = fx["goals"]["home"]; ga = fx["goals"]["away"]
-                if gh is not None and ga is not None:
-                    nd["rezultati"] = f"{gh} - {ga}"
+        if te_reja:
+            grup_live = {"liga": "🔴 LIVE", "ndeshjet": te_reja}
+            payload = [grup_live] + [l for l in payload if l.get("liga") != "🔴 LIVE"]
         return payload
     except Exception:
         return payload
@@ -4273,13 +4319,14 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
     """LLOGARITJA E RËNDË: fixtures + odds + Monte Carlo + ruajtje. Kthen skedina_grupuar (listë)."""
     koha_tani = time.time()
     try:
-        response   = requests.get(
-            "https://v3.football.api-sports.io/fixtures",
-            headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=10
-        )
-        te_dhenat = response.json()
-        if "errors" in te_dhenat and te_dhenat["errors"]:
-            return []
+        te_dhenat = _api_sports_get("fixtures", {"date": data_target, "timezone": "Europe/Tirane"})
+        # API-Football dështoi / ktheu error → MOS prish cache-n e mirë; kthe të vjetrën
+        if te_dhenat is None or ("errors" in te_dhenat and te_dhenat["errors"]):
+            vjeter = SKEDINA_CACHE.get(data_target)
+            if vjeter:
+                return vjeter
+            vjeter_db, _ = _lexo_cache_db(data_target, max_age_min=10_000_000)
+            return vjeter_db if vjeter_db else []
 
         # ── KOEFICIENTËT: paginim i plotë + multi-bookmaker fallback ──
         # Bookmakers prioritet: 8=Bet365, 4=Pinnacle, 6=1xBet, 2=Marathon, 11=William Hill
@@ -4491,15 +4538,25 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
             key=lambda x: merr_rendesine_e_liges(x["liga"])
         )
 
-        SKEDINA_CACHE[data_target]       = rezultati_perfundimtar
-        SKEDINA_LAST_UPDATE[data_target] = koha_tani
-        _ruaj_cache_db(data_target, rezultati_perfundimtar)
-
-        return rezultati_perfundimtar
+        # MOS mbishkruaj cache-n e mirë me listë BOSH (p.sh. API ktheu pak/asgjë)
+        if rezultati_perfundimtar:
+            SKEDINA_CACHE[data_target]       = rezultati_perfundimtar
+            SKEDINA_LAST_UPDATE[data_target] = koha_tani
+            _ruaj_cache_db(data_target, rezultati_perfundimtar)
+            return rezultati_perfundimtar
+        vjeter = SKEDINA_CACHE.get(data_target)
+        if vjeter:
+            return vjeter
+        vjeter_db, _ = _lexo_cache_db(data_target, max_age_min=10_000_000)
+        return vjeter_db if vjeter_db else rezultati_perfundimtar
 
     except Exception as e:
         print(f"[GJENERIM] Gabim per {data_target}: {e}")
-        return []
+        vjeter = SKEDINA_CACHE.get(data_target)
+        if vjeter:
+            return vjeter
+        vjeter_db, _ = _lexo_cache_db(data_target, max_age_min=10_000_000)
+        return vjeter_db if vjeter_db else []
 
 @app.get("/")
 def root():
@@ -4750,11 +4807,9 @@ def merr_ndeshjet_live(background_tasks: BackgroundTasks):
     # Auto-refresh PPM të mbaruara në sfond
     background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
     try:
-        response   = requests.get(
-            "https://v3.football.api-sports.io/fixtures",
-            headers=HEADERS, params={"live": "all"}, timeout=10
-        )
-        te_dhenat = response.json()
+        te_dhenat = _api_sports_get("fixtures", {"live": "all"}, retries=2)
+        if te_dhenat is None:
+            return {"mesazhi": "Gabim", "ndeshjet": []}
 
         if "errors" in te_dhenat and te_dhenat["errors"]:
             return {"mesazhi": "Gabim", "ndeshjet": []}
