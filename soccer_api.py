@@ -895,14 +895,16 @@ def _legs_per_match(p, market_set):
 
 
 def _grupi_tregut(m):
+    if m.startswith("HT/FT"):
+        return "htft"
+    if m.startswith("HT "):          # HT si mini-FT (HT 1, HT Over 0.5, HT GG, HT CS ...)
+        return "ht"
     if m in ("1", "X", "2", "1X", "X2", "12"):
         return "rezultat"
     if m.startswith("Over") or m.startswith("Under"):
         return "ou"
     if m in ("GG", "NG"):
         return "btts"
-    if m.startswith("HT/FT"):
-        return "htft"
     if m.startswith("AH "):
         return "ah"
     if m.startswith("CS "):
@@ -1352,14 +1354,12 @@ def _legs_gjenerator(p, grupet_lejuara):
                 od = od_real if (od_real and od_real > 1) else round(1.0 / max(prob_cs, 0.001), 2)
                 legs.append({"market": "CS " + sc, "prob": round(prob_cs, 4), "koef": round(od, 2), "grup": "cs"})
 
-    # HT/FT — qeliza më e mundshme, POR pjesa FT (pas "/") të përputhet me parashikimin (fav)
+    # HT/FT — qeliza më e mundshme nga simulimi i PAVARUR (NUK detyrohet FT=parashikimi)
     if "htft" in grupet_lejuara:
-        htft = tregjet.get("ht_ft") or {}
+        htft = {k: v for k, v in (tregjet.get("ht_ft") or {}).items() if "/" in str(k)}
         if isinstance(htft, dict) and htft:
-            koherente = {k: v for k, v in htft.items() if str(k).split("/")[-1] == fav}
-            burimi_hf = koherente if koherente else htft   # fallback nëse s'ka qelizë koherente
-            best_k = max(burimi_hf, key=lambda k: float(burimi_hf.get(k, 0) or 0))
-            prob_hf = float(burimi_hf.get(best_k, 0) or 0)
+            best_k = max(htft, key=lambda k: float(htft.get(k, 0) or 0))
+            prob_hf = float(htft.get(best_k, 0) or 0)
             if prob_hf > 0:
                 od = round(1.0 / prob_hf, 2)
                 legs.append({"market": "HT/FT " + best_k, "prob": round(prob_hf, 4), "koef": round(od, 2), "grup": "htft"})
@@ -1380,6 +1380,37 @@ def _legs_gjenerator(p, grupet_lejuara):
             od = od_real if (od_real and od_real > 1) else round(1.0 / prob_ah, 2)
             legs.append({"market": "AH " + side + " -" + str(hcap), "prob": round(prob_ah, 4), "koef": round(od, 2), "grup": "ah"})
 
+    # ── HT si MINI-FT — opsionet HT (secili me koeficientin e vet, koef i lartë → value) ──
+    if "ht" in grupet_lejuara:
+        def _addht(m):
+            pr = P(m)
+            if pr > 0:
+                legs.append({"market": m, "prob": round(pr, 4), "koef": round(1.0 / pr, 2), "grup": "ht"})
+        # HT 1X2 — favoriti i gjysmës së parë
+        _ht1x2 = max([("HT 1", P("HT 1")), ("HT X", P("HT X")), ("HT 2", P("HT 2"))], key=lambda x: x[1])
+        if _ht1x2[1] > 0:
+            _addht(_ht1x2[0])
+        # HT Double Chance — më e sigurta
+        _htdc = max([("HT 1X", P("HT 1X")), ("HT X2", P("HT X2")), ("HT 12", P("HT 12"))], key=lambda x: x[1])
+        if _htdc[1] > 0:
+            _addht(_htdc[0])
+        # HT Over/Under 0.5 — a shënohet gol në pjesë
+        if P("HT Over 0.5") >= P("HT Under 0.5"):
+            _addht("HT Over 0.5")
+        else:
+            _addht("HT Under 0.5")
+        # HT GG/NG
+        if P("HT GG") >= P("HT NG"):
+            _addht("HT GG")
+        else:
+            _addht("HT NG")
+        # HT skor i saktë — më i probabël
+        _htcs = [(k, float(v or 0)) for k, v in tregjet.items() if str(k).startswith("HT CS ")]
+        if _htcs:
+            _hb = max(_htcs, key=lambda x: x[1])
+            if _hb[1] > 0:
+                _addht(_hb[0])
+
     return legs
 
 
@@ -1395,8 +1426,8 @@ def _opsionet_ndeshje(p, grupet_lejuara):
             a, b = legs[i], legs[j]
             if a["grup"] == b["grup"]:
                 continue   # vetëm cross-group (rezultat + O/U + GG)
-            if a["grup"] in ("cs", "htft", "ah") or b["grup"] in ("cs", "htft", "ah"):
-                continue   # CS/HT-FT/AH korrelohen me 1X2/O/U -> vetëm single-leg (jo combo i fryrë)
+            if a["grup"] in ("cs", "htft", "ah", "ht") or b["grup"] in ("cs", "htft", "ah", "ht"):
+                continue   # CS/HT-FT/AH/HT korrelohen me 1X2/O/U -> vetëm single-leg (jo combo i fryrë)
             jp = _joint_prob(dist, [a["market"], b["market"]])
             if jp is None:
                 jp = a["prob"] * b["prob"]
@@ -1936,7 +1967,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     nr_max = max(nr, min(15, nr_max))
     koef = max(2.0, min(100.0, float(koef)))
     grupet = [g.strip().lower() for g in tregjet.split(",") if g.strip()]
-    grupet = [g for g in grupet if g in ("1x2", "dc", "ou", "gg", "cs", "htft", "ah")]
+    grupet = [g for g in grupet if g in ("1x2", "dc", "ou", "gg", "cs", "htft", "ah", "ht")]
     if not grupet:
         grupet = ["1x2", "ou", "gg"]
 
@@ -3315,6 +3346,58 @@ def _ht_ft_distribuim(xg_ht_1, xg_ht_2, xg_2h_1, xg_2h_2, max_g=6):
             cells[k] = round(cells[k] / tot, 4)
     return cells
 
+def simulim_ht_ft_mc(xg_ht_1, xg_ht_2, xg_2h_1, xg_2h_2, iteracione=40_000, seed=None):
+    """
+    Simulim Monte Carlo i PAVARUR — HT trajtohet si një "MINI-FT" i plotë.
+    Gjysma e parë dhe e dytë simulohen veçmas. Nga golat e gjysmës së parë (h_ht, a_ht)
+    llogariten TË GJITHA tregjet HT (1X2, Double Chance, O/U, GG/NG, skor i saktë),
+    pikërisht ashtu si llogariten për FT. HT NUK derivohet nga skori FT.
+    Kthen: (cells_htft {"1/1":prob,...}, skor_ht_str, prob_skor_ht, ht_mkt {"HT 1":prob,...}).
+    """
+    rng = np.random.default_rng(seed)
+    h_ht = rng.poisson(max(0.05, xg_ht_1), iteracione)
+    a_ht = rng.poisson(max(0.05, xg_ht_2), iteracione)
+    h_ft = h_ht + rng.poisson(max(0.05, xg_2h_1), iteracione)
+    a_ft = a_ht + rng.poisson(max(0.05, xg_2h_2), iteracione)
+    n = float(iteracione)
+    # shenjat: 1 (vendas), 2 (mysafir), 0 (barazim/X)
+    s_ht = np.where(h_ht > a_ht, 1, np.where(a_ht > h_ht, 2, 0))
+    s_ft = np.where(h_ft > a_ft, 1, np.where(a_ft > h_ft, 2, 0))
+    _m = {1: "1", 2: "2", 0: "X"}
+    cells = {}
+    for hv in (1, 0, 2):
+        mh = (s_ht == hv)
+        for fv in (1, 0, 2):
+            cells[_m[hv] + "/" + _m[fv]] = round(float(np.count_nonzero(mh & (s_ft == fv))) / n, 4)
+
+    # ── HT si MINI-FT: TË GJITHA tregjet nga golat e gjysmës së parë ──
+    tot_ht = h_ht + a_ht
+    p1 = float(np.count_nonzero(h_ht > a_ht)) / n
+    pX = float(np.count_nonzero(h_ht == a_ht)) / n
+    p2 = float(np.count_nonzero(a_ht > h_ht)) / n
+    ht_mkt = {
+        "HT 1": round(p1, 4), "HT X": round(pX, 4), "HT 2": round(p2, 4),
+        "HT 1X": round(p1 + pX, 4), "HT X2": round(pX + p2, 4), "HT 12": round(p1 + p2, 4),
+        "HT Over 0.5":  round(float(np.count_nonzero(tot_ht >= 1)) / n, 4),
+        "HT Under 0.5": round(float(np.count_nonzero(tot_ht == 0)) / n, 4),
+        "HT Over 1.5":  round(float(np.count_nonzero(tot_ht >= 2)) / n, 4),
+        "HT Under 1.5": round(float(np.count_nonzero(tot_ht <= 1)) / n, 4),
+        "HT GG": round(float(np.count_nonzero((h_ht > 0) & (a_ht > 0))) / n, 4),
+        "HT NG": round(float(np.count_nonzero((h_ht == 0) | (a_ht == 0))) / n, 4),
+    }
+    # HT skor i saktë (top 6) + skori HT më i probabël
+    hc = np.clip(h_ht, 0, 4); ac = np.clip(a_ht, 0, 4)
+    combo = hc * 10 + ac
+    vals, counts = np.unique(combo, return_counts=True)
+    order = np.argsort(counts)[::-1]
+    for idx in order[:6]:
+        v = int(vals[idx])
+        ht_mkt[f"HT CS {v // 10}-{v % 10}"] = round(float(counts[idx]) / n, 4)
+    _b = int(vals[int(np.argmax(counts))])
+    skor_ht = f"{_b // 10}-{_b % 10}"
+    prob_ht = round(float(np.max(counts)) / n, 4)
+    return cells, skor_ht, prob_ht, ht_mkt
+
 def simulim_monte_carlo_v2(
     xg_1: float, xg_2: float,
     kaos_factor: float = 1.0,
@@ -3586,16 +3669,20 @@ def analizo_ndeshjen_premium_master(
         xg_1, xg_2, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja
     )
 
-    # ── HT/FT (nëse modelet HT janë gati) — shpërndarja gjysmë+fund ──
-    if _frac_ht_1 is not None and _frac_ht_2 is not None:
-        _xg_ht_1 = max(0.05, _frac_ht_1 * xg_1)
-        _xg_ht_2 = max(0.05, _frac_ht_2 * xg_2)
-        _xg_2h_1 = max(0.05, xg_1 - _xg_ht_1)
-        _xg_2h_2 = max(0.05, xg_2 - _xg_ht_2)
-        try:
-            tregjet_mc["ht_ft"] = _ht_ft_distribuim(_xg_ht_1, _xg_ht_2, _xg_2h_1, _xg_2h_2)
-        except Exception as _e:
-            print(f"⚠️ HT/FT dështoi ({_e})")
+    # ── HT/FT — SIMULIM I PAVARUR (gjysma e parë simulohet veçmas, jo nga skori FT) ──
+    _frac_h1 = _frac_ht_1 if _frac_ht_1 is not None else 0.44
+    _frac_h2 = _frac_ht_2 if _frac_ht_2 is not None else 0.44
+    _xg_ht_1 = max(0.05, _frac_h1 * xg_1)
+    _xg_ht_2 = max(0.05, _frac_h2 * xg_2)
+    _xg_2h_1 = max(0.05, xg_1 - _xg_ht_1)
+    _xg_2h_2 = max(0.05, xg_2 - _xg_ht_2)
+    try:
+        _htft_dist, _skor_ht, _prob_ht, _ht_mkt = simulim_ht_ft_mc(_xg_ht_1, _xg_ht_2, _xg_2h_1, _xg_2h_2, seed=_seed_ndeshja)
+        tregjet_mc["ht_ft"] = _htft_dist
+        tregjet_mc["skor_ht"] = _skor_ht   # skori HT i pavarur nga FT
+        tregjet_mc.update(_ht_mkt)          # HT si mini-FT: të gjitha tregjet HT
+    except Exception as _e:
+        print(f"⚠️ HT/FT dështoi ({_e})")
 
     try:
         g1, g2 = map(int, rez_sakt.split("-"))
