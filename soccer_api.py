@@ -2509,9 +2509,11 @@ def _zbulo_pf():
                 pass
 
 @app.get("/api/pf/list")
-def pf_list():
-    """Lista e ndeshjeve me hash. Të kyçurat NUK e tregojnë parashikimin; të zbuluarat po."""
+def pf_list(email: str = ""):
+    """Lista e ndeshjeve me hash. Të kyçurat NUK e tregojnë parashikimin; të zbuluarat po.
+    VIP-unlock: abonentët VIP e shohin parashikimin edhe te të kyçurat (pa server_seed)."""
     _gjenero_pf(); _zbulo_pf()
+    vip = _eshte_vip(email) if (email and email.strip()) else False
     try:
         r = requests.get(f"{PF_URL}?select=*&order=krijuar.desc&limit=20",
                          headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -2542,6 +2544,11 @@ def pf_list():
             item["parashikimi"] = pf_row.get("parashikimi")
             item["server_seed"] = pf_row.get("server_seed")
             item["rezultati_real"] = pf_row.get("rezultati_real")
+        elif vip:
+            # VIP-unlock: parashikimi falas për abonentët VIP. PA server_seed —
+            # hash-i mbetet i paverifikueshëm para ndeshjes, pra provably-fair s'cenohet.
+            item["parashikimi"] = pf_row.get("parashikimi")
+            item["vip_open"] = True
         out.append(item)
     return {"pikat": out}
 
@@ -2568,6 +2575,50 @@ def pf_verify(id: int):
             "hash_rikalkuluar": rikalk, "vlefshem": (rikalk == pf_row.get("hash_publik")),
             "formula": "sha256(ndeshja | parashikimi | server_seed)",
             "rezultati_real": pf_row.get("rezultati_real")}
+
+
+@app.get("/api/diag")
+def diag(email: str = ""):
+    """Mjet verifikimi: datë UTC vs Tiranë, lidhja+kuota e API-Football, statusi VIP, premium picks.
+    Thirre: /api/diag?email=EMAIL_YT  (email opsional, për të parë statusin VIP)."""
+    out = {
+        "data_utc":    datetime.utcnow().strftime("%Y-%m-%d %H:%M") + " UTC",
+        "data_tirane": _data_lokale() + " (lokale Shqipëri)",
+        "api_key_vendosur": bool(API_KEY),
+    }
+    # 1) Lidhja + kuota e API-Football (përdor /status — nuk konsumon kuotë)
+    try:
+        r = requests.get("https://v3.football.api-sports.io/status", headers=HEADERS, timeout=8)
+        if r.status_code == 200:
+            d = r.json().get("response", {}) or {}
+            sub = d.get("subscription", {}) or {}
+            req = d.get("requests", {}) or {}
+            out["api_ok"]            = True
+            out["api_plan"]          = sub.get("plan")
+            out["api_aktiv"]         = sub.get("active")
+            out["api_thirrje_sot"]   = f"{req.get('current')} / {req.get('limit_day')}"
+        else:
+            out["api_ok"] = False
+            out["api_status_code"] = r.status_code
+            out["api_pergjigje"] = (r.text or "")[:200]
+    except Exception as e:
+        out["api_ok"] = False
+        out["api_gabim"] = str(e)
+    # 2) Statusi VIP (nëse jepet email)
+    if email and email.strip():
+        out["email"]     = email.strip().lower()
+        out["eshte_vip"] = _eshte_vip(email)
+    # 3) Premium picks (provably_fair)
+    try:
+        r = requests.get(f"{PF_URL}?select=id,statusi&order=krijuar.desc&limit=20",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rows = r.json() if r.status_code == 200 else []
+        out["pf_total"]  = len(rows)
+        out["pf_kycur"]  = sum(1 for x in rows if x.get("statusi") == "kycur")
+        out["pf_zbuluar"]= sum(1 for x in rows if x.get("statusi") == "zbuluar")
+    except Exception:
+        pass
+    return out
 
 
 def _ruaj_vip_combo(dt, nr, rez, ndeshjet):
@@ -3996,7 +4047,7 @@ def _fshih_premium(grupet):
 
 @app.get("/api/skedina")
 def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
-    data_target = date if date else datetime.utcnow().strftime('%Y-%m-%d')
+    data_target = date if date else _data_lokale()
     koha_tani   = time.time()
 
     # Auto-refresh PPM të përfunduara (në sfond)
@@ -4105,8 +4156,7 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     if date:
         datat = [date]
     else:
-        sot = datetime.utcnow()
-        datat = [(sot + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(3)]
+        datat = [_data_lokale(i) for i in range(3)]
     for dt in datat:
         background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, dt)
     # pas gjenerimit: ruaj snapshot-in e Skedinës së Ditës + vlerëso skedinat e mbaruara
@@ -4122,7 +4172,7 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
     try:
         response   = requests.get(
             "https://v3.football.api-sports.io/fixtures",
-            headers=HEADERS, params={"date": data_target}, timeout=10
+            headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=10
         )
         te_dhenat = response.json()
         if "errors" in te_dhenat and te_dhenat["errors"]:
@@ -4902,7 +4952,7 @@ def update_elo_midnight():
     try:
         res = requests.get(
             "https://v3.football.api-sports.io/fixtures",
-            headers=HEADERS, params={"date": dje}, timeout=15
+            headers=HEADERS, params={"date": dje, "timezone": "Europe/Tirane"}, timeout=15
         )
         ndeshjet_dje = res.json().get("response", [])
     except:
@@ -5053,7 +5103,7 @@ def merr_vip_weekend():
         try:
             response = requests.get(
                 "https://v3.football.api-sports.io/fixtures",
-                headers=HEADERS, params={"date": data_target}, timeout=10
+                headers=HEADERS, params={"date": data_target, "timezone": "Europe/Tirane"}, timeout=10
             )
             te_dhenat = response.json()
         except:
@@ -5072,7 +5122,7 @@ def merr_vip_weekend():
                     res_odds = requests.get(
                         "https://v3.football.api-sports.io/odds",
                         headers=HEADERS,
-                        params={"date": data_target, "bookmaker": bookmaker_id, "page": page},
+                        params={"date": data_target, "timezone": "Europe/Tirane", "bookmaker": bookmaker_id, "page": page},
                         timeout=8
                     ).json()
                     if "response" not in res_odds or not res_odds["response"]:

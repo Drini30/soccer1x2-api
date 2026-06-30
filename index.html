@@ -134,6 +134,7 @@
         .pf-teams span{color:#9fb0cc;font-weight:600}
         .pf-locked{display:inline-flex;align-items:center;gap:7px;margin-top:8px;background:rgba(0,0,0,.3);border:1px dashed rgba(255,210,74,.5);border-radius:8px;padding:4px 12px}
         .pf-locked i{color:#ffd24a;font-size:12px}
+        .pf-vipopen{border:1px solid rgba(0,229,255,.6)!important;background:rgba(0,229,255,.08)}
         .pf-scr{filter:blur(5px);font-weight:900;font-size:18px;letter-spacing:3px;color:#ffe17a;user-select:none}
         .pf-scr-open{font-weight:900;font-size:18px;color:#7ee08a}
         .pf-real{font-size:10px;color:#9fb0cc;margin-top:5px}
@@ -465,7 +466,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0625X) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0625Z) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -976,7 +977,8 @@
             }
         }
 
-        try { let sot = new Date(); let dateStr = sot.toISOString().split('T')[0]; document.getElementById('datePicker').value = dateStr; } catch(e) {}
+        function dataLokaleTirane(){ try { return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Tirane'}).format(new Date()); } catch(e){ return new Date().toISOString().split('T')[0]; } }
+        try { document.getElementById('datePicker').value = dataLokaleTirane(); } catch(e) {}
 
         let gjuhaAktuale = localStorage.getItem('soccer_lang');
 if (!gjuhaAktuale) {
@@ -1665,7 +1667,7 @@ if (!gjuhaAktuale) {
         function ndryshoDaten(delta) {
             const dp = document.getElementById('datePicker');
             if (delta) {
-                let baze = dp.value || new Date().toISOString().split('T')[0];
+                let baze = dp.value || dataLokaleTirane();
                 let p = baze.split('-');
                 let dt = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
                 dt.setDate(dt.getDate() + delta);
@@ -1696,7 +1698,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0625X','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0625Z','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2386,6 +2388,7 @@ if (!gjuhaAktuale) {
                 perdoruesi.vip_skadon_me = data.vip_skadon_me;
                 perdoruesi.auto_rinovim = true;
                 ruajTeDhenat();
+                try{ mbushPFHash(true); }catch(e){}   // VIP-unlock: shfaq parashikimet menjëherë
                 dergoEmailNjoftimi("VIP_CREDITS", 160, "Abonimi VIP 30 Ditor");
                 document.getElementById('modalTitle').innerText = "";
                 document.getElementById('modalBody').innerHTML = `<div class="ticket-modal"><div class="ticket-icon" style="color:#00e5ff;"><i class="fa-solid fa-gem"></i></div><h3 style="color:#fff; margin-bottom:10px;">${ui[gjuhaAktuale].successTitle}</h3><p style="color:#8ba898; font-size:13px;">Welcome to VIP! Your weekend tickets are now active until ${perdoruesi.vip_skadon_me}.</p><button class="filter-btn active" style="margin-top:20px; padding:10px 30px; background:#00e5ff; color:#000;" onclick="hapVipAbonim()">View VIP Area</button></div>`;
@@ -2667,7 +2670,7 @@ if (!gjuhaAktuale) {
             renderPFHash(box);   // vizato menjëherë (bonusi + cache aktual)
             const now=Date.now();
             if(force || _pfCache===null || (now-_pfTs)>300000){
-                try{ const r=await fetch(API_BASE+'/api/pf/list'); const d=await r.json(); _pfCache=d.pikat||[]; _pfTs=now; }
+                try{ const _em=(typeof perdoruesi!=='undefined'&&perdoruesi.email)?perdoruesi.email:''; const r=await fetch(API_BASE+'/api/pf/list'+(_em?('?email='+encodeURIComponent(_em)):'')); const d=await r.json(); _pfCache=d.pikat||[]; _pfTs=now; }
                 catch(e){ if(_pfCache===null) _pfCache=[]; }
                 renderPFHash(box);   // rifresko me ndeshjet kur vjen përgjigja
             }
@@ -2692,6 +2695,7 @@ if (!gjuhaAktuale) {
                     const blere=(pmid&&typeof perdoruesi!=='undefined'&&perdoruesi.blerjet)?perdoruesi.blerjet.find(function(b){return String(b.id)===String(pmid);}):null;
                     let mid;
                     if(zb){ mid='<div class="pf-locked"><i class="fa-solid fa-lock-open"></i> <span class="pf-scr-open">'+(p.parashikimi||'?')+'</span></div>'+(p.rezultati_real?('<div class="pf-real">Real: '+p.rezultati_real+'</div>'):''); }
+                    else if(p.vip_open && p.parashikimi){ mid='<div class="pf-locked pf-vipopen"><i class="fa-solid fa-crown" style="color:#00e5ff"></i> <span class="pf-scr-open">'+p.parashikimi+'</span></div>'; }
                     else if(blere){ mid='<div class="pf-locked"><i class="fa-solid fa-lock-open"></i> <span class="pf-scr-open">'+(blere.rezultati||'?')+'</span></div>'; }
                     else if(pmid){ mid='<div class="pf-locked"><i class="fa-solid fa-lock"></i> <span class="pf-scr">?:?</span></div><button class="pf-buy" onclick="blejPFPick('+idx+')"><i class="fa-solid fa-unlock"></i> '+(_ux.buyReveal||'Buy to reveal')+' ($10)</button>'; }
                     else { mid='<div class="pf-locked"><i class="fa-solid fa-lock"></i> <span class="pf-scr">0:0</span></div>'; }
@@ -3021,8 +3025,10 @@ if (!gjuhaAktuale) {
                                          (JSON.stringify(statusiRi.blerjet) !== JSON.stringify(perdoruesi.blerjet));
                         if (kaNdryshim) {
                             let uBeVipTani = !perdoruesi.isVip && statusiRi.isVip;
+                            let vipNdryshoi = (perdoruesi.isVip !== statusiRi.isVip);
                             perdoruesi = statusiRi;
                             ruajTeDhenat();
+                            if(vipNdryshoi){ try{ mbushPFHash(true); }catch(e){} }   // VIP-unlock: rifresko premium picks me email
                             if(document.getElementById('modalOverlay').style.display === 'flex' && document.getElementById('modalTitle').innerText.includes(ui[gjuhaAktuale].profile)) hapProfilin();
                             if(filtriAktiv !== 'Historiku') vizatoNdeshjet();
                             if(uBeVipTani) alert(ui[gjuhaAktuale].successTitle);
@@ -3315,7 +3321,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625X</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0625Z</div>
     <script>
     (function(){
       function init(){
