@@ -4834,6 +4834,69 @@ def merr_ndeshjet_live(background_tasks: BackgroundTasks):
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e), "ndeshjet": []}
 
+
+@app.get("/api/test-parashikim")
+def test_parashikim(fixture: str, k1: float = None, kx: float = None, k2: float = None):
+    """TEST: rigjeneron parashikimin për një fixture me parametrat AKTUALË (pa e ruajtur).
+    Përdoret për të parë si do ta parashikonte algoritmi i ri një ndeshje — edhe pas FT.
+    Koeficientët opsionalë: nëse jepen k1/kx/k2, përdoren; ndryshe merren nga API."""
+    try:
+        fdata = _api_sports_get("fixtures", {"id": fixture})
+        if not fdata or not fdata.get("response"):
+            return {"sukses": False, "mesazhi": "Fixture s'u gjet"}
+        n = fdata["response"][0]
+        ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
+        ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
+        e1_id = n["teams"]["home"]["id"]; e2_id = n["teams"]["away"]["id"]
+        emri_liges = f"{n['league']['country']} - {n['league']['name']}"
+        rez_real = None
+        if n["goals"]["home"] is not None and n["goals"]["away"] is not None:
+            rez_real = f"{n['goals']['home']}-{n['goals']['away']}"
+
+        # Koeficientët — manualë ose nga API
+        odds_full = {}
+        if k1 and kx and k2:
+            kk1, kkx, kk2 = k1, kx, k2
+        else:
+            kk1 = kkx = kk2 = None
+            odata = _api_sports_get("odds", {"fixture": fixture, "bookmaker": 8})
+            if odata and odata.get("response"):
+                try:
+                    bets = odata["response"][0]["bookmakers"][0]["bets"]
+                    parsed = _nxirr_odds_reale(bets)
+                    kk1, kkx, kk2 = parsed.get("1"), parsed.get("X"), parsed.get("2")
+                    odds_full = parsed
+                except Exception:
+                    pass
+            if not (kk1 and kkx and kk2):
+                return {"sukses": False, "mesazhi": "Koeficientët s'u gjetën — jepi manualisht: ?fixture=ID&k1=..&kx=..&k2=.."}
+
+        dna_1 = merr_dna_nga_db(e1_id)
+        dna_2 = merr_dna_nga_db(e2_id)
+
+        analiza, bes, rez_sakt, koef_str, extradb = analizo_ndeshjen_premium_master(
+            str(fixture), ekipi_1, ekipi_2, e1_id, e2_id,
+            str(kk1), str(kkx), str(kk2), emri_liges, [],
+            dna_1=dna_1, dna_2=dna_2, odds_full=odds_full
+        )
+        tregjet = (extradb or {}).get("tregjet", {})
+        return {
+            "sukses": True,
+            "ndeshja": f"{ekipi_1} vs {ekipi_2}",
+            "liga": emri_liges,
+            "koeficientet": {"1": kk1, "X": kkx, "2": kk2},
+            "parashikimi_skor": rez_sakt,
+            "rezultati_real": rez_real,
+            "perputhet_sakt": (rez_sakt.replace(" ", "") == rez_real) if rez_real else None,
+            "best_bet": (extradb or {}).get("best_bet", {}),
+            "skor_ht": tregjet.get("skor_ht"),
+            "tregjet_1x2": {k: tregjet.get(k) for k in ["1", "X", "2"] if k in tregjet},
+            "tregjet_gola": {k: tregjet.get(k) for k in ["GG", "NG", "Over 2.5", "Under 2.5"] if k in tregjet},
+            "besueshmeria": bes,
+        }
+    except Exception as e:
+        return {"sukses": False, "mesazhi": f"Gabim: {e}"}
+
 # ==========================================
 # DNA ENGINE V2 — Mbushje dhe përditësim i team_dna_cache
 # ==========================================
