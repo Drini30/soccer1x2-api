@@ -3039,16 +3039,17 @@ def llogarit_xg_te_perparuara(
     xg1_forma = (xg1_forma_raw * 0.85 + 0.25)
     xg2_forma = (xg2_forma_raw * 0.85 + 0.25)
 
-    # Burimi 2: ELO (multiplikator i rritur 2.5 → 3.0)
+    # Burimi 2: ELO — konvertim me INTERCEPT (jo p*3 linear, që nën-vlerëson underdog-un)
+    # Një ekip me 15% gjasa fitore shënon ~0.9 gola, JO 0.45. Floor realizmi 0.45 + p*2.3.
     diff_elo = (elo_1 - elo_2) / 400.0
     p1_elo   = 1 / (1 + 10 ** (-diff_elo))
     p2_elo   = 1 - p1_elo
-    xg1_elo  = p1_elo * 3.0
-    xg2_elo  = p2_elo * 3.0
+    xg1_elo  = 0.45 + p1_elo * 2.3
+    xg2_elo  = 0.45 + p2_elo * 2.3
 
-    # Burimi 3: Tregu (multiplikator i rritur 2.7 → 3.2)
-    xg1_market = p1_real * 3.2
-    xg2_market = p2_real * 3.2
+    # Burimi 3: Tregu — po ashtu me intercept realizmi (floor për underdog-un)
+    xg1_market = 0.45 + p1_real * 2.4
+    xg2_market = 0.45 + p2_real * 2.4
 
     # Burimi 4: Baza e golave (mesatarja globale e futbollit ~1.35 gola/ekip)
     xg1_base = 1.35
@@ -3458,14 +3459,14 @@ def simulim_monte_carlo_v2(
         if _c > 0:
             rezultatet_freq[f"{_i}-{_j}"] = _c
 
-    # ── ZGJEDHJA E REZULTATIT: midis top-5, me afer totalit te pritur ──
-    total_pritur = xg_1 + xg_2
+    # ── ZGJEDHJA E REZULTATIT: midis top-8, me afër xG-së së SECILIT ekip ──
+    # (jo vetëm totalit — kjo parandalon humbësin të dalë sistematikisht me 0 gola)
     kandidatet = []
-    for _idx in _order[:5]:
+    for _idx in _order[:8]:
         _i = int(_idx // H.shape[1]); _j = int(_idx % H.shape[1])
         _freq = float(_flat[_idx])
-        _difft = abs((_i + _j) - total_pritur)
-        _score = _freq * (1.0 / (1.0 + _difft * 0.5))
+        _diff = abs(_i - xg_1) + abs(_j - xg_2)
+        _score = _freq * (1.0 / (1.0 + _diff * 0.9))
         kandidatet.append((_i, _j, _freq, _score))
     kandidatet.sort(key=lambda x: x[3], reverse=True)
     rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
