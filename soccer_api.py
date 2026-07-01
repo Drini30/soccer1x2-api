@@ -1278,12 +1278,20 @@ def skedina_historik(email: str = ""):
     except Exception:
         vip_combo = []
 
-    def _koef_vc(c):
-        return float(((c.get("fituesi") or {}).get("koef_total")) or 0)
+    # Përparësi: MË SHUMË ndeshje fituese (3 > 2), pastaj koeficienti më i lartë.
+    # (koef_total mund të mungojë te vlerësimet e vjetra → renditja s'duhet të varet vetëm nga ai)
+    def _rank_vc(c):
+        f = c.get("fituesi") or {}
+        try:
+            k = float(f.get("koef_total") or 0)
+        except Exception:
+            k = 0.0
+        n = f.get("total") or len(f.get("rreshtat") or [])
+        return (n, k)
     _vc_best = {}
     for _c in vip_combo:
         _dita = _c.get("data")
-        if _dita not in _vc_best or _koef_vc(_c) > _koef_vc(_vc_best[_dita]):
+        if _dita not in _vc_best or _rank_vc(_c) > _rank_vc(_vc_best[_dita]):
             _vc_best[_dita] = _c
     vip_combo = sorted(_vc_best.values(), key=lambda x: (x.get("data") or ""), reverse=True)
 
@@ -2549,8 +2557,9 @@ def _arkivo_ndeshje(pred, ht_str=None):
 
 
 def _arkivo_sweep():
-    """SWEEP i sigurt (jo-transicional): arkivon çdo parashikim premium TË MBARUAR që
-    ende s'është në arkiv — pa varësi nga rruga që e vuri statusin FT.
+    """SWEEP i sigurt (jo-transicional): arkivon çdo parashikim TË MBARUAR që ende
+    s'është në arkiv — pa varësi nga rruga që e vuri statusin FT. Njësoj si
+    /api/arkiv/rindertimi, por i lehtë (vetëm të rejat) dhe automatik nga cron-i.
     Zgjidh rastin kur gjenerimi (cron) e vë statusin FT direkt nga API dhe arkivuesi
     transicional e humb ndeshjen (p.sh. France–Suedi). Idempotent (match_id UNIQUE)."""
     fund = "FT,AET,PEN,AWD,WO"
@@ -2558,7 +2567,7 @@ def _arkivo_sweep():
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
             f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,rezultati"
-            f"&statusi=in.({fund})&is_premium=is.true&rezultati=not.is.null"
+            f"&statusi=in.({fund})&rezultati=not.is.null"
             f"&order=data.desc&limit=150",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         preds = r.json() if r.status_code == 200 else []
