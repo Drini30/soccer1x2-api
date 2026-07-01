@@ -4474,31 +4474,50 @@ def _regjistro_rezultatet_training():
         pass
 
 
+_LAST_HEAVY_GEN = 0.0
+HEAVY_GEN_INTERVAL = 30 * 60   # pjesa e rëndë (Monte Carlo + odds për 3 ditë) maksimum çdo 30 min
+
 @app.get("/api/cron/gjenero")
 def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     """Cron i PLOTË (thirret nga cron-job.org çdo ~10 min). Kthen përgjigje TË VOGËL.
-    Aktivizon të gjithë zinxhirin në sfond: përditësim FT + arkivim (PPM History +
-    Performanca), vlerësim VIP Combo, parahapje skedine, snapshot Skedina e Ditës,
-    vlerësim skedinash, regjistrim training. Përdore KËTË te cron, jo /api/skedina
-    (që kthen skedinën e plotë dhe është 'too large')."""
+    NDARJE:
+      • E LEHTË (çdo tik): FT+arkivim, sweep, PF gjenero/zbulo, VIP Combo, snapshot,
+        vlerësim skedinash, training.
+      • E RËNDË (me throttle, maksimum çdo HEAVY_GEN_INTERVAL): rigjenerimi Monte Carlo
+        + paginim odds për 3 ditë — që të mos mbivendoset në Render free tier.
+    Me ?date=YYYY-MM-DD detyrohet edhe pjesa e rëndë menjëherë (pa throttle).
+    Përdore KËTË te cron, jo /api/skedina (që kthen skedinën e plotë dhe është 'too large')."""
+    global _LAST_HEAVY_GEN
     if date:
         datat = [date]
     else:
         datat = [_data_lokale(i) for i in range(3)]
+
+    # ── GJITHMONË (e lehtë, çdo ~10 min) ──
     # 1) Përditëso FT + ARKIVO ndeshjet e mbaruara → PPM History + Performanca
     background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
-    # 1b) SWEEP arkivimi: kap çdo premium të mbaruar që s'u arkivua (statusi u vu FT nga gjenerimi)
+    # 1b) SWEEP arkivimi: kap çdo të mbaruar që s'u arkivua (statusi u vu FT nga gjenerimi)
     background_tasks.add_task(_arkivo_sweep)
+    # 1c) PF (premium hash): gjenero commitment-et + zbulo pikët e mbaruara —
+    #     s'varet më nga trafiku i faqes (më parë thirreshin vetëm te /api/pf/list)
+    background_tasks.add_task(_gjenero_pf)
+    background_tasks.add_task(_zbulo_pf)
     # 2) Vlerëso VIP Combo (fituese/humbur) → Won History
     background_tasks.add_task(_vleso_vip_combot)
-    # 3) Parahap skedinën për 3 ditë
-    for dt in datat:
-        background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, dt)
     # 4) Snapshot Skedina e Ditës + vlerëso skedinat + regjistro training
     background_tasks.add_task(_snapshot_skedina_ditore)
     background_tasks.add_task(_vlereso_skedina_historik)
     background_tasks.add_task(_regjistro_rezultatet_training)
-    return {"ok": True, "mesazhi": "Cron nisi në sfond", "datat": datat}
+
+    # ── E RËNDË (me throttle): rigjenerim Monte Carlo + odds për 3 ditë ──
+    tani = time.time()
+    heavy = bool(date) or (tani - _LAST_HEAVY_GEN >= HEAVY_GEN_INTERVAL)
+    if heavy:
+        _LAST_HEAVY_GEN = tani
+        for dt in datat:
+            background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, dt)
+
+    return {"ok": True, "mesazhi": "Cron nisi në sfond", "datat": datat, "heavy": heavy}
 
 
 def _kompjuto_dhe_ruaj_skedina(data_target):
