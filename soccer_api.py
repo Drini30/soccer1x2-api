@@ -1183,13 +1183,18 @@ def _snapshot_skedina_ditore():
         for pk in pikat:
             if pk.get("koef"):
                 koef_total *= float(pk["koef"])
-        headers = SUPABASE_SERVICE_HEADERS.copy()
-        headers["Prefer"] = "resolution=merge-duplicates"
-        requests.post(SKEDINA_HIST_URL, headers=headers,
-                      json={"data": sot, "pikat": pikat,
-                            "koef_total": round(koef_total, 2),
-                            "statusi": "pezull",
-                            "krijuar": datetime.utcnow().isoformat()}, timeout=5)
+        rec = {"data": sot, "pikat": pikat,
+               "koef_total": round(koef_total, 2),
+               "statusi": "pezull",
+               "krijuar": datetime.utcnow().isoformat()}
+        if ekz:
+            # ekziston tashmë rresht(a) 'pezull' për sot → përditësoje (mos krijo dublikat të ri)
+            requests.patch(f"{SKEDINA_HIST_URL}?data=eq.{sot}",
+                           headers=SUPABASE_SERVICE_HEADERS, json=rec, timeout=5)
+        else:
+            headers = SUPABASE_SERVICE_HEADERS.copy()
+            headers["Prefer"] = "resolution=merge-duplicates"
+            requests.post(SKEDINA_HIST_URL, headers=headers, json=rec, timeout=5)
     except Exception as e:
         print(f"[HISTORIK] snapshot gabim: {e}")
 
@@ -1241,6 +1246,25 @@ def skedina_historik(email: str = ""):
         rows = r.json() if r.status_code == 200 else []
     except Exception:
         rows = []
+    # ── SKEDINA E DITËS: 1 rresht/ditë (hiq dublikatat nga snapshot-et e shumta) ──
+    # Përparësi: fituese > humbur > pezull; barazim → koeficienti më i lartë.
+    _STAT_RANK = {"fituese": 2, "humbur": 1, "pezull": 0}
+    def _koef_sk(x):
+        try:
+            return float(x.get("koef_total") or 0)
+        except Exception:
+            return 0.0
+    def _rank_sk(x):
+        return (_STAT_RANK.get(x.get("statusi"), 0), _koef_sk(x))
+    _sk_best = {}
+    for _r in rows:
+        _dita = str(_r.get("data") or "")[:10]
+        if not _dita:
+            continue
+        if _dita not in _sk_best or _rank_sk(_r) > _rank_sk(_sk_best[_dita]):
+            _sk_best[_dita] = _r
+    rows = sorted(_sk_best.values(), key=lambda x: str(x.get("data") or ""), reverse=True)
+
     finalizuar = [x for x in rows if x.get("statusi") in ("fituese", "humbur")]
     fituese = sum(1 for x in finalizuar if x.get("statusi") == "fituese")
     total = len(finalizuar)
@@ -2522,6 +2546,57 @@ def _arkivo_ndeshje(pred, ht_str=None):
                       json=rec, timeout=8)
     except Exception:
         pass
+
+
+def _arkivo_sweep():
+    """SWEEP i sigurt (jo-transicional): arkivon çdo parashikim premium TË MBARUAR që
+    ende s'është në arkiv — pa varësi nga rruga që e vuri statusin FT.
+    Zgjidh rastin kur gjenerimi (cron) e vë statusin FT direkt nga API dhe arkivuesi
+    transicional e humb ndeshjen (p.sh. France–Suedi). Idempotent (match_id UNIQUE)."""
+    fund = "FT,AET,PEN,AWD,WO"
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,rezultati"
+            f"&statusi=in.({fund})&is_premium=is.true&rezultati=not.is.null"
+            f"&order=data.desc&limit=150",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        preds = r.json() if r.status_code == 200 else []
+    except Exception:
+        preds = []
+    if not preds:
+        return
+    # ID-të tashmë në arkiv → mos i ripatch/refetch (ignore-duplicates i bën no-op gjithsesi)
+    try:
+        ar = requests.get(f"{ARKIV_URL}?select=match_id&order=data.desc&limit=800",
+                          headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        ekzistuese = {str(x.get("match_id")) for x in (ar.json() if ar.status_code == 200 else [])}
+    except Exception:
+        ekzistuese = set()
+    mungojne = [p for p in preds if str(p.get("id")) not in ekzistuese]
+    if not mungojne:
+        return
+    # HT nga API vetëm për ato që mungojnë (batch 20) — steady-state: 0 thirrje API
+    ht_map = {}
+    ids = [str(p.get("id")) for p in mungojne if p.get("id")]
+    for i in range(0, len(ids), 20):
+        batch = ids[i:i + 20]
+        try:
+            api_res = requests.get("https://v3.football.api-sports.io/fixtures",
+                                   headers=HEADERS, params={"ids": "-".join(batch)}, timeout=10)
+            for fx in api_res.json().get("response", []):
+                fid = str(fx["fixture"]["id"])
+                ht = (fx.get("score") or {}).get("halftime") or {}
+                if ht.get("home") is not None:
+                    ht_map[fid] = f"{ht.get('home')} - {ht.get('away')}"
+        except Exception:
+            pass
+    for p in mungojne:
+        try:
+            _arkivo_ndeshje(p, ht_map.get(str(p.get("id"))))
+        except Exception:
+            pass
+
 
 def _pf_hash(ndeshja, parashikimi, seed):
     """Hash publik = sha256(ndeshja | parashikimi | server_seed)."""
@@ -4403,6 +4478,8 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
         datat = [_data_lokale(i) for i in range(3)]
     # 1) Përditëso FT + ARKIVO ndeshjet e mbaruara → PPM History + Performanca
     background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
+    # 1b) SWEEP arkivimi: kap çdo premium të mbaruar që s'u arkivua (statusi u vu FT nga gjenerimi)
+    background_tasks.add_task(_arkivo_sweep)
     # 2) Vlerëso VIP Combo (fituese/humbur) → Won History
     background_tasks.add_task(_vleso_vip_combot)
     # 3) Parahap skedinën për 3 ditë
