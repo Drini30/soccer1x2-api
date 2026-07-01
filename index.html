@@ -502,7 +502,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0626I) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0626J) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -918,10 +918,10 @@
 
         <div class="footer-zone">
             <div class="footer-links">
-                <a onclick="hapKushtet()">Terms of Service</a>
-                <a onclick="hapRimbursimin()">Refund Policy</a>
-                <a onclick="hapPrivacy()">Privacy Policy</a>
-                <a onclick="hapKontakt()">Contact Us</a>
+                <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a>
+                <a href="/refund.html" target="_blank" rel="noopener">Refund Policy</a>
+                <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>
+                <a href="/contact.html" target="_blank" rel="noopener">Contact Us</a>
             </div>
             <div>&copy; 2026 Soccer1X2 PRO Analytics. All rights reserved.<br>This is a sports data and statistical analysis software.</div>
         </div>
@@ -1742,7 +1742,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0626I','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0626J','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -3382,7 +3382,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0626I</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0626J</div>
     <script>
     (function(){
       function init(){
