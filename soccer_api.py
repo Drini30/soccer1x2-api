@@ -490,7 +490,7 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
         dite = 30
     if not email:
         return {"sukses": False, "mesazhi": "email mungon"}
-    skadon = (datetime.utcnow() + timedelta(days=dite)).strftime("%Y-%m-%d")
+    skadon = _data_lokale(dite)
     requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
                    headers=SUPABASE_SERVICE_HEADERS,
                    json={"isVip": True, "vip_skadon_me": skadon})
@@ -755,7 +755,7 @@ async def crypto_webhook(request: Request):
     elif tipi == "donate":
         pass  # donacion — s'ndryshon llogarinë
     elif tipi == "ditore":
-        update["ditore_unlock_date"] = datetime.utcnow().strftime("%Y-%m-%d")
+        update["ditore_unlock_date"] = _data_lokale()
     elif tipi == "ppm":
         blerjet = u.get("blerjet") or []
         if not any(str(b.get("id")) == str(po.get("match_id")) for b in blerjet):
@@ -1063,7 +1063,7 @@ def _eshte_zhbllokuar_ditore(email):
     if _eshte_vip(email):          # VIP = akses i plotë (përfshin produktet ditore)
         return True
     try:
-        sot = datetime.utcnow().strftime("%Y-%m-%d")
+        sot = _data_lokale()
         r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}&select=ditore_unlock_date",
                          headers=SUPABASE_SERVICE_HEADERS)
         u = r.json() if r.status_code == 200 else []
@@ -1082,7 +1082,7 @@ def ditore_unlock_me_kredite(payload: dict):
     u = r.json() if r.status_code == 200 else []
     if not u:
         return {"sukses": False, "mesazhi": "Përdoruesi s'u gjet"}
-    sot = datetime.utcnow().strftime("%Y-%m-%d")
+    sot = _data_lokale()
     portofoli = float(u[0].get("portofoli", 0) or 0)
     if str(u[0].get("ditore_unlock_date") or "")[:10] == sot:
         return {"sukses": True, "mesazhi": "Tashmë e zhbllokuar sot",
@@ -1160,7 +1160,7 @@ SKEDINA_HIST_URL = f"{SUPABASE_BASE}/rest/v1/skedina_historik"
 def _snapshot_skedina_ditore():
     """Ruan Skedinën e Ditës (top-4) si snapshot ditor. Nuk e mbishkruan një ditë të finalizuar."""
     try:
-        sot = datetime.utcnow().strftime('%Y-%m-%d')
+        sot = _data_lokale()
         rr = requests.get(f"{SKEDINA_HIST_URL}?data=eq.{sot}&select=statusi",
                           headers=SUPABASE_SERVICE_HEADERS, timeout=5)
         ekz = rr.json() if rr.status_code == 200 else []
@@ -1331,7 +1331,7 @@ def _eshte_vip(email):
         skadon = u[0].get("vip_skadon_me")
         if not skadon:
             return True
-        return str(skadon)[:10] >= datetime.utcnow().strftime("%Y-%m-%d")
+        return str(skadon)[:10] >= _data_lokale()
     except Exception:
         return False
 
@@ -1724,7 +1724,7 @@ def _shkruaj_gen_historik(email, gh):
 
 def _merr_given_ids(email, produkt):
     """Id-te e ndeshjeve te dhena SOT per kete produkt (boshe nese dita ndryshoi)."""
-    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    dt = _data_lokale()
     gh = _lexo_gen_historik(email)
     if gh.get("data") != dt:
         return []
@@ -1732,7 +1732,7 @@ def _merr_given_ids(email, produkt):
 
 def _ruaj_given_ids(email, produkt, ids_te_reja):
     """Shton id-te e reja te lista e SOTME e produktit (rifillon nese dita ndryshoi)."""
-    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    dt = _data_lokale()
     gh = _lexo_gen_historik(email)
     if gh.get("data") != dt:
         gh = {"data": dt}
@@ -1750,7 +1750,7 @@ def _ruaj_given_ids(email, produkt, ids_te_reja):
 
 def _rivendos_given(email, produkt):
     """Zeron listen e produktit per sot (rifillon ciklin kur shterohet pool-i)."""
-    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    dt = _data_lokale()
     gh = _lexo_gen_historik(email)
     if gh.get("data") != dt:
         gh = {"data": dt}
@@ -1764,7 +1764,7 @@ print("LARMIA: gjurmimi i gjenerimeve aktiv (users.gen_historik) — Generate + 
 @app.get("/api/debug_genhist")
 def debug_genhist(email: str = ""):
     """Diagnostikë: tregon çfarë ruhet te users.gen_historik për këtë email."""
-    dt = datetime.utcnow().strftime("%Y-%m-%d")
+    dt = _data_lokale()
     out = {"email": email, "data_sot": dt}
     try:
         r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=gen_historik",
@@ -1821,7 +1821,7 @@ def _ekziston_nenshkrim(email, nenshkrim):
     if not nenshkrim:
         return False
     try:
-        dt = datetime.utcnow().strftime("%Y-%m-%d")
+        dt = _data_lokale()
         r = requests.get(f"{SKEDINA_IME_URL}?email=eq.{email}&nenshkrim=eq.{nenshkrim}&data=eq.{dt}&select=id",
                          headers=SUPABASE_SERVICE_HEADERS, timeout=6)
         return r.status_code == 200 and len(r.json()) > 0
@@ -2384,7 +2384,7 @@ def _dergo_telegram(text, chat_id=None):
 
 @app.get("/api/telegram/top")
 def telegram_top(date: str = None):
-    dt = date or datetime.utcnow().strftime("%Y-%m-%d")
+    dt = date or _data_lokale()
     sk = _zgjidh_skedine_ditore(dt)
     if not sk:
         return {"sukses": False, "arsye": "S'ka mjaft ndeshje me parashikim për këtë datë."}
@@ -2395,7 +2395,7 @@ def telegram_top(date: str = None):
 def telegram_dergo(key: str = "", date: str = None):
     if not TELEGRAM_CRON_KEY or key != TELEGRAM_CRON_KEY:
         return {"sukses": False, "arsye": "Çelës i pavlefshëm."}
-    dt = date or datetime.utcnow().strftime("%Y-%m-%d")
+    dt = date or _data_lokale()
     sk = _zgjidh_skedine_ditore(dt)
     if not sk:
         return {"sukses": False, "arsye": "S'ka mjaft ndeshje për këtë datë."}
@@ -2457,7 +2457,7 @@ def ligat_disponueshme():
             return []
     gen = distinct(f"{SUPABASE_URL_PREDS}?select=liga_emri&best_bet=not.is.null"
                    f"&statusi=not.in.({fund})&order=id.desc&limit=400")
-    dt = datetime.utcnow().strftime('%Y-%m-%d')
+    dt = _data_lokale()
     vc = distinct(f"{SUPABASE_URL_PREDS}?select=liga_emri&data=eq.{dt}"
                   f"&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.({fund})&limit=400")
     return {"gjenerator": gen, "vip_combo": vc}
@@ -4188,8 +4188,6 @@ def _me_live_fresh(payload, data_target):
     try:
         if payload is None:
             payload = []
-        if data_target != datetime.utcnow().strftime('%Y-%m-%d'):
-            return payload
         now = time.time()
         if now - _LIVE_REFRESH_TS.get(data_target, 0) < 25:
             return payload  # u rifreskua së fundmi
@@ -4199,35 +4197,69 @@ def _me_live_fresh(payload, data_target):
         for liga in payload:
             for nd in liga.get("ndeshjet", []):
                 ekzistuese[str(nd.get("id"))] = nd
-        # Merr TË GJITHA ndeshjet live nga API (me retry)
-        data = _api_sports_get("fixtures", {"live": "all"}, retries=2, timeout=8)
-        if not data or "response" not in data:
-            return payload
+        is_sot = (data_target == _data_lokale())
         te_reja = []
-        for fx in data["response"]:
-            try:
-                fid = str(fx["fixture"]["id"])
-                st  = fx["fixture"]["status"]
-                gh  = fx["goals"]["home"]; ga = fx["goals"]["away"]
-                rez = f"{gh if gh is not None else 0} - {ga if ga is not None else 0}"
-                if fid in ekzistuese:
-                    nd = ekzistuese[fid]
-                    nd["statusi"]   = st.get("short") or nd.get("statusi")
-                    nd["minuta"]    = st.get("elapsed") or 0
-                    nd["rezultati"] = rez
-                else:
-                    e1 = fx["teams"]["home"]["name"].replace("'", "")
-                    e2 = fx["teams"]["away"]["name"].replace("'", "")
-                    te_reja.append({
-                        "id": fid, "liga_id": fx["league"]["id"], "sezoni": fx["league"].get("season"),
-                        "ekipi_1": e1, "ekipi_2": e2, "ndeshja": f"{e1} vs {e2}",
-                        "ora_sakte": "", "koha_utc": fx["fixture"]["date"],
-                        "statusi": st.get("short") or "1H", "minuta": st.get("elapsed") or 0,
-                        "rezultati": rez, "koef_1": "N/A", "koef_x": "N/A", "koef_2": "N/A",
-                        "analiza_custom": None, "is_motd": False, "is_premium": False,
-                    })
-            except Exception:
-                continue
+        live_ids = set()
+        # live=all vetëm për SOT (injektim + rifreskim live-sh aktive)
+        if is_sot:
+            data = _api_sports_get("fixtures", {"live": "all"}, retries=2, timeout=8)
+            if data and "response" in data:
+                for fx in data["response"]:
+                    try:
+                        fid = str(fx["fixture"]["id"])
+                        live_ids.add(fid)
+                        st  = fx["fixture"]["status"]
+                        gh  = fx["goals"]["home"]; ga = fx["goals"]["away"]
+                        rez = f"{gh if gh is not None else 0} - {ga if ga is not None else 0}"
+                        if fid in ekzistuese:
+                            nd = ekzistuese[fid]
+                            nd["statusi"]   = st.get("short") or nd.get("statusi")
+                            nd["minuta"]    = st.get("elapsed") or 0
+                            nd["rezultati"] = rez
+                        else:
+                            e1 = fx["teams"]["home"]["name"].replace("'", "")
+                            e2 = fx["teams"]["away"]["name"].replace("'", "")
+                            te_reja.append({
+                                "id": fid, "liga_id": fx["league"]["id"], "sezoni": fx["league"].get("season"),
+                                "ekipi_1": e1, "ekipi_2": e2, "ndeshja": f"{e1} vs {e2}",
+                                "ora_sakte": "", "koha_utc": fx["fixture"]["date"],
+                                "statusi": st.get("short") or "1H", "minuta": st.get("elapsed") or 0,
+                                "rezultati": rez, "koef_1": "N/A", "koef_x": "N/A", "koef_2": "N/A",
+                                "analiza_custom": None, "is_motd": False, "is_premium": False,
+                            })
+                    except Exception:
+                        continue
+
+        # ── NDESHJET E MBARUARA (ÇDO datë): statusi live në cache por s'është (më) live ──
+        # (pa këtë, një ndeshje si France-Suedi mbetet ngecur me "2H" edhe pasi mbaron;
+        #  vlen edhe kur shikon një datë të kaluar ku cache-ja u ngri kur ndeshja ishte live)
+        _STAT_LIVE = {"1H", "2H", "HT", "ET", "BT", "P", "LIVE", "INT", "SUSP"}
+        te_verifiko = [fid for fid, nd in ekzistuese.items()
+                       if str(nd.get("statusi")) in _STAT_LIVE and fid not in live_ids]
+        for _i in range(0, len(te_verifiko), 20):
+            _batch = te_verifiko[_i:_i + 20]
+            _vd = _api_sports_get("fixtures", {"ids": "-".join(_batch)}, retries=1, timeout=8)
+            for fx in (_vd or {}).get("response", []):
+                try:
+                    fid = str(fx["fixture"]["id"])
+                    nd = ekzistuese.get(fid)
+                    if nd is None:
+                        continue
+                    st = fx["fixture"]["status"]
+                    _short = st.get("short")
+                    gh = fx["goals"]["home"]; ga = fx["goals"]["away"]
+                    if _short:
+                        nd["statusi"] = _short
+                    if _short in ("FT", "AET", "PEN", "AWD", "WO"):
+                        nd["minuta"] = 90
+                        nd["ora"] = "FT"
+                    else:
+                        nd["minuta"] = st.get("elapsed") or nd.get("minuta") or 0
+                    if gh is not None:
+                        nd["rezultati"] = f"{gh} - {ga}"
+                except Exception:
+                    continue
+
         if te_reja:
             grup_live = {"liga": "🔴 LIVE", "ndeshjet": te_reja}
             payload = [grup_live] + [l for l in payload if l.get("liga") != "🔴 LIVE"]
