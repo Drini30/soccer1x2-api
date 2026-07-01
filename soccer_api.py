@@ -95,7 +95,7 @@ app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced M
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://soccer1x2pro.com", "https://www.soccer1x2pro.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
