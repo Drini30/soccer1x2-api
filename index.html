@@ -2,7 +2,43 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="google-site-verification" content="JAuNunqWfRHaiYeAcJJl7V6HMfukvivtgU-0dvFO4_0" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- ============ SEO META ============ -->
+    <meta name="description" content="Soccer1x2 Pro — sports data analytics & mathematical football predictions powered by xG and Monte Carlo simulations. Parashikime futbolli, skedina e ditës, pronostici calcio, Fußball-Vorhersagen, pronostics football. Daily 1X2 tips, exact scores, GG/NG, over/under & VIP combos across all major leagues.">
+    <meta name="keywords" content="soccer predictions, football predictions, football tips, betting tips, live scores, 1x2 odds, exact score predictions, over under goals, both teams to score, accumulator tips, value bets, sports data analytics, mathematical football models, AI football predictions, xG predictions, Monte Carlo football, parashikime futbolli, skedina e dites, skedina fituese, parashikime 1x2, baste sportive, kuota futbolli, rezultate live, parashikime te sakta, pronostici calcio, scommesse sportive, risultati esatti, pronostici 1x2, schedina vincente, quote calcio, pronostici gratis, fussball vorhersagen, wett-tipps, sportwetten, fussball tipps, spielvorhersagen, fussball prognosen, pronostics football, paris sportifs, pronostics 1x2, pronostics gratuits, cotes football, scores en direct, soccer1x2pro, soccer1x2, soccer 1x2 pro, VIP combos">
+    <meta name="author" content="Soccer1x2 Pro">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#0b1f3a">
+    <link rel="canonical" href="https://soccer1x2pro.com/">
+
+    <!-- ============ OPEN GRAPH (Facebook, WhatsApp, Telegram) ============ -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Soccer1x2 Pro">
+    <meta property="og:title" content="Soccer1x2 Pro — Football Predictions & Sports Data Analytics">
+    <meta property="og:description" content="Mathematical football predictions with xG & Monte Carlo. Parashikime futbolli, skedina e ditës, pronostici calcio, Fußball-Vorhersagen, pronostics football. Daily 1X2 tips, exact scores & VIP combos.">
+    <meta property="og:url" content="https://soccer1x2pro.com/">
+    <meta property="og:image" content="https://soccer1x2pro.com/og-image.jpg">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="sq_AL">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:locale:alternate" content="de_DE">
+    <meta property="og:locale:alternate" content="fr_FR">
+
+    <!-- ============ TWITTER CARD ============ -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soccer1x2 Pro — Football Predictions & Analytics">
+    <meta name="twitter:description" content="Mathematical football predictions with xG & Monte Carlo. Parashikime futbolli, pronostici calcio, Fußball-Vorhersagen, pronostics football. Daily 1X2 tips & VIP combos.">
+    <meta name="twitter:image" content="https://soccer1x2pro.com/og-image.jpg">
+    <!-- ============ FUND SEO ============ -->
+
+    <!-- ============ FAVICON (ikona e faqes) ============ -->
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
     <title>SOCCER1X2 PRO - Sports Data Analytics</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -466,7 +502,7 @@
             .lang-btn { padding: 4px 6px; font-size: 11px; }
         }
 
-        /* ===================== REDIZAJN NAVY 2026 (build 0626E) =====================
+        /* ===================== REDIZAJN NAVY 2026 (build 0626I) =====================
            Shtohet ne fund: mbishkruan pa fshire rregullat ekzistuese (kaskade). I kthyeshem. */
         body { background-color:#081226 !important; color:#e8eefb; }
         #app-container { background:#081226 !important; }
@@ -1706,7 +1742,7 @@ if (!gjuhaAktuale) {
         vendosTemen(localStorage.getItem('soccer_theme')||'dark');
         // Përkthe UI-në sipas gjuhës së ruajtur EDHE në ngarkim (jo vetëm kur ndërron gjuhën)
         try { if(typeof ui!=='undefined' && !ui[gjuhaAktuale]) gjuhaAktuale='en'; përditësoUI(); } catch(e){ console.warn('initUI', e); }
-        console.log('%cSOCCER1X2 PRO — build 0626E','color:#d4af37;font-weight:bold;');
+        console.log('%cSOCCER1X2 PRO — build 0626I','color:#d4af37;font-weight:bold;');
 
         function toggleLangDropdown() { let dp = document.getElementById('langDropdown'); dp.style.display = dp.style.display === 'flex' ? 'none' : 'flex'; }
         
@@ -2616,27 +2652,42 @@ if (!gjuhaAktuale) {
             const T = _T();
             _modalHap('🏆 ' + T.prodHistoriku, '#58a6ff', _loadingHtml());
             try {
-                const r = await fetch(`${API_BASE}/api/skedina/historik`);
+                const _em = (typeof perdoruesi!=='undefined' && perdoruesi.email) ? perdoruesi.email : '';
+                const r = await fetch(`${API_BASE}/api/skedina/historik?email=${encodeURIComponent(_em)}`);
                 const d = await r.json();
                 let pct = (d.perqindja !== null && d.perqindja !== undefined) ? d.perqindja + '%' : '—';
                 let head = `<div class="hist-stat"><div class="hist-pct">${pct}</div><div class="hist-sub">${d.fituese||0}/${d.total_finalizuar||0} ${T.histWinTickets}</div></div>`;
                 let rows = (d.historik||[]).filter(hh => hh.statusi==='fituese').map(hh => {
-                    let badge = hh.statusi === 'fituese' ? `<span class="hist-badge win">${T.win}</span>` : hh.statusi === 'humbur' ? `<span class="hist-badge loss">${T.loss}</span>` : `<span class="hist-badge pend">${T.pending}</span>`;
-                    let legs = (hh.pikat||[]).map(p => { let cls = p.goditi === true ? 'ok' : (p.goditi === false ? 'no' : ''); return `<div class="hist-leg ${cls}">${p.ndeshja} · ${p.tregu}${p.rezultati?` (${p.rezultati})`:''}</div>`; }).join('');
-                    return `<div class="hist-row ${hh.statusi==='fituese'?'win':(hh.statusi==='humbur'?'loss':'pend')}"><div class="hist-row-head"><b>${hh.krijuar ? new Date(hh.krijuar).toLocaleString() : hh.data} · ${T.totalKoef.toLowerCase()} ${hh.koef_total||'—'}</b> ${badge}</div>${legs}</div>`;
+                    let legs = (hh.pikat||[]).map(p => { let cls = p.goditi === true ? 'ok' : (p.goditi === false ? 'no' : ''); return `<div class="hist-leg ${cls}">${p.ndeshja} · ${p.tregu}${p.koef?` <b>@${p.koef}</b>`:''}${p.rezultati?` (${p.rezultati})`:''}</div>`; }).join('');
+                    return `<div class="hist-row win"><div class="hist-row-head"><b>${hh.krijuar ? new Date(hh.krijuar).toLocaleString() : hh.data} · ${T.totalKoef.toLowerCase()} ${hh.koef_total||'—'}</b> <span class="hist-badge win">${T.win}</span></div>${legs}</div>`;
                 }).join('');
+                // ── VIP COMBO fituese (koef per-ndeshje + total) ──
                 let vipHtml = '';
                 let vipFituese = (d.vip_combo||[]).filter(c => c.statusi==='fituese');
                 if (vipFituese.length > 0) {
-                    vipHtml = '<div style="font-weight:bold; color:#ffd700; font-size:13px; margin:10px 0 8px;"><i class="fa-solid fa-crown"></i> VIP COMBO</div>';
+                    vipHtml = '<div style="font-weight:bold; color:#ffd700; font-size:13px; margin:12px 0 8px;"><i class="fa-solid fa-crown"></i> VIP COMBO</div>';
                     vipHtml += vipFituese.map(c => {
-                        let f = c.fituesi || {rreshtat:[], korrekte:0, total:0};
-                        let badge = c.statusi==='fituese' ? `<span class="hist-badge win">${T.win}</span>` : `<span class="hist-badge loss">${T.loss}</span>`;
-                        let legs = (f.rreshtat||[]).map(r => `<div class="hist-leg ${r.goditi?'ok':'no'}">${r.liga?`<span style="font-size:10px;color:#8ba898;">${r.liga} · </span>`:''}${r.ndeshja} · <b>${r.parashikim||'—'}</b> → ${r.real||'—'}</div>`).join('');
-                        return `<div class="hist-row ${c.statusi==='fituese'?'win':'loss'}"><div class="hist-row-head"><b>👑 ${c.data} · ${f.korrekte}/${f.total}</b> ${badge}</div>${legs}</div>`;
+                        let f = c.fituesi || {rreshtat:[], koef_total:null};
+                        let legs = (f.rreshtat||[]).map(rw => `<div class="hist-leg ${rw.goditi?'ok':'no'}">${rw.liga?`<span style="font-size:10px;color:#8ba898;">${rw.liga} · </span>`:''}${rw.ndeshja} · <b>${rw.parashikim||'—'}</b>${rw.koef?` <b>@${rw.koef}</b>`:''} → ${rw.real||'—'}</div>`).join('');
+                        return `<div class="hist-row win"><div class="hist-row-head"><b>👑 ${c.data} · ${T.totalKoef.toLowerCase()} ${f.koef_total||'—'}</b> <span class="hist-badge win">${T.win}</span></div>${legs}</div>`;
                     }).join('');
                 }
-                _modalHap('🏆 ' + T.prodHistoriku, '#58a6ff', head + vipHtml + (rows || `<p class="prod-note">${T.histEmpty}</p>`), '640px');
+                // ── GJENERO SKEDINËN fituese (personale, koef per-ndeshje + total) ──
+                let genHtml = '';
+                let genFituese = d.gjeneruar || [];
+                if (genFituese.length > 0) {
+                    genHtml = '<div style="font-weight:bold; color:#7ee787; font-size:13px; margin:12px 0 8px;"><i class="fa-solid fa-wand-magic-sparkles"></i> ' + (T.prodGjenero||'Gjenero Skedinën') + '</div>';
+                    genHtml += genFituese.map(g => {
+                        let p = g.permbajtja || {};
+                        let ndeshjet = (g.fituesi && g.fituesi.ndeshjet) ? g.fituesi.ndeshjet : (p.ndeshjet || []);
+                        let legs = ndeshjet.map(l => { let cls = l.goditi === true ? 'ok' : (l.goditi === false ? 'no' : ''); return `<div class="hist-leg ${cls}">${l.ndeshja} · <b>${l.tregu||''}</b>${l.koef?` <b>@${l.koef}</b>`:''}${(l.real&&l.real!=='—')?` → ${l.real}`:''}</div>`; }).join('');
+                        let dt = g.data || (g.krijuar ? new Date(g.krijuar).toLocaleDateString() : '');
+                        return `<div class="hist-row win"><div class="hist-row-head"><b>⚙️ ${dt} · ${T.totalKoef.toLowerCase()} ${p.koef_total||'—'}</b> <span class="hist-badge win">${T.win}</span></div>${legs}</div>`;
+                    }).join('');
+                }
+                let trupi = head + vipHtml + genHtml + rows;
+                if (!vipFituese.length && !genFituese.length && !rows) trupi = head + `<p class="prod-note">${T.histEmpty}</p>`;
+                _modalHap('🏆 ' + T.prodHistoriku, '#58a6ff', trupi, '640px');
             } catch(e) {
                 _modalHap('🏆 ' + T.prodHistoriku, '#58a6ff', `<p style="color:#f85149;text-align:center;padding:20px;">${T.loadErr}</p>`);
             }
@@ -3331,7 +3382,7 @@ if (!gjuhaAktuale) {
         }
 
     </script>
-    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0626E</div>
+    <div id="buildTag" style="position:fixed; bottom:3px; right:6px; font-size:9px; color:#8b949e; opacity:0.55; z-index:99999; pointer-events:none; font-family:monospace;">build 0626I</div>
     <script>
     (function(){
       function init(){

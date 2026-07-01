@@ -1233,7 +1233,7 @@ def _vlereso_skedina_historik():
 
 
 @app.get("/api/skedina/historik")
-def skedina_historik():
+def skedina_historik(email: str = ""):
     try:
         r = requests.get(
             f"{SKEDINA_HIST_URL}?select=data,pikat,koef_total,statusi,krijuar&order=data.desc&limit=60",
@@ -1244,27 +1244,66 @@ def skedina_historik():
     finalizuar = [x for x in rows if x.get("statusi") in ("fituese", "humbur")]
     fituese = sum(1 for x in finalizuar if x.get("statusi") == "fituese")
     total = len(finalizuar)
+    # ── VIP COMBO: vetëm fituese, 1/ditë me KOEFICIENTIN më të lartë ──
     try:
         vc = requests.get(
             f"{VIP_COMBO_HIST_URL}?select=data,nr,rez,statusi,fituesi,krijuar"
-            f"&statusi=in.(fituese,humbur)&order=krijuar.desc&limit=30",
+            f"&statusi=eq.fituese&order=krijuar.desc&limit=60",
             headers=SUPABASE_SERVICE_HEADERS, timeout=5)
         vip_combo = vc.json() if vc.status_code == 200 else []
     except Exception:
         vip_combo = []
-    # Dedup: vetëm 1 skedinë VIP për ditë — ajo me më shumë ndeshje (koeficenti i kombinuar më i lartë)
+
+    def _koef_vc(c):
+        return float(((c.get("fituesi") or {}).get("koef_total")) or 0)
     _vc_best = {}
     for _c in vip_combo:
         _dita = _c.get("data")
-        if _dita not in _vc_best or (_c.get("nr") or 0) > (_vc_best[_dita].get("nr") or 0):
+        if _dita not in _vc_best or _koef_vc(_c) > _koef_vc(_vc_best[_dita]):
             _vc_best[_dita] = _c
-    vip_combo = sorted(_vc_best.values(), key=lambda x: (x.get("krijuar") or ""), reverse=True)
+    vip_combo = sorted(_vc_best.values(), key=lambda x: (x.get("data") or ""), reverse=True)
+
+    # ── GJENERO SKEDINËN (personale): vetëm fituese, 1/ditë me KOEFICIENTIN më të lartë ──
+    gjeneruar = []
+    if email and email.strip():
+        _em = email.strip().lower()
+        try:
+            gr = requests.get(
+                f"{SKEDINA_IME_URL}?email=eq.{_em}&tipi=eq.ticket&statusi=eq.fituese"
+                f"&select=data,krijuar,permbajtja,fituesi&order=krijuar.desc&limit=80",
+                headers=SUPABASE_SERVICE_HEADERS, timeout=6)
+            gr_rows = gr.json() if gr.status_code == 200 else []
+        except Exception:
+            gr_rows = []
+
+        def _permb(g):
+            p = g.get("permbajtja") or {}
+            if isinstance(p, str):
+                try: p = json.loads(p)
+                except Exception: p = {}
+            return p
+
+        def _koef_gt(g):
+            return float((_permb(g).get("koef_total")) or 0)
+
+        def _data_gt(g):
+            if g.get("data"): return str(g.get("data"))[:10]
+            return (g.get("krijuar") or "")[:10]
+
+        _gt_best = {}
+        for _g in gr_rows:
+            _dita = _data_gt(_g)
+            if _dita not in _gt_best or _koef_gt(_g) > _koef_gt(_gt_best[_dita]):
+                _gt_best[_dita] = _g
+        gjeneruar = sorted(_gt_best.values(), key=lambda x: _data_gt(x), reverse=True)
+
     return {
         "historik": rows,
         "fituese": fituese,
         "total_finalizuar": total,
         "perqindja": round(100.0 * fituese / total, 1) if total else None,
         "vip_combo": vip_combo,
+        "gjeneruar": gjeneruar,
     }
 
 
@@ -2733,25 +2772,30 @@ def _vleso_vip_combot():
             preds = {str(p["id"]): p for p in (pr.json() if pr.status_code == 200 else [])}
             if not all(preds.get(i, {}).get("statusi") in fund for i in ids):
                 continue  # ende jo të gjitha kanë mbaruar
-            rreshtat = []; korrekte = 0
+            rreshtat = []; korrekte = 0; koef_total = 1.0
             for n in ndeshjet:
                 pid = str(n.get("id"))
                 rh, ra = _parse_skor(preds.get(pid, {}).get("rezultati"))
                 real_norm = f"{rh}-{ra}" if rh is not None else None
                 real_shf = real_norm or "—"
-                matched = None
+                matched = None; matched_koef = None
                 for s in (n.get("rezultatet") or []):
                     if str(s.get("skor", "")).replace(" ", "") == (real_norm or "__nomatch__"):
-                        matched = s.get("skor"); break
+                        matched = s.get("skor"); matched_koef = s.get("koef"); break
                 if matched:
                     korrekte += 1
+                    if matched_koef:
+                        koef_total *= float(matched_koef)
                     rreshtat.append({"ndeshja": n.get("ndeshja"), "liga": n.get("liga"),
-                                     "parashikim": matched, "real": real_shf, "goditi": True})
+                                     "parashikim": matched, "koef": matched_koef,
+                                     "real": real_shf, "goditi": True})
                 else:
                     rreshtat.append({"ndeshja": n.get("ndeshja"), "liga": n.get("liga"),
-                                     "parashikim": n.get("rezultati_sakt"), "real": real_shf, "goditi": False})
+                                     "parashikim": n.get("rezultati_sakt"), "koef": None,
+                                     "real": real_shf, "goditi": False})
             statusi = "fituese" if korrekte == len(ndeshjet) else "humbur"
-            fituesi = {"rreshtat": rreshtat, "korrekte": korrekte, "total": len(ndeshjet)}
+            fituesi = {"rreshtat": rreshtat, "korrekte": korrekte, "total": len(ndeshjet),
+                       "koef_total": round(koef_total, 2) if korrekte == len(ndeshjet) else None}
             requests.patch(f"{VIP_COMBO_HIST_URL}?id=eq.{rec['id']}",
                            headers=SUPABASE_SERVICE_HEADERS,
                            json={"statusi": statusi, "fituesi": fituesi}, timeout=6)
@@ -4026,8 +4070,11 @@ def task_perditeso_ppm_te_perfunduara():
     Përdoruesi nuk pret — vetëm ata që hapin /api/skedina pas mbarimit do ta marrin.
     """
     try:
+        # select i plotë → mundëson arkivim automatik në të njëjtin hap
         res = requests.get(
-            f"{SUPABASE_URL_PREDS}?select=id,statusi&statusi=not.in.(FT,AET,PEN,AWD,WO)",
+            f"{SUPABASE_URL_PREDS}?select=id,statusi,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet"
+            f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS, timeout=8
         )
         if res.status_code != 200:
@@ -4036,6 +4083,7 @@ def task_perditeso_ppm_te_perfunduara():
         if not ndeshjet_pa_mbaruar:
             return
 
+        preds_by_id = {str(p.get("id")): p for p in ndeshjet_pa_mbaruar}
         match_ids = [str(n["id"]) for n in ndeshjet_pa_mbaruar]
         # Batch deri 20 IDs sipas API-Sports limit
         for i in range(0, len(match_ids), 20):
@@ -4071,6 +4119,17 @@ def task_perditeso_ppm_te_perfunduara():
                             json=update_payload, timeout=5
                         )
                     except:
+                        pass
+                    # ── ARKIVIM AUTOMATIK (PPM History + Performanca përditësohen menjëherë) ──
+                    try:
+                        _ht = (fx.get("score") or {}).get("halftime") or {}
+                        _hth, _hta = _ht.get("home"), _ht.get("away")
+                        _ht_str = f"{_hth} - {_hta}" if _hth is not None else None
+                        _pred = preds_by_id.get(fix_id)
+                        if _pred is not None:
+                            _pred["rezultati"] = rezultati_str
+                            _arkivo_ndeshje(_pred, _ht_str)
+                    except Exception:
                         pass
     except:
         pass
@@ -4836,11 +4895,18 @@ def merr_ndeshjet_live(background_tasks: BackgroundTasks):
 
 
 @app.get("/api/test-parashikim")
-def test_parashikim(fixture: str, k1: float = None, kx: float = None, k2: float = None):
+def test_parashikim(fixture: str, k1: str = None, kx: str = None, k2: str = None):
     """TEST: rigjeneron parashikimin për një fixture me parametrat AKTUALË (pa e ruajtur).
     Përdoret për të parë si do ta parashikonte algoritmi i ri një ndeshje — edhe pas FT.
     Koeficientët opsionalë: nëse jepen k1/kx/k2, përdoren; ndryshe merren nga API."""
     try:
+        # Konverto koeficientët opsionalë (string → float)
+        try:
+            k1 = float(k1) if k1 else None
+            kx = float(kx) if kx else None
+            k2 = float(k2) if k2 else None
+        except Exception:
+            k1 = kx = k2 = None
         fdata = _api_sports_get("fixtures", {"id": fixture})
         if not fdata or not fdata.get("response"):
             return {"sukses": False, "mesazhi": "Fixture s'u gjet"}
