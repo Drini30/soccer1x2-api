@@ -4944,6 +4944,61 @@ def performanca_modelit(limit: int = 1000):
     }
 
 
+@app.get("/api/admin/rikorrigjo_aet")
+def admin_rikorrigjo_aet(token: str = ""):
+    """Korrigjon ndeshjet e vjetra AET/PEN: 1X2/PPM duhet të llogaritet mbi FT (90'),
+    jo pas shtesave. Ri-merr FT nga API vetëm për AET/PEN, përditëson predictions.rezultati
+    dhe rreshtin e arkivit (goditi_1x2, goditi_skor, rezultati_ft). I gated me ADMIN_TOKEN.
+    Thirre: /api/admin/rikorrigjo_aet?token=ADMIN_TOKEN"""
+    _kontrollo_admin(token)
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,rezultati_sakt,rezultati,statusi"
+            f"&statusi=in.(AET,PEN)",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=15)
+        preds = r.json() if r.status_code == 200 else []
+    except Exception:
+        preds = []
+    korrigjuar = []
+    for p in preds:
+        mid = str(p.get("id") or "")
+        if not mid:
+            continue
+        try:
+            rf = requests.get(f"https://v3.football.api-sports.io/fixtures?id={mid}",
+                              headers=HEADERS, timeout=12)
+            resp = (rf.json() or {}).get("response") or []
+        except Exception:
+            resp = []
+        if not resp:
+            continue
+        ft = _rezultati_ft(resp[0])
+        if not ft:
+            continue
+        i_vjeter = p.get("rezultati")
+        if ft == i_vjeter:
+            continue  # tashmë korrekt
+        par = p.get("rezultati_sakt") or ""
+        try:
+            requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{mid}",
+                           headers=SUPABASE_SERVICE_HEADERS,
+                           json={"rezultati": ft}, timeout=8)
+        except Exception:
+            pass
+        g1x2 = (_shenja_1x2(par) == _shenja_1x2(ft)) if (par and _shenja_1x2(par) and _shenja_1x2(ft)) else None
+        gskor = (_parse_score(par) == _parse_score(ft)) if (par and _parse_score(par) and _parse_score(ft)) else None
+        try:
+            requests.patch(f"{ARKIV_URL}?match_id=eq.{mid}",
+                           headers=SUPABASE_SERVICE_HEADERS,
+                           json={"rezultati_ft": ft, "goditi_1x2": g1x2, "goditi_skor": gskor}, timeout=8)
+        except Exception:
+            pass
+        korrigjuar.append({"match_id": mid, "ndeshja": p.get("ndeshja"),
+                           "para": i_vjeter, "ft": ft, "goditi_1x2": g1x2})
+    return {"sukses": True, "kontrolluar": len(preds),
+            "korrigjuar": len(korrigjuar), "detaje": korrigjuar}
+
+
 @app.get("/api/arkiv/rindertimi")
 def rindertimi_arkivit():
     """Backfill një-herësh: arkivon ndeshjet e mbaruara që janë te predictions (HT nga API)."""
