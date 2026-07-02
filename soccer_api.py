@@ -2615,6 +2615,8 @@ def _arkivo_ndeshje(pred, ht_str=None):
         "best_bet":     pred.get("best_bet") or {},
         "rezultati_ht": ht_str,
         "rezultati_ft": ft,
+        "parashikimi_ht": (str(treg.get("skor_ht")).replace("-", " - ") if treg.get("skor_ht") else None),
+        "besueshmeria": _num_opt(pred.get("besueshmeria")),
         "goditi_1x2":   (_shenja_1x2(par) == _shenja_1x2(ft)) if (par and _shenja_1x2(par) and _shenja_1x2(ft)) else None,
         "goditi_skor":  (_parse_score(par) == _parse_score(ft)) if (par and _parse_score(par) and _parse_score(ft)) else None,
     }
@@ -2636,7 +2638,7 @@ def _arkivo_sweep():
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,rezultati"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,rezultati"
             f"&statusi=in.({fund})&rezultati=not.is.null"
             f"&order=data.desc&limit=150",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -4229,7 +4231,7 @@ def task_perditeso_ppm_te_perfunduara():
         # select i plotë → mundëson arkivim automatik në të njëjtin hap
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,statusi,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS, timeout=8
         )
@@ -4945,12 +4947,11 @@ def performanca_modelit(limit: int = 1000):
 
 
 @app.get("/api/admin/rikorrigjo_aet")
-def admin_rikorrigjo_aet(token: str = ""):
+def admin_rikorrigjo_aet():
     """Korrigjon ndeshjet e vjetra AET/PEN: 1X2/PPM duhet të llogaritet mbi FT (90'),
     jo pas shtesave. Ri-merr FT nga API vetëm për AET/PEN, përditëson predictions.rezultati
-    dhe rreshtin e arkivit (goditi_1x2, goditi_skor, rezultati_ft). I gated me ADMIN_TOKEN.
-    Thirre: /api/admin/rikorrigjo_aet?token=ADMIN_TOKEN"""
-    _kontrollo_admin(token)
+    dhe rreshtin e arkivit (goditi_1x2, goditi_skor, rezultati_ft). I hapur si rindertimi
+    (deterministik + idempotent). Thirre: /api/admin/rikorrigjo_aet"""
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,rezultati_sakt,rezultati,statusi"
@@ -5005,7 +5006,7 @@ def rindertimi_arkivit():
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,rezultati"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,rezultati"
             f"&statusi=in.(FT,AET,PEN,AWD,WO)&rezultati=not.is.null&order=data.desc&limit=2000",
             headers=SUPABASE_SERVICE_HEADERS, timeout=15)
         rows = r.json() if r.status_code == 200 else []
@@ -5044,7 +5045,7 @@ def perditeso_rezultatet_perfunduara():
         # Merr të gjitha ndeshjet që nuk kanë mbaruar (me fushat për arkivim)
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS,
             timeout=10
