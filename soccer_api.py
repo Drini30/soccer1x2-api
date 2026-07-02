@@ -252,6 +252,55 @@ def _eshte_hash(s):
     # Formati ynë: pbkdf2$<iterations>$<salt_hex>$<hash_hex>
     return isinstance(s, str) and s.startswith("pbkdf2$")
 
+# ================== AUTENTIKIM ME TOKEN (JWT vetjak, HMAC-SHA256) ==================
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+TOKEN_TTL = 30 * 24 * 3600  # 30 ditë
+AUTH_STRICT = False  # Faza 1: backward-compatible (s'bllokon). Vëre True (Faza 2) -> mbyll IDOR.
+
+def _b64u(b):
+    return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+def _b64u_dec(x):
+    return base64.urlsafe_b64decode(x + "=" * (-len(x) % 4))
+
+def _krijo_token(email):
+    """Token i nënshkruar: base64(payload).signature (HMAC-SHA256 me JWT_SECRET)."""
+    email = (email or "").lower().strip()
+    if not JWT_SECRET or not email:
+        return ""
+    payload = _b64u(json.dumps({"email": email, "exp": int(time.time()) + TOKEN_TTL}).encode())
+    sig = _b64u(hmac.new(JWT_SECRET.encode(), payload.encode(), hashlib.sha256).digest())
+    return payload + "." + sig
+
+def _verifiko_token(auth_header):
+    """Kthen email nga token-i i vlefshëm (nënshkrim + skadencë OK), ndryshe None."""
+    if not JWT_SECRET or not auth_header:
+        return None
+    try:
+        tok = auth_header.split(" ", 1)[1].strip() if " " in auth_header else auth_header.strip()
+        payload_b64, sig = tok.split(".", 1)
+        pritur = _b64u(hmac.new(JWT_SECRET.encode(), payload_b64.encode(), hashlib.sha256).digest())
+        if not hmac.compare_digest(sig, pritur):
+            return None
+        data = json.loads(_b64u_dec(payload_b64))
+        if int(data.get("exp", 0)) < int(time.time()):
+            return None
+        return (data.get("email") or "").lower().strip()
+    except Exception:
+        return None
+
+def _email_auth(authorization, fallback=""):
+    """Email i VËRTETUAR nga token-i. Faza 1: bie te 'fallback' (payload) nëse s'ka token.
+    Faza 2 (AUTH_STRICT=True): kërkon token të vlefshëm, ndryshe 401."""
+    em = _verifiko_token(authorization)
+    if em:
+        return em
+    if AUTH_STRICT:
+        raise HTTPException(status_code=401, detail="AUTH_REQUIRED")
+    return (fallback or "").lower().strip()
+# ===================================================================================
+
+
 def _hash_fjalekalimi(pw):
     import os as _os
     salt = _os.urandom(16)
@@ -282,7 +331,7 @@ def regjistro_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS)
     if res.status_code == 200 and len(res.json()) > 0:
-        return {"sukses": False, "mesazhi": "ekziston"}
+        return {"sukses": False, "kod": "EMAIL_EXISTS", "mesazhi": "ekziston"}
     emri_ndare = data.name.strip().split(" ", 1)
     emri    = emri_ndare[0] if len(emri_ndare) > 0 else "Client"
     mbiemri = emri_ndare[1] if len(emri_ndare) > 1 else ""
@@ -296,7 +345,7 @@ def regjistro_perdorues(data: LoginData):
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_SERVICE_HEADERS, json=user_payload)
     if res_insert.status_code in [200, 201, 204]:
         u = dict(user_payload); u.pop("password", None)
-        return {"sukses": True, "perdoruesi": u}
+        return {"sukses": True, "perdoruesi": u, "token": _krijo_token(u.get("email", ""))}
     return {"sukses": False, "mesazhi": f"Gabim Databaze: {res_insert.text}"}
 
 
@@ -305,14 +354,14 @@ def login_perdorues(data: LoginData):
     email_clean = data.email.lower().strip()
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS)
     if res.status_code != 200:
-        return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
+        return {"sukses": False, "kod": "LOGIN_FAILED", "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
     users = res.json()
     if not users:
-        return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
+        return {"sukses": False, "kod": "LOGIN_FAILED", "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
     u = users[0]
     ruajtur = u.get("password", "")
     if not _verifiko_fjalekalimi(data.password, ruajtur):
-        return {"sukses": False, "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
+        return {"sukses": False, "kod": "LOGIN_FAILED", "mesazhi": "Llogaria nuk u gjet ose fjalëkalimi i gabuar!"}
     # MIGRIM: nëse ishte plaintext, hashoje tani (pa fërkim)
     if not _eshte_hash(ruajtur):
         try:
@@ -322,7 +371,7 @@ def login_perdorues(data: LoginData):
         except Exception:
             pass
     u.pop("password", None)
-    return {"sukses": True, "perdoruesi": u}
+    return {"sukses": True, "perdoruesi": u, "token": _krijo_token(u.get("email", ""))}
 
 
 @app.post("/api/google-login")
@@ -330,27 +379,27 @@ def google_login(data: GoogleLoginInput):
     """Hyrje me Google: verifikon access_token-in me Google userinfo, gjen/krijon perdoruesin."""
     tok = (data.access_token or "").strip()
     if not tok:
-        return {"sukses": False, "mesazhi": "Token mungon."}
+        return {"sukses": False, "kod": "TOKEN_MISSING", "mesazhi": "Token mungon."}
     try:
         r = requests.get("https://www.googleapis.com/oauth2/v3/userinfo",
                          headers={"Authorization": f"Bearer {tok}"}, timeout=8)
     except Exception:
-        return {"sukses": False, "mesazhi": "Gabim verifikimi me Google."}
+        return {"sukses": False, "kod": "GOOGLE_VERIFY_ERR", "mesazhi": "Gabim verifikimi me Google."}
     if r.status_code != 200:
-        return {"sukses": False, "mesazhi": "Token i pavlefshem."}
+        return {"sukses": False, "kod": "TOKEN_INVALID", "mesazhi": "Token i pavlefshem."}
     info = r.json()
     email_clean = (info.get("email") or "").lower().strip()
     if not email_clean:
-        return {"sukses": False, "mesazhi": "Email mungon nga Google."}
+        return {"sukses": False, "kod": "GOOGLE_NO_EMAIL", "mesazhi": "Email mungon nga Google."}
     if str(info.get("email_verified", "")).lower() not in ("true", "1"):
-        return {"sukses": False, "mesazhi": "Email i paverifikuar."}
+        return {"sukses": False, "kod": "EMAIL_UNVERIFIED", "mesazhi": "Email i paverifikuar."}
     emri = info.get("given_name") or (info.get("name") or email_clean.split("@")[0])
     mbiemri = info.get("family_name") or ""
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS)
     if res.status_code == 200 and res.json():
         u = res.json()[0]
         u.pop("password", None)
-        return {"sukses": True, "perdoruesi": u}
+        return {"sukses": True, "perdoruesi": u, "token": _krijo_token(u.get("email", ""))}
     # Perdorues i ri (password i rastesishem; hyn vetem me Google derisa te beje reset)
     user_payload = {
         "email": email_clean,
@@ -362,15 +411,15 @@ def google_login(data: GoogleLoginInput):
     ins = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_SERVICE_HEADERS, json=user_payload)
     if ins.status_code in (200, 201, 204):
         u = dict(user_payload); u.pop("password", None)
-        return {"sukses": True, "perdoruesi": u}
-    return {"sukses": False, "mesazhi": "Gabim databaze."}
+        return {"sukses": True, "perdoruesi": u, "token": _krijo_token(u.get("email", ""))}
+    return {"sukses": False, "kod": "DB_ERROR", "mesazhi": "Gabim databaze."}
 
 
 @app.post("/api/forgot-password")
 def forgot_password(data: ForgotInput):
     """Gjeneron token reset-i dhe dergon link me email. Kthen gjithmone sukses (privatesi)."""
     email_clean = (data.email or "").lower().strip()
-    ok = {"sukses": True, "mesazhi": "Nese email-i ekziston, do marresh nje link."}
+    ok = {"sukses": True, "kod": "RESET_SENT", "mesazhi": "Nese email-i ekziston, do marresh nje link."}
     if not email_clean:
         return ok
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS)
@@ -406,25 +455,25 @@ def reset_password(data: ResetInput):
     token = (data.token or "").strip()
     pw = data.password or ""
     if not token or len(pw) < 6:
-        return {"sukses": False, "mesazhi": "Te dhena te pavlefshme (fjalekalimi min 6 karaktere)."}
+        return {"sukses": False, "kod": "PW_TOO_SHORT", "mesazhi": "Te dhena te pavlefshme (fjalekalimi min 6 karaktere)."}
     res = requests.get(f"{SUPABASE_URL_USERS}?reset_token=eq.{token}", headers=SUPABASE_SERVICE_HEADERS)
     if res.status_code != 200 or not res.json():
-        return {"sukses": False, "mesazhi": "Link i pavlefshem ose i skaduar."}
+        return {"sukses": False, "kod": "RESET_INVALID", "mesazhi": "Link i pavlefshem ose i skaduar."}
     u = res.json()[0]
     expires = u.get("reset_expires")
     try:
         if expires:
             exp_dt = datetime.fromisoformat(str(expires).replace("Z", "+00:00"))
             if exp_dt < datetime.now(timezone.utc):
-                return {"sukses": False, "mesazhi": "Link i skaduar. Kerko nje te ri."}
+                return {"sukses": False, "kod": "RESET_EXPIRED", "mesazhi": "Link i skaduar. Kerko nje te ri."}
     except Exception:
         pass
     email_clean = u.get("email")
     upd = requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}", headers=SUPABASE_SERVICE_HEADERS,
                          json={"password": _hash_fjalekalimi(pw), "reset_token": None, "reset_expires": None})
     if upd.status_code in (200, 201, 204):
-        return {"sukses": True, "mesazhi": "Fjalekalimi u rivendos! Tani mund te hysh."}
-    return {"sukses": False, "mesazhi": "Gabim databaze."}
+        return {"sukses": True, "kod": "PW_RESET_OK", "mesazhi": "Fjalekalimi u rivendos! Tani mund te hysh."}
+    return {"sukses": False, "kod": "DB_ERROR", "mesazhi": "Gabim databaze."}
 
 
 @app.post("/api/update_user")
@@ -434,7 +483,7 @@ def perditeso_perdorues(user_data: dict):
     # Klienti lejohet të ndryshojë vetëm profilin jo-monetar.
     email = user_data.get("email", "").lower().strip()
     if not email:
-        return {"sukses": False, "mesazhi": "email mungon"}
+        return {"sukses": False, "kod": "EMAIL_MISSING", "mesazhi": "email mungon"}
     LEJUARA = {"emri", "mbiemri", "auto_rinovim"}
     payload = {k: v for k, v in user_data.items() if k in LEJUARA}
     if payload:
@@ -444,7 +493,8 @@ def perditeso_perdorues(user_data: dict):
 
 
 @app.get("/api/users")
-def merr_perdorues_nga_db(email: str):
+def merr_perdorues_nga_db(email: str, authorization: str = Header(None)):
+    email = _email_auth(authorization, email)
     try:
         res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}",
                            headers=SUPABASE_SERVICE_HEADERS)
@@ -467,14 +517,14 @@ def admin_shto_kredite(payload: dict, x_admin_token: str = Header(None)):
     try:
         shuma = float(payload.get("shuma", 0))
     except Exception:
-        return {"sukses": False, "mesazhi": "shuma e pavlefshme"}
+        return {"sukses": False, "kod": "AMOUNT_INVALID", "mesazhi": "shuma e pavlefshme"}
     if not email or shuma == 0:
-        return {"sukses": False, "mesazhi": "email ose shuma mungon"}
+        return {"sukses": False, "kod": "EMAIL_OR_AMOUNT_MISSING", "mesazhi": "email ose shuma mungon"}
     res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli",
                        headers=SUPABASE_SERVICE_HEADERS)
     rows = res.json() if res.status_code == 200 else []
     if not rows:
-        return {"sukses": False, "mesazhi": "perdoruesi s'u gjet"}
+        return {"sukses": False, "kod": "USER_NOT_FOUND", "mesazhi": "perdoruesi s'u gjet"}
     e_re = round(float(rows[0].get("portofoli", 0) or 0) + shuma, 2)
     requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
                    headers=SUPABASE_SERVICE_HEADERS, json={"portofoli": e_re})
@@ -489,7 +539,7 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
     except Exception:
         dite = 30
     if not email:
-        return {"sukses": False, "mesazhi": "email mungon"}
+        return {"sukses": False, "kod": "EMAIL_MISSING", "mesazhi": "email mungon"}
     skadon = _data_lokale(dite)
     requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
                    headers=SUPABASE_SERVICE_HEADERS,
@@ -543,32 +593,32 @@ def _cmimi_ppm(koef):
 
 # ── PPM me KREDITE (serveri zbret; klienti s'e bën më vetë) ──
 @app.post("/api/ppm/purchase")
-def ppm_blej_me_kredite(payload: dict):
-    email = payload.get("email", "").lower().strip()
+def ppm_blej_me_kredite(payload: dict, authorization: str = Header(None)):
+    email = _email_auth(authorization, payload.get("email", ""))
     match_id = payload.get("match_id")
     if not email or not match_id:
-        return {"sukses": False, "mesazhi": "Të dhëna mungojnë"}
+        return {"sukses": False, "kod": "DATA_MISSING", "mesazhi": "Të dhëna mungojnë"}
     # Çmimi nga SERVERI (jo nga klienti) — bazuar te koeficienti
     pres = requests.get(
         f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=id,ndeshja,rezultati_sakt,koef_rez_sakt",
         headers=SUPABASE_SERVICE_HEADERS)
     preds = pres.json() if pres.status_code == 200 else []
     if not preds:
-        return {"sukses": False, "mesazhi": "Ndeshja s'u gjet"}
+        return {"sukses": False, "kod": "MATCH_NOT_FOUND", "mesazhi": "Ndeshja s'u gjet"}
     nd = preds[0]
     cmimi = _cmimi_ppm(nd.get("koef_rez_sakt"))
     ures = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,blerjet",
                         headers=SUPABASE_SERVICE_HEADERS)
     users = ures.json() if ures.status_code == 200 else []
     if not users:
-        return {"sukses": False, "mesazhi": "Përdoruesi s'u gjet"}
+        return {"sukses": False, "kod": "USER_NOT_FOUND", "mesazhi": "Përdoruesi s'u gjet"}
     u = users[0]
     portofoli = float(u.get("portofoli", 0) or 0)
     blerjet = u.get("blerjet") or []
     if any(str(b.get("id")) == str(match_id) for b in blerjet):
-        return {"sukses": True, "mesazhi": "Tashmë e blerë", "portofoli": round(portofoli, 2)}
+        return {"sukses": True, "kod": "ALREADY_BOUGHT", "mesazhi": "Tashmë e blerë", "portofoli": round(portofoli, 2)}
     if portofoli < cmimi:
-        return {"sukses": False, "mesazhi": "Kredite të pamjaftueshme",
+        return {"sukses": False, "kod": "NO_CREDITS", "mesazhi": "Kredite të pamjaftueshme",
                 "kerkohet": cmimi, "portofoli": round(portofoli, 2)}
     portofoli_ri = round(portofoli - cmimi, 2)
     blerjet.append({"id": nd["id"], "ndeshja": nd.get("ndeshja"),
@@ -582,18 +632,18 @@ def ppm_blej_me_kredite(payload: dict):
 
 # ── VIP me KREDITE (server-autoritar) ──
 @app.post("/api/vip/purchase")
-def vip_blej_me_kredite(payload: dict):
-    email = payload.get("email", "").lower().strip()
+def vip_blej_me_kredite(payload: dict, authorization: str = Header(None)):
+    email = _email_auth(authorization, payload.get("email", ""))
     if not email:
-        return {"sukses": False, "mesazhi": "email mungon"}
+        return {"sukses": False, "kod": "EMAIL_MISSING", "mesazhi": "email mungon"}
     ures = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,vip_skadon_me",
                         headers=SUPABASE_SERVICE_HEADERS)
     users = ures.json() if ures.status_code == 200 else []
     if not users:
-        return {"sukses": False, "mesazhi": "Përdoruesi s'u gjet"}
+        return {"sukses": False, "kod": "USER_NOT_FOUND", "mesazhi": "Përdoruesi s'u gjet"}
     portofoli = float(users[0].get("portofoli", 0) or 0)
     if portofoli < CMIMI_VIP:
-        return {"sukses": False, "mesazhi": "Kredite të pamjaftueshme",
+        return {"sukses": False, "kod": "NO_CREDITS", "mesazhi": "Kredite të pamjaftueshme",
                 "kerkohet": CMIMI_VIP, "portofoli": round(portofoli, 2)}
     baza = datetime.utcnow()
     if users[0].get("vip_skadon_me"):
@@ -632,7 +682,7 @@ def crypto_krijo_fature(payload: dict):
     email = payload.get("email", "").lower().strip()
     tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm"
     if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial"):
-        return {"sukses": False, "mesazhi": "Të dhëna të pavlefshme"}
+        return {"sukses": False, "kod": "DATA_INVALID", "mesazhi": "Të dhëna të pavlefshme"}
 
     match_id = payload.get("match_id")
     ndeshja = rezultati = koef = None
@@ -649,14 +699,14 @@ def crypto_krijo_fature(payload: dict):
         except Exception:
             shuma = 0.0
         if shuma <= 0:
-            return {"sukses": False, "mesazhi": "Shuma e pavlefshme"}
+            return {"sukses": False, "kod": "AMOUNT_INVALID", "mesazhi": "Shuma e pavlefshme"}
     else:  # ppm — çmimi nga serveri
         pres = requests.get(
             f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=ndeshja,rezultati_sakt,koef_rez_sakt",
             headers=SUPABASE_SERVICE_HEADERS)
         preds = pres.json() if pres.status_code == 200 else []
         if not preds:
-            return {"sukses": False, "mesazhi": "Ndeshja s'u gjet"}
+            return {"sukses": False, "kod": "MATCH_NOT_FOUND", "mesazhi": "Ndeshja s'u gjet"}
         ndeshja = preds[0].get("ndeshja"); rezultati = preds[0].get("rezultati_sakt")
         koef = preds[0].get("koef_rez_sakt")
         shuma = _cmimi_ppm(koef)
@@ -678,7 +728,7 @@ def crypto_krijo_fature(payload: dict):
         return {"sukses": False, "mesazhi": f"Gabim Cryptomus: {e}"}
     result = res.get("result")
     if not result or "url" not in result:
-        return {"sukses": False, "mesazhi": "Përgjigje e papritur nga Cryptomus"}
+        return {"sukses": False, "kod": "CRYPTOMUS_ERR", "mesazhi": "Përgjigje e papritur nga Cryptomus"}
 
     requests.post(SUPABASE_URL_POROSITE,
                   headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=merge-duplicates"},
@@ -1073,22 +1123,22 @@ def _eshte_zhbllokuar_ditore(email):
 
 
 @app.post("/api/ditore/unlock")
-def ditore_unlock_me_kredite(payload: dict):
-    email = payload.get("email", "").lower().strip()
+def ditore_unlock_me_kredite(payload: dict, authorization: str = Header(None)):
+    email = _email_auth(authorization, payload.get("email", ""))
     if not email:
-        return {"sukses": False, "mesazhi": "email mungon"}
+        return {"sukses": False, "kod": "EMAIL_MISSING", "mesazhi": "email mungon"}
     r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,ditore_unlock_date",
                      headers=SUPABASE_SERVICE_HEADERS)
     u = r.json() if r.status_code == 200 else []
     if not u:
-        return {"sukses": False, "mesazhi": "Përdoruesi s'u gjet"}
+        return {"sukses": False, "kod": "USER_NOT_FOUND", "mesazhi": "Përdoruesi s'u gjet"}
     sot = _data_lokale()
     portofoli = float(u[0].get("portofoli", 0) or 0)
     if str(u[0].get("ditore_unlock_date") or "")[:10] == sot:
-        return {"sukses": True, "mesazhi": "Tashmë e zhbllokuar sot",
+        return {"sukses": True, "kod": "ALREADY_UNLOCKED", "mesazhi": "Tashmë e zhbllokuar sot",
                 "ditore_unlock_date": sot, "portofoli": round(portofoli, 2)}
     if portofoli < CMIMI_DITORE:
-        return {"sukses": False, "mesazhi": "Kredite të pamjaftueshme",
+        return {"sukses": False, "kod": "NO_CREDITS", "mesazhi": "Kredite të pamjaftueshme",
                 "kerkohet": CMIMI_DITORE, "portofoli": round(portofoli, 2)}
     portofoli_ri = round(portofoli - CMIMI_DITORE, 2)
     requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_SERVICE_HEADERS,
@@ -1097,7 +1147,8 @@ def ditore_unlock_me_kredite(payload: dict):
 
 
 @app.get("/api/ditore")
-def skedina_dhe_kombinimi_ditore(email: str = ""):
+def skedina_dhe_kombinimi_ditore(email: str = "", authorization: str = Header(None)):
+    email = _email_auth(authorization, email)
     res = requests.get(
         f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data,ora,statusi,best_bet,tregjet,odds_reale,dist_gola"
         f"&best_bet=not.is.null"
@@ -1238,7 +1289,8 @@ def _vlereso_skedina_historik():
 
 
 @app.get("/api/skedina/historik")
-def skedina_historik(email: str = ""):
+def skedina_historik(email: str = "", authorization: str = Header(None)):
+    email = _email_auth(authorization, email)
     try:
         r = requests.get(
             f"{SKEDINA_HIST_URL}?select=data,pikat,koef_total,statusi,krijuar&order=data.desc&limit=60",
@@ -1698,13 +1750,13 @@ def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float, paguaj: bool =
     if portofoli < cmimi:
         return {"ok": False, "is_vip": False, "falas": False, "mungojne_kredite": True,
                 "portofoli": portofoli, "cmimi": cmimi,
-                "arsye": f"{emri}: akses i pakufizuar për sot ${int(cmimi)}. Nuk ke kredite të mjaftueshme — mbush portofolin."}
+                "kod": "PPM_NO_CREDITS", "arsye": f"{emri}: akses i pakufizuar për sot ${int(cmimi)}. Nuk ke kredite të mjaftueshme — mbush portofolin."}
 
     # 4) Jo-VIP, ka kredite, s'ka konfirmuar → kerko konfirmim (1 here, pastaj pa fund)
     if not paguaj:
         return {"ok": False, "is_vip": False, "falas": False, "kerko_pagese": True,
                 "portofoli": portofoli, "cmimi": cmimi,
-                "arsye": f"Paguaj ${int(cmimi)} një herë → gjenero PA FUND sot."}
+                "kod": "PPM_PAY_ONCE", "arsye": f"Paguaj ${int(cmimi)} një herë → gjenero PA FUND sot."}
 
     # 5) Konfirmuar + ka kredite → vazhdo (paguhet 1 here sot)
     return {"ok": True, "is_vip": False, "falas": False,
@@ -1929,10 +1981,11 @@ def _vleso_skedina_ime(email):
         print(f"[SKEDINA_IME] vleresim gabim: {e}")
 
 @app.get("/api/skedina-ime")
-def skedina_ime_lista(email: str = ""):
+def skedina_ime_lista(email: str = "", authorization: str = Header(None)):
+    email = _email_auth(authorization, email)
     """Kthen skedinat e ruajtura te perdoruesit (me te rejat te parat), pasi vlereson pezullet."""
     if not email or not email.strip():
-        return {"sukses": False, "arsye": "Mungon email."}
+        return {"sukses": False, "kod": "EMAIL_MISSING", "arsye": "Mungon email."}
     _vleso_skedina_ime(email)
     try:
         r = requests.get(f"{SKEDINA_IME_URL}?email=eq.{email}"
@@ -1945,13 +1998,13 @@ def skedina_ime_lista(email: str = ""):
 
 
 @app.post("/api/skedina/ruaj")
-def ruaj_skedinen_e_zgjedhur(payload: dict):
+def ruaj_skedinen_e_zgjedhur(payload: dict, authorization: str = Header(None)):
     """Ruan MANUALISHT skedinen/combo-n qe perdoruesi ZGJEDH te luaje -> Bileta Ime."""
-    email = (payload.get("email") or "").lower().strip()
+    email = _email_auth(authorization, payload.get("email"))
     tipi = payload.get("tipi")
     permb = payload.get("permbajtja") or {}
     if not email or tipi not in ("ticket", "combo") or not permb:
-        return {"sukses": False, "arsye": "Të dhëna mungojnë."}
+        return {"sukses": False, "kod": "DATA_MISSING", "arsye": "Të dhëna mungojnë."}
     if tipi == "ticket":
         nen = _nenshkrim_ticket(permb)
     else:
@@ -1961,13 +2014,13 @@ def ruaj_skedinen_e_zgjedhur(payload: dict):
         ek = requests.get(f"{SKEDINA_IME_URL}?email=eq.{email}&nenshkrim=eq.{nen}&select=id&limit=1",
                           headers=SUPABASE_SERVICE_HEADERS, timeout=6)
         if ek.status_code == 200 and ek.json():
-            return {"sukses": True, "mesazhi": "Tashmë e ruajtur", "dyfishim": True}
+            return {"sukses": True, "kod": "ALREADY_SAVED", "mesazhi": "Tashmë e ruajtur", "dyfishim": True}
     except Exception:
         pass
     if "tipi" not in permb:
         permb = dict(permb); permb["tipi"] = tipi
     _ruaj_skedine_ime(email, tipi, permb, nen)
-    return {"sukses": True, "mesazhi": "U ruajt te Bileta Ime ✓"}
+    return {"sukses": True, "kod": "SAVED_OK", "mesazhi": "U ruajt te Bileta Ime ✓"}
 
 
 def _tregu_kategoria(par):
@@ -2071,9 +2124,10 @@ def _ruaj_vip_legs(email, ndeshjet, pool):
 
 
 @app.get("/api/gjenero")
-def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0):
+def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0, authorization: str = Header(None)):
+    email = _email_auth(authorization, email)
     if not email or not email.strip():
-        return {"sukses": False, "arsye": "Hyr së pari në llogari."}
+        return {"sukses": False, "kod": "LOGIN_FIRST", "arsye": "Hyr së pari në llogari."}
     _drejta = _kontrollo_te_drejten(email, "generate", CMIM_GENERATE, bool(paguaj))
     if not _drejta["ok"]:
         return {"sukses": False, "bllokuar": True,
@@ -2117,12 +2171,12 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if not sked:
         if _drejta["is_vip"]:
             # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
-            return {"sukses": False, "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të lartë (≥75%) për këto parametra. Provo më vonë."}
+            return {"sukses": False, "kod": "NOT_ENOUGH_CONF", "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të lartë (≥75%) për këto parametra. Provo më vonë."}
         # Jo-VIP (që paguan): kalon tek ndeshjet e tjera
         sked, rifilluar = _provo_gjen(pool_plot)
         pool = pool_plot
     if not sked:
-        return {"sukses": False, "arsye": "Jo mjaft ndeshje për këto parametra."}
+        return {"sukses": False, "kod": "NOT_ENOUGH", "arsye": "Jo mjaft ndeshje për këto parametra."}
     _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
     _ruaj_given_ids(email, "generate", [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
     _ruaj_gjenero_legs(email, sked, pool)
@@ -2136,13 +2190,13 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
 def live_stats(fixture: str = ""):
     """Statistikat live për një ndeshje: posedimi, gjuajtjet, këndet, rezultati, minuta, ngjyrat e skuadrave."""
     if not fixture or not API_KEY:
-        return {"sukses": False, "arsye": "Mungon fixture ose API key."}
+        return {"sukses": False, "kod": "FIXTURE_OR_KEY_MISSING", "arsye": "Mungon fixture ose API key."}
     base = "https://v3.football.api-sports.io"
     try:
         rf = requests.get(f"{base}/fixtures?id={fixture}", headers=HEADERS, timeout=12)
         fxr = rf.json().get("response", []) if rf.status_code == 200 else []
         if not fxr:
-            return {"sukses": False, "arsye": "Ndeshja s'u gjet."}
+            return {"sukses": False, "kod": "MATCH_NOT_FOUND", "arsye": "Ndeshja s'u gjet."}
         fx = fxr[0]
         teams = fx.get("teams", {}) or {}
         goals = fx.get("goals", {}) or {}
@@ -2419,18 +2473,18 @@ def telegram_top(date: str = None):
     dt = date or _data_lokale()
     sk = _zgjidh_skedine_ditore(dt)
     if not sk:
-        return {"sukses": False, "arsye": "S'ka mjaft ndeshje me parashikim për këtë datë."}
+        return {"sukses": False, "kod": "NOT_ENOUGH_DATE", "arsye": "S'ka mjaft ndeshje me parashikim për këtë datë."}
     return {"sukses": True, "skedina": sk, "mesazhi": _ndertoMesazhTelegramSkedine(sk)}
 
 
 @app.get("/api/telegram/dergo")
 def telegram_dergo(key: str = "", date: str = None):
     if not TELEGRAM_CRON_KEY or key != TELEGRAM_CRON_KEY:
-        return {"sukses": False, "arsye": "Çelës i pavlefshëm."}
+        return {"sukses": False, "kod": "KEY_INVALID", "arsye": "Çelës i pavlefshëm."}
     dt = date or _data_lokale()
     sk = _zgjidh_skedine_ditore(dt)
     if not sk:
-        return {"sukses": False, "arsye": "S'ka mjaft ndeshje për këtë datë."}
+        return {"sukses": False, "kod": "NOT_ENOUGH_DATE", "arsye": "S'ka mjaft ndeshje për këtë datë."}
     ok, info = _dergo_telegram(_ndertoMesazhTelegramSkedine(sk))
     return {"sukses": bool(ok), "info": info, "skedina": sk}
 
@@ -2514,6 +2568,22 @@ def _num_opt(x):
     try:
         v = float(x)
         return v if v == v else None   # filtro NaN
+    except Exception:
+        return None
+
+
+def _rezultati_ft(fx):
+    """Rezultati i 90 minutave (FT) për 1X2/PPM — JO pas shtesave (AET) ose penallteve (PEN).
+    API-Football: score.fulltime = fundi i 90-tES. Bie te goals nEse fulltime mungon (AWD/WO)."""
+    try:
+        ft = ((fx.get("score") or {}).get("fulltime") or {})
+        gh, ga = ft.get("home"), ft.get("away")
+        if gh is None or ga is None:
+            g = fx.get("goals") or {}
+            gh, ga = g.get("home"), g.get("away")
+        if gh is None or ga is None:
+            return None
+        return f"{gh} - {ga}"
     except Exception:
         return None
 
@@ -2711,7 +2781,8 @@ def _zbulo_pf():
                 pass
 
 @app.get("/api/pf/list")
-def pf_list(email: str = ""):
+def pf_list(email: str = "", authorization: str = Header(None)):
+    email = _email_auth(authorization, email)
     """Lista e ndeshjeve me hash. Të kyçurat NUK e tregojnë parashikimin; të zbuluarat po.
     VIP-unlock: abonentët VIP e shohin parashikimin edhe te të kyçurat (pa server_seed)."""
     _gjenero_pf(); _zbulo_pf()
@@ -2902,10 +2973,11 @@ def _ndeshjet_vipcombo(rows, nr, rez):
 
 
 @app.get("/api/vip-combo")
-def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj: int = 0):
+def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj: int = 0, authorization: str = Header(None)):
+    email = _email_auth(authorization, email)
     """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
     if not email or not email.strip():
-        return {"sukses": False, "arsye": "Hyr së pari në llogari."}
+        return {"sukses": False, "kod": "LOGIN_FIRST", "arsye": "Hyr së pari në llogari."}
     _drejta = _kontrollo_te_drejten(email, "vipcombo", CMIM_VIPCOMBO, bool(paguaj))
     if not _drejta["ok"]:
         return {"sukses": False, "bllokuar": True,
@@ -2943,12 +3015,12 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     if len(ndeshjet) < nr:
         if _drejta["is_vip"]:
             # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
-            return {"sukses": False, "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të lartë (≥75%). Provo më vonë."}
+            return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF", "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të lartë (≥75%). Provo më vonë."}
         # Jo-VIP (që paguan): kalon tek ndeshjet e tjera
         ndeshjet, rifilluar = _provo_vc(rows_plot)
         rows = rows_plot
     if len(ndeshjet) < nr:
-        return {"sukses": False, "arsye": f"Nuk ka {nr} ndeshje me rezultate të sakta sot."}
+        return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH", "arsye": f"Nuk ka {nr} ndeshje me rezultate të sakta sot."}
 
     ndeshjet = ndeshjet[:nr]
     # prodhimi kartezian i rezultateve (rez^nr skedina)
@@ -4189,7 +4261,7 @@ def task_perditeso_ppm_te_perfunduara():
                 gola_a = fx["goals"]["away"]
 
                 if status in ["FT", "AET", "PEN", "AWD", "WO"] and gola_h is not None:
-                    rezultati_str = f"{gola_h} - {gola_a}"
+                    rezultati_str = _rezultati_ft(fx) or f"{gola_h} - {gola_a}"
                     update_payload = {
                         "statusi":   status,
                         "rezultati": rezultati_str,
@@ -4294,7 +4366,7 @@ def _me_live_fresh(payload, data_target):
                         live_ids.add(fid)
                         st  = fx["fixture"]["status"]
                         gh  = fx["goals"]["home"]; ga = fx["goals"]["away"]
-                        rez = f"{gh if gh is not None else 0} - {ga if ga is not None else 0}"
+                        rez = _rezultati_ft(fx) or f"{gh if gh is not None else 0} - {ga if ga is not None else 0}"
                         if fid in ekzistuese:
                             nd = ekzistuese[fid]
                             nd["statusi"]   = st.get("short") or nd.get("statusi")
@@ -4340,7 +4412,7 @@ def _me_live_fresh(payload, data_target):
                     else:
                         nd["minuta"] = st.get("elapsed") or nd.get("minuta") or 0
                     if gh is not None:
-                        nd["rezultati"] = f"{gh} - {ga}"
+                        nd["rezultati"] = _rezultati_ft(fx) or f"{gh} - {ga}"
                 except Exception:
                     continue
 
@@ -4962,7 +5034,7 @@ def perditeso_rezultatet_perfunduara():
 
                 if status in ["FT", "AET", "PEN", "AWD", "WO"] and gola_h is not None:
                     # Përditëso në DB
-                    rezultati_str = f"{gola_h} - {gola_a}"
+                    rezultati_str = _rezultati_ft(fx) or f"{gola_h} - {gola_a}"
                     update_payload = {
                         "statusi":   status,
                         "rezultati": rezultati_str,
@@ -5032,7 +5104,7 @@ def merr_ndeshjet_live(background_tasks: BackgroundTasks):
                     "ekipi_2":    n["teams"]["away"]["name"].replace("'", ""),
                     "statusi":    n["fixture"]["status"]["short"],
                     "minuta":     f"{n['fixture']['status']['elapsed'] or 0}'",
-                    "rezultati":  f"{gola_1} - {gola_2}",
+                    "rezultati":  _rezultati_ft(n) or f"{gola_1} - {gola_2}",
                 })
 
         return {"mesazhi": "Sukses", "ndeshjet": ndeshjet_live}
