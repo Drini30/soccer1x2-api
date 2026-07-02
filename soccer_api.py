@@ -1702,6 +1702,17 @@ CMIM_GENERATE = 10.0   # jo-VIP paguan kaq për 1 Generate Ticket
 # gjenerohet VIP-it. Jo-VIP-i (që paguan) merr të gjitha ndeshjet pa këtë filtër.
 # Drini: ule në 70.0 nëse del shumë restriktive (pak ndeshje kualifikohen).
 BESU_PRAG_VIP = 75.0
+BESU_PRAG_VIPCOMBO = 70.0   # kufi më i ulët vetëm për VIP Combo
+
+def _id_set(s):
+    """Bashkësi id-sh (int) nga string me presje, p.sh. '123,456'."""
+    out = set()
+    for x in (s or "").replace(" ", "").split(","):
+        if x:
+            try: out.add(int(x))
+            except Exception: pass
+    return out
+
 
 def _filtro_besu(pool, prag=BESU_PRAG_VIP):
     """Mban vetëm ndeshjet me besueshmëri >= prag. Përdoret për skedinat VIP."""
@@ -2124,8 +2135,30 @@ def _ruaj_vip_legs(email, ndeshjet, pool):
         print(f"⚠️ Ruajtja skedina_vip deshtoi: {e}")
 
 
+@app.get("/api/ndeshjet_gjenerueshme")
+def ndeshjet_gjenerueshme(email: str = "", authorization: str = Header(None)):
+    """Lista e ndeshjeve të disponueshme për zgjedhje/përjashtim (autocomplete)."""
+    _email_auth(authorization, email, strict=False)
+    dt = _data_lokale(0); dt_neser = _data_lokale(1)
+    url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,data"
+           f"&data=in.({dt},{dt_neser})&rezultati_sakt=not.is.null"
+           f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=ora.asc&limit=300")
+    try:
+        r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    seen = set(); out = []
+    for p in rows:
+        i = p.get("id")
+        if i in seen: continue
+        seen.add(i)
+        out.append({"id": i, "ndeshja": p.get("ndeshja"), "ora": p.get("ora"), "liga": p.get("liga_emri")})
+    return {"ndeshjet": out}
+
+
 @app.get("/api/gjenero")
-def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0, authorization: str = Header(None)):
+def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0, perjashto: str = "", vetem: str = "", authorization: str = Header(None)):
     email = _email_auth(authorization, email)
     if not email or not email.strip():
         return {"sukses": False, "kod": "LOGIN_FIRST", "arsye": "Hyr së pari në llogari."}
@@ -2151,9 +2184,16 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         gen_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     res = requests.get(gen_url, headers=SUPABASE_SERVICE_HEADERS)
     pool_plot = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
-    pool_hi = _filtro_besu(pool_plot)   # vetëm ndeshje me besueshmëri >= 75
+    _perj = _id_set(perjashto); _vet = _id_set(vetem)
+    if _vet:
+        pool_plot = [p for p in pool_plot if p.get("id") in _vet]
+    if _perj:
+        pool_plot = [p for p in pool_plot if p.get("id") not in _perj]
+    pool_hi = pool_plot if _vet else _filtro_besu(pool_plot)   # manual: pa filtër besueshmërie
 
-    given = _merr_given_ids(email, "generate")
+    _mkts = [m for m in (tregjet or "").lower().replace(" ", "").split(",") if m]
+    _prod_key = "gen:" + (",".join(sorted(set(_mkts))) or "default")   # perjashtim per market-kombinim
+    given = set() if _vet else _merr_given_ids(email, _prod_key)
 
     def _provo_gjen(pool_x):
         """Ndërton skedinë nga pool_x; rivendos 'given' dhe riprovon nëse s'del."""
@@ -2161,7 +2201,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
         s = _gjenero_skedine_fleksibel(pf, nr, nr_max, koef, grupet)
         rif = False
         if not s and given:
-            _rivendos_given(email, "generate")
+            _rivendos_given(email, _prod_key)
             s = _gjenero_skedine_fleksibel(pool_x, nr, nr_max, koef, grupet)
             rif = True
         return s, rif
@@ -2179,7 +2219,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if not sked:
         return {"sukses": False, "kod": "NOT_ENOUGH", "arsye": "Jo mjaft ndeshje për këto parametra."}
     _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
-    _ruaj_given_ids(email, "generate", [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
+    if not _vet: _ruaj_given_ids(email, _prod_key, [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
     _ruaj_gjenero_legs(email, sked, pool)
     return {"sukses": True, "skedina": sked, "rifilluar": rifilluar,
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
@@ -2969,14 +3009,14 @@ def _ndeshjet_vipcombo(rows, nr, rez):
         if len(topr) >= rez:
             out.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
                         "liga": p.get("liga_emri"), "rezultati_sakt": p.get("rezultati_sakt"),
-                        "rezultatet": topr})
+                        "besueshmeria": p.get("besueshmeria"), "rezultatet": topr})
         if len(out) >= nr:
             break
     return out
 
 
 @app.get("/api/vip-combo")
-def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj: int = 0, authorization: str = Header(None)):
+def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj: int = 0, perjashto: str = "", vetem: str = "", authorization: str = Header(None)):
     email = _email_auth(authorization, email)
     """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
     if not email or not email.strip():
@@ -2998,9 +3038,22 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
         vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(vc_url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
     rows_plot = r.json() if r.status_code == 200 else []
-    rows_hi = _filtro_besu(rows_plot)   # vetëm ndeshje me besueshmëri >= 75
+    _perj = _id_set(perjashto); _vet = _id_set(vetem)
+    if _vet:
+        _found = {p.get("id") for p in rows_plot}
+        _missing = [i for i in _vet if i not in _found]
+        if _missing:
+            try:
+                _r2 = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria&id=in.({','.join(str(x) for x in _missing)})", headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+                rows_plot = rows_plot + (_r2.json() if _r2.status_code == 200 else [])
+            except Exception:
+                pass
+        rows_plot = [p for p in rows_plot if p.get("id") in _vet]
+    if _perj:
+        rows_plot = [p for p in rows_plot if p.get("id") not in _perj]
+    rows_hi = rows_plot if _vet else _filtro_besu(rows_plot, prag=BESU_PRAG_VIPCOMBO)   # manual: pa filtër
 
-    given = _merr_given_ids(email, "vipcombo")
+    given = set() if _vet else _merr_given_ids(email, "vipcombo")
 
     def _provo_vc(rows_x):
         """Zgjedh ndeshjet për VIP Combo nga rows_x; rivendos 'given' dhe riprovon."""
@@ -3018,7 +3071,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     if len(ndeshjet) < nr:
         if _drejta["is_vip"]:
             # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
-            return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF", "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të lartë (≥75%). Provo më vonë."}
+            return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF", "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të lartë (≥70%). Provo më vonë."}
         # Jo-VIP (që paguan): kalon tek ndeshjet e tjera
         ndeshjet, rifilluar = _provo_vc(rows_plot)
         rows = rows_plot
@@ -3050,9 +3103,12 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
         mbulim *= sum(x["prob"] for x in n["rezultatet"])
     _ruaj_vip_combo(dt, nr, rez, ndeshjet)
     _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
-    _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
+    if not _vet: _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
     _ruaj_vip_legs(email, ndeshjet, rows)
+    _bv = [float(n["besueshmeria"]) for n in ndeshjet if n.get("besueshmeria") is not None]
+    besu_mesatare = round(sum(_bv) / len(_bv)) if _bv else None
     return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez, "rifilluar": rifilluar,
+            "besu_mesatare": besu_mesatare,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet,
             "nr_kombinimesh": len(kombinimet),
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
