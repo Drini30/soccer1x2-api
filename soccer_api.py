@@ -255,7 +255,7 @@ def _eshte_hash(s):
 # ================== AUTENTIKIM ME TOKEN (JWT vetjak, HMAC-SHA256) ==================
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
 TOKEN_TTL = 30 * 24 * 3600  # 30 ditë
-AUTH_STRICT = False  # Faza 1: backward-compatible (s'bllokon). Vëre True (Faza 2) -> mbyll IDOR.
+AUTH_STRICT = True   # Faza 1: backward-compatible (s'bllokon). Vëre True (Faza 2) -> mbyll IDOR.
 
 def _b64u(b):
     return base64.urlsafe_b64encode(b).decode().rstrip("=")
@@ -289,13 +289,14 @@ def _verifiko_token(auth_header):
     except Exception:
         return None
 
-def _email_auth(authorization, fallback=""):
+def _email_auth(authorization, fallback="", strict=None):
     """Email i VËRTETUAR nga token-i. Faza 1: bie te 'fallback' (payload) nëse s'ka token.
     Faza 2 (AUTH_STRICT=True): kërkon token të vlefshëm, ndryshe 401."""
     em = _verifiko_token(authorization)
     if em:
         return em
-    if AUTH_STRICT:
+    _strict = AUTH_STRICT if strict is None else strict
+    if _strict and JWT_SECRET:
         raise HTTPException(status_code=401, detail="AUTH_REQUIRED")
     return (fallback or "").lower().strip()
 # ===================================================================================
@@ -1148,7 +1149,7 @@ def ditore_unlock_me_kredite(payload: dict, authorization: str = Header(None)):
 
 @app.get("/api/ditore")
 def skedina_dhe_kombinimi_ditore(email: str = "", authorization: str = Header(None)):
-    email = _email_auth(authorization, email)
+    email = _email_auth(authorization, email, strict=False)
     res = requests.get(
         f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data,ora,statusi,best_bet,tregjet,odds_reale,dist_gola"
         f"&best_bet=not.is.null"
@@ -2784,7 +2785,7 @@ def _zbulo_pf():
 
 @app.get("/api/pf/list")
 def pf_list(email: str = "", authorization: str = Header(None)):
-    email = _email_auth(authorization, email)
+    email = _email_auth(authorization, email, strict=False)
     """Lista e ndeshjeve me hash. Të kyçurat NUK e tregojnë parashikimin; të zbuluarat po.
     VIP-unlock: abonentët VIP e shohin parashikimin edhe te të kyçurat (pa server_seed)."""
     _gjenero_pf(); _zbulo_pf()
