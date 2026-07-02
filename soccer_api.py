@@ -1685,8 +1685,13 @@ def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara
         best["arritur"] = True
         return best
     if te_gjitha:
-        best = min(te_gjitha, key=lambda s: abs(s["koef_total"] - koef_target))  # më e afërta
-        best["arritur"] = (lo <= best["koef_total"] <= hi)
+        mbi = [s for s in te_gjitha if s["koef_total"] >= lo]   # e arrijnë ose e TEJKALOJNË targetin
+        if mbi:
+            best = min(mbi, key=lambda s: s["koef_total"])       # tejkalimi më i vogël (më afër targetit nga lart)
+            best["arritur"] = True                               # arritur/tejkaluar = sukses (pa paralajmërim)
+        else:
+            best = min(te_gjitha, key=lambda s: abs(s["koef_total"] - koef_target))  # më e afërta (NËN target)
+            best["arritur"] = False                              # vetëm nën-target => paralajmërim
         return best
     return None
 
@@ -2195,7 +2200,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if _perj:
         _pn = {_nm_key(p) for p in pool_plot if p.get("id") in _perj}
         pool_plot = [p for p in pool_plot if p.get("id") not in _perj and _nm_key(p) not in _pn]
-    pool_hi = _filtro_besu(pool_plot, prag=70.0) if _vet else _filtro_besu(pool_plot)   # manual: kufi 70%
+    pool_hi = pool_plot if _vet else _filtro_besu(pool_plot)   # manual: pikërisht ndeshjet e zgjedhura (pa filtër)
 
     _mkts = [m for m in (tregjet or "").lower().replace(" ", "").split(",") if m]
     _prod_key = "gen:" + (",".join(sorted(set(_mkts))) or "default")   # perjashtim per market-kombinim
@@ -3061,7 +3066,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     if _perj:
         _pn = {_nm_key(p) for p in rows_plot if p.get("id") in _perj}
         rows_plot = [p for p in rows_plot if p.get("id") not in _perj and _nm_key(p) not in _pn]
-    rows_hi = _filtro_besu(rows_plot, prag=BESU_PRAG_VIPCOMBO)   # kufi 70% edhe manual
+    rows_hi = rows_plot if _vet else _filtro_besu(rows_plot, prag=BESU_PRAG_VIPCOMBO)   # manual: pa filtër
 
     given = set() if _vet else _merr_given_ids(email, "vipcombo")
 
