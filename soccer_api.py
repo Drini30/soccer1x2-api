@@ -1704,6 +1704,10 @@ CMIM_GENERATE = 10.0   # jo-VIP paguan kaq për 1 Generate Ticket
 BESU_PRAG_VIP = 75.0
 BESU_PRAG_VIPCOMBO = 70.0   # kufi më i ulët vetëm për VIP Combo
 
+def _nm_key(p):
+    return (p.get("ndeshja") or "").strip().lower()
+
+
 def _id_set(s):
     """Bashkësi id-sh (int) nga string me presje, p.sh. '123,456'."""
     out = set()
@@ -2141,8 +2145,8 @@ def ndeshjet_gjenerueshme(email: str = "", authorization: str = Header(None)):
     _email_auth(authorization, email, strict=False)
     dt = _data_lokale(0); dt_neser = _data_lokale(1)
     url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,data"
-           f"&data=in.({dt},{dt_neser})&rezultati_sakt=not.is.null"
-           f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=ora.asc&limit=300")
+           f"&best_bet=not.is.null&dist_gola=not.is.null&rezultati_sakt=not.is.null&tregjet=not.is.null"
+           f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300")
     try:
         r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         rows = r.json() if r.status_code == 200 else []
@@ -2186,10 +2190,12 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     pool_plot = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
     _perj = _id_set(perjashto); _vet = _id_set(vetem)
     if _vet:
-        pool_plot = [p for p in pool_plot if p.get("id") in _vet]
+        _vn = {_nm_key(p) for p in pool_plot if p.get("id") in _vet}
+        pool_plot = [p for p in pool_plot if p.get("id") in _vet or _nm_key(p) in _vn]
     if _perj:
-        pool_plot = [p for p in pool_plot if p.get("id") not in _perj]
-    pool_hi = pool_plot if _vet else _filtro_besu(pool_plot)   # manual: pa filtër besueshmërie
+        _pn = {_nm_key(p) for p in pool_plot if p.get("id") in _perj}
+        pool_plot = [p for p in pool_plot if p.get("id") not in _perj and _nm_key(p) not in _pn]
+    pool_hi = _filtro_besu(pool_plot, prag=70.0) if _vet else _filtro_besu(pool_plot)   # manual: kufi 70%
 
     _mkts = [m for m in (tregjet or "").lower().replace(" ", "").split(",") if m]
     _prod_key = "gen:" + (",".join(sorted(set(_mkts))) or "default")   # perjashtim per market-kombinim
@@ -2210,6 +2216,8 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     sked, rifilluar = _provo_gjen(pool_hi)
     pool = pool_hi
     if not sked:
+        if _vet:
+            return {"sukses": False, "kod": "MANUAL_NO_TICKET", "arsye": "Ndeshjet e zgjedhura s'formojnë dot skedinë me këto markete/kuota. Provo markete të tjera ose ul kuotën e synuar."}
         if _drejta["is_vip"]:
             # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
             return {"sukses": False, "kod": "NOT_ENOUGH_CONF", "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të lartë (≥75%) për këto parametra. Provo më vonë."}
@@ -3048,10 +3056,12 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
                 rows_plot = rows_plot + (_r2.json() if _r2.status_code == 200 else [])
             except Exception:
                 pass
-        rows_plot = [p for p in rows_plot if p.get("id") in _vet]
+        _vn = {_nm_key(p) for p in rows_plot if p.get("id") in _vet}
+        rows_plot = [p for p in rows_plot if p.get("id") in _vet or _nm_key(p) in _vn]
     if _perj:
-        rows_plot = [p for p in rows_plot if p.get("id") not in _perj]
-    rows_hi = rows_plot if _vet else _filtro_besu(rows_plot, prag=BESU_PRAG_VIPCOMBO)   # manual: pa filtër
+        _pn = {_nm_key(p) for p in rows_plot if p.get("id") in _perj}
+        rows_plot = [p for p in rows_plot if p.get("id") not in _perj and _nm_key(p) not in _pn]
+    rows_hi = _filtro_besu(rows_plot, prag=BESU_PRAG_VIPCOMBO)   # kufi 70% edhe manual
 
     given = set() if _vet else _merr_given_ids(email, "vipcombo")
 
