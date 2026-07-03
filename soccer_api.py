@@ -95,7 +95,7 @@ app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced M
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://soccer1x2pro.com", "https://www.soccer1x2pro.com"],
+    allow_origin_regex=r"^https://(www\.)?soccer1x2pro\.com$|^https://([a-z0-9-]+\.)?rapidapi\.com$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -2028,10 +2028,16 @@ def ruaj_skedinen_e_zgjedhur(payload: dict, authorization: str = Header(None)):
     email = _email_auth(authorization, payload.get("email"))
     tipi = payload.get("tipi")
     permb = payload.get("permbajtja") or {}
-    if not email or tipi not in ("ticket", "combo") or not permb:
+    if not email or tipi not in ("ticket", "combo", "combonde") or not permb:
         return {"sukses": False, "kod": "DATA_MISSING", "arsye": "Të dhëna mungojnë."}
     if tipi == "ticket":
         nen = _nenshkrim_ticket(permb)
+    elif tipi == "combonde":
+        _legs = []
+        for k in (permb.get("kombinimet") or []):
+            for s in (k.get("skedina") or []):
+                _legs.append(f"{s.get('ndeshja')}|{s.get('skor')}")
+        nen = hashlib.md5(("combonde:" + ";".join(sorted(set(_legs)))).encode()).hexdigest()
     else:
         nen = _nenshkrim_combo(permb.get("ndeshjet") or [], permb.get("nr", 2), permb.get("rez", 4))
     # mos ruaj dy here te njejten
@@ -6399,3 +6405,102 @@ def b2b_admin_toggle_key(secret: str = "", key: str = "", active: int = 1):
     r = requests.patch(f"{SUPABASE_URL_APIKEYS}?celes=eq.{requests.utils.quote(key.strip(), safe='')}",
                        headers=SUPABASE_SERVICE_HEADERS, json={"aktiv": bool(int(active))}, timeout=10)
     return {"success": r.status_code in (200, 204), "key": key.strip()[:14] + "...", "active": bool(int(active))}
+
+
+# ==========================================
+# VIP COMBO NDESHJESH — akumulues 2-3 ndeshjesh nga rezultatet e sakta
+# me besueshmërinë më të lartë. C(n,2) + C(n,3) skedina.
+# ==========================================
+import itertools as _it
+
+
+def _prob_rez_sakt(p):
+    """Probabiliteti i rezultatit të saktë të parashikuar nga dist_gola."""
+    dist = p.get("dist_gola") or {}
+    rs = p.get("rezultati_sakt")
+    try:
+        total = sum(float(v or 0) for v in dist.values())
+    except Exception:
+        total = 0.0
+    if not rs or total <= 0:
+        return 0.0
+    v = dist.get(rs, dist.get(str(rs).replace(" ", ""), 0))
+    try:
+        return float(v or 0) / total
+    except Exception:
+        return 0.0
+
+
+@app.get("/api/vip-combo-nde")
+def vip_combo_nde(email: str = "", nr: int = 4, madhesi: str = "23", liga: str = "", paguaj: int = 0,
+                  authorization: str = Header(None)):
+    """COMBO NDESHJESH: merr nr ndeshjet me besueshmërinë më të lartë (rezultati i saktë 1/ndeshje),
+    i kombinon në skedina me 2 dhe/ose 3 ndeshje. Ndan day-pass-in me VIP Combo (produkt 'vipcombo')."""
+    email = _email_auth(authorization, email)
+    if not email or not email.strip():
+        return {"sukses": False, "kod": "LOGIN_FIRST", "arsye": "Hyr së pari në llogari."}
+    _drejta = _kontrollo_te_drejten(email, "vipcombo", CMIM_VIPCOMBO, bool(paguaj))
+    if not _drejta["ok"]:
+        return {"sukses": False, "bllokuar": True,
+                "kerko_pagese": _drejta.get("kerko_pagese", False),
+                "mungojne_kredite": _drejta.get("mungojne_kredite", False),
+                "arsye": _drejta["arsye"],
+                "portofoli": _drejta["portofoli"], "is_vip": _drejta["is_vip"], "cmimi": CMIM_VIPCOMBO}
+    nr = min(6, max(4, int(nr or 4)))
+    madhesi = str(madhesi or "23").strip()
+    if madhesi not in ("2", "3", "23"):
+        madhesi = "23"
+    dt = _data_lokale(0); dt_neser = _data_lokale(1)
+    url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria"
+           f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null"
+           f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&besueshmeria=not.is.null"
+           f"&order=besueshmeria.desc&limit=40")
+    if liga and liga.strip():
+        url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
+    r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+    rows = r.json() if r.status_code == 200 else []
+    # PËRZGJEDHJA NIS NGA % MË E LARTË — vetëm mbi pragun VIP Combo (70)
+    rows = _filtro_besu(rows, prag=BESU_PRAG_VIPCOMBO)
+    ndeshjet = []
+    for p in rows:
+        pr = _prob_rez_sakt(p)
+        if pr <= 0:
+            continue
+        try:
+            kf = float(p.get("koef_rez_sakt") or 0)
+        except Exception:
+            kf = 0.0
+        if kf <= 1:
+            kf = round(1.0 / pr, 2)
+        ndeshjet.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
+                         "liga": p.get("liga_emri"), "skor": p.get("rezultati_sakt"),
+                         "koef": round(kf, 2), "prob": round(pr, 4),
+                         "besueshmeria": p.get("besueshmeria")})
+        if len(ndeshjet) >= nr:
+            break
+    if len(ndeshjet) < 2 or (madhesi == "3" and len(ndeshjet) < 3):
+        return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF",
+                "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të lartë (≥70%). Provo më vonë."}
+
+    madhesite = {"2": [2], "3": [3], "23": [2, 3]}[madhesi]
+    kombinimet = []
+    for m in madhesite:
+        if len(ndeshjet) < m:
+            continue
+        for grup in _it.combinations(ndeshjet, m):
+            jp = 1.0; kt = 1.0; skedina = []
+            for n in grup:
+                jp *= n["prob"]; kt *= n["koef"]
+                skedina.append({"ndeshja": n["ndeshja"], "skor": n["skor"], "koef": n["koef"]})
+            _bv = [float(n["besueshmeria"]) for n in grup if n.get("besueshmeria") is not None]
+            kombinimet.append({"skedina": skedina, "prob": round(jp, 5), "koef_total": round(kt, 2),
+                               "besu": round(sum(_bv) / len(_bv)) if _bv else None})
+    kombinimet.sort(key=lambda k: k["prob"], reverse=True)
+
+    _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
+    _bv = [float(n["besueshmeria"]) for n in ndeshjet if n.get("besueshmeria") is not None]
+    return {"sukses": True, "nr_ndeshje": len(ndeshjet), "madhesi": madhesi,
+            "besu_mesatare": round(sum(_bv) / len(_bv)) if _bv else None,
+            "ndeshjet": ndeshjet, "kombinimet": kombinimet, "nr_kombinimesh": len(kombinimet),
+            "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
+            "cmimi": CMIM_VIPCOMBO}
