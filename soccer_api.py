@@ -2223,7 +2223,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if not sked:
         if _vet:
             _mapg = {"1x2": "1X2", "dc": "Double Chance", "ou": "Over/Under", "gg": "GG/NG", "cs": "Correct Score", "htft": "HT/FT", "ah": "AH", "ht": "Half-Time"}
-            _disp = [g for g in ["1x2", "dc", "ou", "gg", "cs", "htft", "ah", "ht"] if any(_opsionet_ndeshje(p, [g]) for p in pool_hi)]
+            _disp = [g for g in ["1x2", "dc", "ou", "gg", "cs", "htft", "ah", "ht"] if sum(1 for p in pool_hi if _opsionet_ndeshje(p, [g])) >= nr]
             if _disp:
                 _dtxt = ", ".join(_mapg[g] for g in _disp)
                 return {"sukses": False, "kod": "MANUAL_MARKETS", "tregjet_gatshme": _dtxt, "arsye": "Ndeshjet e zgjedhura s'kanë të dhëna për tregjet e zgjedhura. Tregjet e disponueshme për to: " + _dtxt + "."}
