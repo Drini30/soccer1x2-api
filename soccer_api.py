@@ -561,6 +561,10 @@ CMIMI_DITORE = 10.0   # zhbllokon Skedinën + Kombinimin e Ditës
 CMIMI_TRIAL  = 4.90   # provë 1-javore me pagesë (jo falas — bllokon llogari fallso)
 TRIAL_DITE   = 7
 
+# -- ARGETOHU (Gemini): kuote motivuese + kuiz trivie --
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL   = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
 CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "")
 CRYPTOMUS_PAYMENT_KEY = os.environ.get("CRYPTOMUS_PAYMENT_KEY", "")
 PUBLIC_API_URL  = os.environ.get("PUBLIC_API_URL", "https://soccer1x2-api.onrender.com").rstrip("/")
@@ -2852,6 +2856,41 @@ def _zbulo_pf():
                     json={"is_premium": True}, timeout=8)
             except Exception:
                 pass
+
+@app.get("/api/argetohu")
+def argetohu(gjuha: str = "sq", authorization: str = Header(None)):
+    """Kuote motivuese origjinale + pyetje kuiz trivie futbolli (Gemini), sipas gjuhes."""
+    _email_auth(authorization, "", strict=False)
+    gj = gjuha if gjuha in ("en", "sq", "de", "fr", "it") else "sq"
+    emri_gj = {"en": "English", "sq": "Albanian", "de": "German", "fr": "French", "it": "Italian"}[gj]
+    if not GEMINI_API_KEY:
+        return {"ok": False, "quote": "", "quiz": None, "arsye": "GEMINI_API_KEY mungon"}
+    prompt = (
+        "You create short fun content for a football fan app. Write in " + emri_gj + ". "
+        "Return ONLY a valid JSON object, no markdown fences, exactly: "
+        '{"quote":"...","quiz":{"question":"...","answer":"..."}}. '
+        "Rules: quote = an ORIGINAL, uplifting one-line message about football, passion, teamwork, effort or winning (max 16 words); "
+        "do NOT quote or attribute it to any real person. "
+        "quiz = ONE football trivia question about a widely-known, verifiable fact (World Cup winners, legendary players, famous clubs), "
+        "and answer = the correct answer in max 5 words. Make sure the answer is factually correct."
+    )
+    try:
+        url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + GEMINI_API_KEY
+        r = requests.post(url, json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 1.0, "maxOutputTokens": 300, "responseMimeType": "application/json"}
+        }, timeout=15)
+        if r.status_code != 200:
+            return {"ok": False, "quote": "", "quiz": None, "arsye": "gemini %d" % r.status_code}
+        txt = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        data = json.loads(txt)
+        q = data.get("quiz") or {}
+        return {"ok": True,
+                "quote": (data.get("quote") or "").strip(),
+                "quiz": {"question": (q.get("question") or "").strip(), "answer": (q.get("answer") or "").strip()}}
+    except Exception:
+        return {"ok": False, "quote": "", "quiz": None, "arsye": "gabim"}
+
 
 @app.get("/api/pf/risinkro")
 def pf_risinkro():
