@@ -2185,7 +2185,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     nr = max(2, min(15, int(nr)))
     nr_max = int(nr_max) if nr_max else nr
     nr_max = max(nr, min(15, nr_max))
-    koef = max(2.0, min(100.0, float(koef)))
+    koef = max(2.0, min(3000.0, float(koef)))
     grupet = [g.strip().lower() for g in tregjet.split(",") if g.strip()]
     grupet = [g for g in grupet if g in ("1x2", "dc", "ou", "gg", "cs", "htft", "ah", "ht")]
     if not grupet:
@@ -6220,3 +6220,182 @@ def merr_koeficientet_shtese(match_id: str):
         return {"mesazhi": "Gabim", "koeficientet": []}
 
 # (Webhook-u LemonSqueezy u HOQ — vrimë sigurie; pagesat tani me Cryptomus.)
+
+
+# ==========================================
+# B2B PUBLIC API (v1) — RapidAPI / APILayer / çelësa direkt
+# Auth: X-RapidAPI-Proxy-Secret (proxy) OSE X-API-Key (çelës vetjak në tabelën api_keys)
+# ==========================================
+import secrets as _secrets
+
+RAPIDAPI_PROXY_SECRET = os.environ.get("RAPIDAPI_PROXY_SECRET", "")
+B2B_ADMIN_SECRET = os.environ.get("B2B_ADMIN_SECRET", "")
+SUPABASE_URL_APIKEYS = f"{SUPABASE_BASE}/rest/v1/api_keys"
+B2B_LIMIT_FREE = 100   # kërkesa/ditë për çelësat pa limit të vendosur
+
+
+def _b2b_auth(proxy_secret, api_key):
+    """Kthen identitetin ose ngre HTTPException me status të saktë HTTP (401/403/429)."""
+    # 1) Trafiku përmes RapidAPI/APILayer — proxy secret i platformës
+    if RAPIDAPI_PROXY_SECRET and proxy_secret and hmac.compare_digest(str(proxy_secret), RAPIDAPI_PROXY_SECRET):
+        return {"ok": True, "burimi": "proxy", "plan": "proxy"}
+    # 2) Çelës vetjak (klientë direkt)
+    if not api_key or not str(api_key).strip():
+        raise HTTPException(status_code=401, detail="Missing API key. Pass it in the 'X-API-Key' header.")
+    try:
+        r = requests.get(f"{SUPABASE_URL_APIKEYS}?select=*&celes=eq.{requests.utils.quote(str(api_key).strip(), safe='')}&limit=1",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    if not rows:
+        raise HTTPException(status_code=401, detail="Invalid API key.")
+    k = rows[0]
+    if not k.get("aktiv", True):
+        raise HTTPException(status_code=403, detail="API key is disabled.")
+    sot = _data_lokale(0)
+    perd = int(k.get("perdorime_sot") or 0)
+    if str(k.get("data_perdorimit") or "") != sot:
+        perd = 0
+    lim = int(k.get("limit_ditor") or B2B_LIMIT_FREE)
+    if lim > 0 and perd >= lim:
+        raise HTTPException(status_code=429, detail=f"Daily limit reached ({lim} requests/day). Resets at midnight Europe/Tirane.")
+    try:
+        requests.patch(f"{SUPABASE_URL_APIKEYS}?id=eq.{k.get('id')}", headers=SUPABASE_SERVICE_HEADERS,
+                       json={"perdorime_sot": perd + 1, "data_perdorimit": sot,
+                             "perdorime_total": int(k.get("perdorime_total") or 0) + 1}, timeout=8)
+    except Exception:
+        pass
+    return {"ok": True, "burimi": "key", "plan": k.get("plan") or "free"}
+
+
+def _b2b_match(p):
+    """Formaton një parashikim për API-në publike (anglisht, pa dist_gola të plotë)."""
+    nd = (p.get("ndeshja") or "").strip()
+    if " vs " in nd:
+        home, away = nd.split(" vs ", 1)
+    else:
+        home, away = nd, ""
+    tg = p.get("tregjet") or {}
+    od = p.get("odds_reale") or {}
+    markets = {}
+    for m, v in tg.items():
+        try:
+            pr = float(v)
+        except Exception:
+            continue
+        if pr <= 0:
+            continue
+        try:
+            o = float(od.get(m, 0) or 0)
+        except Exception:
+            o = 0.0
+        markets[m] = {"probability": round(pr, 4), "odds": round(o, 2) if o > 1 else round(1.0 / pr, 2)}
+    top = [{"score": x["skor"], "probability": x["prob"], "fair_odds": x["koef"]}
+           for x in _top_rezultate_sakta(p, 3)]
+    return {"id": p.get("id"), "match": nd, "home_team": home.strip(), "away_team": away.strip(),
+            "league": p.get("liga_emri"), "date": p.get("data"), "kickoff": p.get("ora"),
+            "status": p.get("statusi"), "confidence": p.get("besueshmeria"),
+            "best_bet": p.get("best_bet"),
+            "correct_score": {"score": p.get("rezultati_sakt"), "fair_odds": p.get("koef_rez_sakt")},
+            "top_scorelines": top, "markets": markets}
+
+
+_B2B_SELECT = "id,ndeshja,data,ora,liga_emri,statusi,best_bet,tregjet,odds_reale,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria"
+
+
+@app.get("/v1/status")
+def b2b_status():
+    return {"api": "SOCCER1X2 PRO — Football Predictions API", "version": "1.0", "status": "ok",
+            "engine": "Hybrid XGBoost + Monte Carlo (53k+ matches trained)",
+            "coverage": "today + tomorrow fixtures",
+            "markets": "1X2, Over/Under 1.5-3.5, BTTS (GG/NG), Double Chance, Correct Score",
+            "auth": "X-API-Key header (or via RapidAPI marketplace)",
+            "website": "https://soccer1x2pro.com"}
+
+
+@app.get("/v1/predictions")
+def b2b_predictions(date: str = "today", league: str = "", limit: int = 50,
+                    x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None)):
+    _b2b_auth(x_rapidapi_proxy_secret, x_api_key)
+    dt_sot, dt_neser = _data_lokale(0), _data_lokale(1)
+    d = (date or "today").strip().lower()
+    if d in ("today", ""):
+        dt = dt_sot
+    elif d == "tomorrow":
+        dt = dt_neser
+    elif d in (dt_sot, dt_neser):
+        dt = d
+    else:
+        raise HTTPException(status_code=400, detail="Only 'today' and 'tomorrow' fixtures are available on this plan.")
+    try:
+        limit = max(1, min(int(limit or 50), 100))
+    except Exception:
+        limit = 50
+    url = (f"{SUPABASE_URL_PREDS}?select={_B2B_SELECT}"
+           f"&data=eq.{dt}&tregjet=not.is.null&order=ora.asc&limit={limit}")
+    if league and league.strip():
+        url += f"&liga_emri=eq.{requests.utils.quote(league.strip(), safe='')}"
+    r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=12)
+    rows = r.json() if r.status_code == 200 else []
+    out = [_b2b_match(p) for p in rows]
+    return {"success": True, "date": dt, "count": len(out), "predictions": out}
+
+
+@app.get("/v1/predictions/{pred_id}")
+def b2b_prediction_single(pred_id: int,
+                          x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None)):
+    _b2b_auth(x_rapidapi_proxy_secret, x_api_key)
+    r = requests.get(f"{SUPABASE_URL_PREDS}?select={_B2B_SELECT}&id=eq.{int(pred_id)}&limit=1",
+                     headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+    rows = r.json() if r.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Prediction not found.")
+    return {"success": True, "prediction": _b2b_match(rows[0])}
+
+
+@app.get("/v1/leagues")
+def b2b_leagues(x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None)):
+    _b2b_auth(x_rapidapi_proxy_secret, x_api_key)
+    dt_sot, dt_neser = _data_lokale(0), _data_lokale(1)
+    r = requests.get(f"{SUPABASE_URL_PREDS}?select=liga_emri,data&data=in.({dt_sot},{dt_neser})&tregjet=not.is.null&limit=1000",
+                     headers=SUPABASE_SERVICE_HEADERS, timeout=12)
+    rows = r.json() if r.status_code == 200 else []
+    cnt = {}
+    for p in rows:
+        lg = p.get("liga_emri") or "?"
+        cnt[lg] = cnt.get(lg, 0) + 1
+    out = [{"league": k, "fixtures": v} for k, v in sorted(cnt.items(), key=lambda x: -x[1])]
+    return {"success": True, "count": len(out), "leagues": out}
+
+
+# ---------- Admin: krijo / fik çelësa (vetëm me B2B_ADMIN_SECRET) ----------
+@app.get("/v1/admin/create-key")
+def b2b_admin_create_key(secret: str = "", name: str = "", email: str = "", plan: str = "free", limit: int = 100):
+    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+    celes = "s1x2_" + _secrets.token_hex(24)
+    try:
+        limit = max(0, int(limit))
+    except Exception:
+        limit = 100
+    body = {"celes": celes, "emri": (name or "").strip()[:80], "email": (email or "").strip()[:120],
+            "plan": (plan or "free").strip()[:20], "limit_ditor": limit, "aktiv": True,
+            "perdorime_sot": 0, "perdorime_total": 0}
+    r = requests.post(SUPABASE_URL_APIKEYS, headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=representation"},
+                      json=body, timeout=10)
+    if r.status_code not in (200, 201):
+        raise HTTPException(status_code=500, detail="Could not create key (is the api_keys table created?).")
+    return {"success": True, "api_key": celes, "plan": body["plan"], "daily_limit": limit,
+            "usage": "Send it in the 'X-API-Key' header."}
+
+
+@app.get("/v1/admin/toggle-key")
+def b2b_admin_toggle_key(secret: str = "", key: str = "", active: int = 1):
+    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+    if not key.strip():
+        raise HTTPException(status_code=400, detail="Missing 'key'.")
+    r = requests.patch(f"{SUPABASE_URL_APIKEYS}?celes=eq.{requests.utils.quote(key.strip(), safe='')}",
+                       headers=SUPABASE_SERVICE_HEADERS, json={"aktiv": bool(int(active))}, timeout=10)
+    return {"success": r.status_code in (200, 204), "key": key.strip()[:14] + "...", "active": bool(int(active))}
