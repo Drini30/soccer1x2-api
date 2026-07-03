@@ -2167,7 +2167,7 @@ def ndeshjet_gjenerueshme(email: str = "", authorization: str = Header(None)):
 
 
 @app.get("/api/gjenero")
-def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0, perjashto: str = "", vetem: str = "", authorization: str = Header(None)):
+def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: float = 20.0, tregjet: str = "1x2,ou,gg", liga: str = "", paguaj: int = 0, perjashto: str = "", vetem: str = "", perjashto_emra: str = "", vetem_emra: str = "", authorization: str = Header(None)):
     email = _email_auth(authorization, email)
     if not email or not email.strip():
         return {"sukses": False, "kod": "LOGIN_FIRST", "arsye": "Hyr së pari në llogari."}
@@ -2194,27 +2194,29 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     res = requests.get(gen_url, headers=SUPABASE_SERVICE_HEADERS)
     pool_plot = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
     _perj = _id_set(perjashto); _vet = _id_set(vetem)
-    if _vet:
-        _have = {p.get("id") for p in pool_plot}
-        _mungojne = [x for x in _vet if x not in _have]
-        if _mungojne:
+    _perj_em = {(x or "").strip().lower() for x in (perjashto_emra or "").split("|") if x.strip()}
+    _vet_em = {(x or "").strip().lower() for x in (vetem_emra or "").split("|") if x.strip()}
+    _manual = bool(_vet or _vet_em)
+    if _manual:
+        _kane = {_nm_key(p) for p in pool_plot}
+        _mung = [x for x in _vet_em if x not in _kane]
+        if _mung:
             try:
-                _r2 = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt,besueshmeria&id=in.({','.join(str(x) for x in _mungojne)})", headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+                _or = ",".join("ndeshja.ilike." + requests.utils.quote(x, safe='') for x in _mung)
+                _r2 = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt,besueshmeria&or=({_or})&limit=50", headers=SUPABASE_SERVICE_HEADERS, timeout=8)
                 for _p in (_r2.json() if _r2.status_code == 200 else []):
-                    if _p.get("tregjet"):
-                        pool_plot.append(_p)
+                    if _p.get("tregjet") and _nm_key(_p) not in _kane:
+                        pool_plot.append(_p); _kane.add(_nm_key(_p))
             except Exception:
                 pass
-        _vn = {_nm_key(p) for p in pool_plot if p.get("id") in _vet}
-        pool_plot = [p for p in pool_plot if p.get("id") in _vet or _nm_key(p) in _vn]
-    if _perj:
-        _pn = {_nm_key(p) for p in pool_plot if p.get("id") in _perj}
-        pool_plot = [p for p in pool_plot if p.get("id") not in _perj and _nm_key(p) not in _pn]
-    pool_hi = pool_plot if _vet else _filtro_besu(pool_plot)   # manual: pikërisht ndeshjet e zgjedhura (pa filtër)
+        pool_plot = [p for p in pool_plot if p.get("id") in _vet or _nm_key(p) in _vet_em]
+    if _perj or _perj_em:
+        pool_plot = [p for p in pool_plot if p.get("id") not in _perj and _nm_key(p) not in _perj_em]
+    pool_hi = pool_plot if _manual else _filtro_besu(pool_plot)   # manual: pikërisht ndeshjet e zgjedhura (pa filtër)
 
     _mkts = [m for m in (tregjet or "").lower().replace(" ", "").split(",") if m]
     _prod_key = "gen:" + (",".join(sorted(set(_mkts))) or "default")   # perjashtim per market-kombinim
-    given = set() if _vet else _merr_given_ids(email, _prod_key)
+    given = set() if _manual else _merr_given_ids(email, _prod_key)
 
     def _provo_gjen(pool_x):
         """Ndërton skedinë nga pool_x; rivendos 'given' dhe riprovon nëse s'del."""
@@ -2231,12 +2233,12 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     sked, rifilluar = _provo_gjen(pool_hi)
     pool = pool_hi
     if not sked:
-        if _vet:
+        if _manual:
             _mapg = {"1x2": "1X2", "dc": "Double Chance", "ou": "Over/Under", "gg": "GG/NG", "cs": "Correct Score", "htft": "HT/FT", "ah": "AH", "ht": "Half-Time"}
             _emundur = len([p for p in pool_hi if _opsionet_ndeshje(p, grupet)])
             _disp = [_mapg[g] for g in ["1x2", "dc", "ou", "gg", "cs", "htft", "ah", "ht"] if sum(1 for p in pool_hi if _opsionet_ndeshje(p, [g])) >= nr]
-            _diag = "Diagnozë: zgjodhe %d ndeshje, %d u gjetën në sistem, %d kanë opsione për tregjet e zgjedhura (duhen >=%d)." % (len(_vet), len(pool_hi), _emundur, nr)
-            _msg = ("Tregjet ku ndeshjet e zgjedhura kanë mjaft të dhëna: " + ", ".join(_disp) + ". ") if _disp else "Ndeshjet e zgjedhura s'kanë mjaft të dhëna për tregjet e mundshme. "
+            _diag = "Diag: id=[%s] emra=[%s] -> në sistem=%d, opsione=%d (duhen >=%d)." % (str(vetem)[:45], str(vetem_emra)[:60], len(pool_hi), _emundur, nr)
+            _msg = ("Tregjet ku ndeshjet e zgjedhura kanë mjaft të dhëna: " + ", ".join(_disp) + ". ") if _disp else "Ndeshjet e zgjedhura s'kanë mjaft të dhëna. "
             return {"sukses": False, "arsye": _msg + _diag}
         if _drejta["is_vip"]:
             # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
@@ -2247,7 +2249,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if not sked:
         return {"sukses": False, "kod": "NOT_ENOUGH", "arsye": "Jo mjaft ndeshje për këto parametra."}
     _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
-    if not _vet: _ruaj_given_ids(email, _prod_key, [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
+    if not _manual: _ruaj_given_ids(email, _prod_key, [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
     _ruaj_gjenero_legs(email, sked, pool)
     return {"sukses": True, "skedina": sked, "rifilluar": rifilluar,
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
@@ -3083,7 +3085,7 @@ def _ndeshjet_vipcombo(rows, nr, rez):
 
 
 @app.get("/api/vip-combo")
-def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj: int = 0, perjashto: str = "", vetem: str = "", authorization: str = Header(None)):
+def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj: int = 0, perjashto: str = "", vetem: str = "", perjashto_emra: str = "", vetem_emra: str = "", authorization: str = Header(None)):
     email = _email_auth(authorization, email)
     """VIP COMBO: nr ndeshje (2 ose 3) × rez rezultate të sakta (3 ose 4) = rez^nr skedina."""
     if not email or not email.strip():
@@ -3106,23 +3108,27 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     r = requests.get(vc_url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
     rows_plot = r.json() if r.status_code == 200 else []
     _perj = _id_set(perjashto); _vet = _id_set(vetem)
-    if _vet:
-        _found = {p.get("id") for p in rows_plot}
-        _missing = [i for i in _vet if i not in _found]
-        if _missing:
+    _perj_em = {(x or "").strip().lower() for x in (perjashto_emra or "").split("|") if x.strip()}
+    _vet_em = {(x or "").strip().lower() for x in (vetem_emra or "").split("|") if x.strip()}
+    _manual = bool(_vet or _vet_em)
+    if _manual:
+        _kane = {_nm_key(p) for p in rows_plot}
+        _mung = [x for x in _vet_em if x not in _kane]
+        if _mung:
             try:
-                _r2 = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria&id=in.({','.join(str(x) for x in _missing)})", headers=SUPABASE_SERVICE_HEADERS, timeout=8)
-                rows_plot = rows_plot + (_r2.json() if _r2.status_code == 200 else [])
+                _or = ",".join("ndeshja.ilike." + requests.utils.quote(x, safe='') for x in _mung)
+                _r2 = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria&or=({_or})&limit=50", headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+                for _p in (_r2.json() if _r2.status_code == 200 else []):
+                    if _nm_key(_p) not in _kane:
+                        rows_plot.append(_p); _kane.add(_nm_key(_p))
             except Exception:
                 pass
-        _vn = {_nm_key(p) for p in rows_plot if p.get("id") in _vet}
-        rows_plot = [p for p in rows_plot if p.get("id") in _vet or _nm_key(p) in _vn]
-    if _perj:
-        _pn = {_nm_key(p) for p in rows_plot if p.get("id") in _perj}
-        rows_plot = [p for p in rows_plot if p.get("id") not in _perj and _nm_key(p) not in _pn]
-    rows_hi = rows_plot if _vet else _filtro_besu(rows_plot, prag=BESU_PRAG_VIPCOMBO)   # manual: pa filtër
+        rows_plot = [p for p in rows_plot if p.get("id") in _vet or _nm_key(p) in _vet_em]
+    if _perj or _perj_em:
+        rows_plot = [p for p in rows_plot if p.get("id") not in _perj and _nm_key(p) not in _perj_em]
+    rows_hi = rows_plot if _manual else _filtro_besu(rows_plot, prag=BESU_PRAG_VIPCOMBO)   # manual: pa filtër
 
-    given = set() if _vet else _merr_given_ids(email, "vipcombo")
+    given = set() if _manual else _merr_given_ids(email, "vipcombo")
 
     def _provo_vc(rows_x):
         """Zgjedh ndeshjet për VIP Combo nga rows_x; rivendos 'given' dhe riprovon."""
@@ -3172,7 +3178,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
         mbulim *= sum(x["prob"] for x in n["rezultatet"])
     _ruaj_vip_combo(dt, nr, rez, ndeshjet)
     _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
-    if not _vet: _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
+    if not _manual: _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
     _ruaj_vip_legs(email, ndeshjet, rows)
     _bv = [float(n["besueshmeria"]) for n in ndeshjet if n.get("besueshmeria") is not None]
     besu_mesatare = round(sum(_bv) / len(_bv)) if _bv else None
