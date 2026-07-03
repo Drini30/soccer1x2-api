@@ -2851,6 +2851,45 @@ def _zbulo_pf():
             except Exception:
                 pass
 
+@app.get("/api/pf/risinkro")
+def pf_risinkro():
+    """Ri-sinkronizon rezultati_real te provably_fair nga predictions.rezultati (FT) për rreshtat e zbuluar.
+    Rregullon rastet ku rezultati u ndryshua manualisht (p.sh. AET Belgium-Senegal 3-2 -> 2-2). I ri-ekzekutueshëm."""
+    try:
+        r = requests.get(f"{PF_URL}?select=id,ndeshja,data,rezultati_real&statusi=eq.zbuluar",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=15)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    kontrolluar = 0; korrigjuar = 0; ndryshimet = []
+    for pf_row in rows:
+        nd = pf_row.get("ndeshja"); dt = pf_row.get("data")
+        if not nd:
+            continue
+        kontrolluar += 1
+        try:
+            url = (f"{SUPABASE_URL_PREDS}?select=rezultati&ndeshja=eq.{requests.utils.quote(nd, safe='')}"
+                   + (f"&data=eq.{dt}" if dt else "")
+                   + "&rezultati=not.is.null&order=id.desc&limit=1")
+            rr = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+            mm = rr.json() if rr.status_code == 200 else []
+        except Exception:
+            mm = []
+        if mm:
+            ri = mm[0].get("rezultati")
+            vjeter = pf_row.get("rezultati_real")
+            if ri and ri != vjeter:
+                try:
+                    requests.patch(f"{PF_URL}?id=eq.{pf_row['id']}",
+                        headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
+                        json={"rezultati_real": ri}, timeout=8)
+                    korrigjuar += 1
+                    ndryshimet.append({"ndeshja": nd, "nga": vjeter, "ne": ri})
+                except Exception:
+                    pass
+    return {"kontrolluar": kontrolluar, "korrigjuar": korrigjuar, "ndryshimet": ndryshimet}
+
+
 @app.get("/api/pf/list")
 def pf_list(email: str = "", authorization: str = Header(None)):
     email = _email_auth(authorization, email, strict=False)
