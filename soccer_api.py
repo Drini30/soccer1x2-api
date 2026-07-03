@@ -2195,6 +2195,16 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     pool_plot = [p for p in (res.json() if res.status_code == 200 else []) if p.get("tregjet")]
     _perj = _id_set(perjashto); _vet = _id_set(vetem)
     if _vet:
+        _have = {p.get("id") for p in pool_plot}
+        _mungojne = [x for x in _vet if x not in _have]
+        if _mungojne:
+            try:
+                _r2 = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt,besueshmeria&id=in.({','.join(str(x) for x in _mungojne)})", headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+                for _p in (_r2.json() if _r2.status_code == 200 else []):
+                    if _p.get("tregjet"):
+                        pool_plot.append(_p)
+            except Exception:
+                pass
         _vn = {_nm_key(p) for p in pool_plot if p.get("id") in _vet}
         pool_plot = [p for p in pool_plot if p.get("id") in _vet or _nm_key(p) in _vn]
     if _perj:
