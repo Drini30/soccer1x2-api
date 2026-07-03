@@ -1386,6 +1386,43 @@ def skedina_historik(email: str = "", authorization: str = Header(None)):
                 _gt_best[_dita] = _g
         gjeneruar = sorted(_gt_best.values(), key=lambda x: _data_gt(x), reverse=True)
 
+    # ── COMBO NDESHJESH (personale): vetëm fituese, 1/ditë me koeficientin fitues më të lartë ──
+    combo_nde = []
+    if email and email.strip():
+        _em2 = email.strip().lower()
+        try:
+            cn = requests.get(
+                f"{SKEDINA_IME_URL}?email=eq.{_em2}&tipi=eq.combonde&statusi=eq.fituese"
+                f"&select=data,krijuar,permbajtja,fituesi&order=krijuar.desc&limit=80",
+                headers=SUPABASE_SERVICE_HEADERS, timeout=6)
+            cn_rows = cn.json() if cn.status_code == 200 else []
+        except Exception:
+            cn_rows = []
+        def _cn_permb(g):
+            p = g.get("permbajtja") or {}
+            if isinstance(p, str):
+                try: p = json.loads(p)
+                except Exception: p = {}
+            return p
+        def _cn_koef(g):
+            p = _cn_permb(g); f = g.get("fituesi") or {}
+            komb = p.get("kombinimet") or []
+            best = 0.0
+            for ki in (f.get("fitues_idx") or []):
+                if 0 <= ki < len(komb):
+                    try: best = max(best, float(komb[ki].get("koef_total") or 0))
+                    except Exception: pass
+            return best
+        def _cn_data(g):
+            if g.get("data"): return str(g.get("data"))[:10]
+            return (g.get("krijuar") or "")[:10]
+        _cn_best = {}
+        for _g in cn_rows:
+            _dita = _cn_data(_g)
+            if _dita not in _cn_best or _cn_koef(_g) > _cn_koef(_cn_best[_dita]):
+                _cn_best[_dita] = _g
+        combo_nde = sorted(_cn_best.values(), key=lambda x: _cn_data(x), reverse=True)
+
     return {
         "historik": rows,
         "fituese": fituese,
@@ -1393,6 +1430,7 @@ def skedina_historik(email: str = "", authorization: str = Header(None)):
         "perqindja": round(100.0 * fituese / total, 1) if total else None,
         "vip_combo": vip_combo,
         "gjeneruar": gjeneruar,
+        "combo_nde": combo_nde,
     }
 
 
@@ -1983,6 +2021,24 @@ def _vleso_skedina_ime(email):
                     detaje.append({**n, "real": rshf, "goditi": hit})
                 statusi = "fituese" if te_gjitha else "humbur"
                 fituesi = {"ndeshjet": detaje}
+            elif rec.get("tipi") == "combonde":
+                # Combo Ndeshjesh: çdo skedinë = nën-grup 2-3 ndeshjesh; mapo sipas EMRIT.
+                by_name = {}
+                for n in ndeshjet:
+                    by_name[(n.get("ndeshja") or "").strip()] = reale.get(str(n.get("id")), (None, None))
+                kombinimet = permb.get("kombinimet") or []
+                fitues_idx = []
+                for ki, k in enumerate(kombinimet):
+                    ok = True
+                    for leg in (k.get("skedina") or []):
+                        rh, ra = by_name.get((leg.get("ndeshja") or "").strip(), (None, None))
+                        real_norm = f"{rh}-{ra}" if rh is not None else None
+                        if str(leg.get("skor", "")).replace(" ", "") != (real_norm or "__no__"):
+                            ok = False; break
+                    if ok: fitues_idx.append(ki)
+                statusi = "fituese" if fitues_idx else "humbur"
+                reale_shf = {i: (f"{v[0]}-{v[1]}" if v[0] is not None else "—") for i, v in reale.items()}
+                fituesi = {"fitues_idx": fitues_idx, "reale": reale_shf}
             else:
                 kombinimet = permb.get("kombinimet") or []
                 fitues_idx = []
