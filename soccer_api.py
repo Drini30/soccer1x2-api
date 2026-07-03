@@ -2223,11 +2223,11 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if not sked:
         if _vet:
             _mapg = {"1x2": "1X2", "dc": "Double Chance", "ou": "Over/Under", "gg": "GG/NG", "cs": "Correct Score", "htft": "HT/FT", "ah": "AH", "ht": "Half-Time"}
-            _disp = [g for g in ["1x2", "dc", "ou", "gg", "cs", "htft", "ah", "ht"] if sum(1 for p in pool_hi if _opsionet_ndeshje(p, [g])) >= nr]
-            if _disp:
-                _dtxt = ", ".join(_mapg[g] for g in _disp)
-                return {"sukses": False, "kod": "MANUAL_MARKETS", "tregjet_gatshme": _dtxt, "arsye": "Ndeshjet e zgjedhura s'kanë të dhëna për tregjet e zgjedhura. Tregjet e disponueshme për to: " + _dtxt + "."}
-            return {"sukses": False, "kod": "MANUAL_NO_TICKET", "arsye": "Ndeshjet e zgjedhura s'formojnë dot skedinë me këto markete/kuota. Provo markete të tjera ose ul kuotën e synuar."}
+            _emundur = len([p for p in pool_hi if _opsionet_ndeshje(p, grupet)])
+            _disp = [_mapg[g] for g in ["1x2", "dc", "ou", "gg", "cs", "htft", "ah", "ht"] if sum(1 for p in pool_hi if _opsionet_ndeshje(p, [g])) >= nr]
+            _diag = "Diagnozë: zgjodhe %d ndeshje, %d u gjetën në sistem, %d kanë opsione për tregjet e zgjedhura (duhen >=%d)." % (len(_vet), len(pool_hi), _emundur, nr)
+            _msg = ("Tregjet ku ndeshjet e zgjedhura kanë mjaft të dhëna: " + ", ".join(_disp) + ". ") if _disp else "Ndeshjet e zgjedhura s'kanë mjaft të dhëna për tregjet e mundshme. "
+            return {"sukses": False, "arsye": _msg + _diag}
         if _drejta["is_vip"]:
             # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
             return {"sukses": False, "kod": "NOT_ENOUGH_CONF", "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të lartë (≥75%) për këto parametra. Provo më vonë."}
