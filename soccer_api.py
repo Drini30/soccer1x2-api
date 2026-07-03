@@ -2878,18 +2878,29 @@ def argetohu(gjuha: str = "sq", authorization: str = Header(None)):
         url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + GEMINI_API_KEY
         r = requests.post(url, json={
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 1.0, "maxOutputTokens": 300, "responseMimeType": "application/json"}
-        }, timeout=15)
+            "generationConfig": {"temperature": 1.0, "maxOutputTokens": 1024, "responseMimeType": "application/json", "thinkingConfig": {"thinkingBudget": 0}}
+        }, timeout=25)
         if r.status_code != 200:
-            return {"ok": False, "quote": "", "quiz": None, "arsye": "gemini %d" % r.status_code}
-        txt = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            return {"ok": False, "quote": "", "quiz": None, "arsye": "gemini %d: %s" % (r.status_code, (r.text or "")[:160])}
+        jd = r.json()
+        cands = jd.get("candidates") or []
+        if not cands:
+            return {"ok": False, "quote": "", "quiz": None, "arsye": "pa-candidates: " + str(jd)[:160]}
+        parts = ((cands[0].get("content") or {}).get("parts")) or []
+        txt = ""
+        for _p in parts:
+            if _p.get("text"):
+                txt = _p["text"]; break
+        if not txt:
+            return {"ok": False, "quote": "", "quiz": None, "arsye": "pa-tekst (finishReason=%s)" % cands[0].get("finishReason", "?")}
+        txt = txt.strip().replace("```json", "").replace("```", "").strip()
         data = json.loads(txt)
         q = data.get("quiz") or {}
         return {"ok": True,
                 "quote": (data.get("quote") or "").strip(),
                 "quiz": {"question": (q.get("question") or "").strip(), "answer": (q.get("answer") or "").strip()}}
-    except Exception:
-        return {"ok": False, "quote": "", "quiz": None, "arsye": "gabim"}
+    except Exception as e:
+        return {"ok": False, "quote": "", "quiz": None, "arsye": "gabim: " + str(e)[:160]}
 
 
 @app.get("/api/pf/risinkro")
