@@ -2843,6 +2843,10 @@ def _arkivo_ndeshje(pred, ht_str=None):
         "besueshmeria": _num_opt(pred.get("besueshmeria")),
         "goditi_1x2":   (_shenja_1x2(par) == _shenja_1x2(ft)) if (par and _shenja_1x2(par) and _shenja_1x2(ft)) else None,
         "goditi_skor":  (_parse_score(par) == _parse_score(ft)) if (par and _parse_score(par) and _parse_score(ft)) else None,
+        # ── FOTOGRAFIA E PLOTE E TRAJNIMIT (inputet+llogaritja+shperndarja, lidhur me rezultatin real) ──
+        "training_data": pred.get("training_data") or {},
+        "dist_gola":     pred.get("dist_gola") or {},
+        "tregjet_full":  treg,
     }
     try:
         requests.post(ARKIV_URL,
@@ -4293,8 +4297,10 @@ def analizo_ndeshjen_premium_master(
         xg_2 *= 1.10
 
     # ── MODULATORI (lodhje + kongjestion) — aplikohet në FUND mbi xG ──
-    xg_1 *= llogarit_modulator(forma_1)
-    xg_2 *= llogarit_modulator(forma_2)
+    _mod_1 = llogarit_modulator(forma_1)
+    _mod_2 = llogarit_modulator(forma_2)
+    xg_1 *= _mod_1
+    xg_2 *= _mod_2
 
     # Kap brenda kufijve pas modifikimeve
     xg_1 = float(np.clip(xg_1, 0.30, 5.00))
@@ -4562,6 +4568,37 @@ def analizo_ndeshjen_premium_master(
         "xg_debug":     {"xg_1": round(xg_1, 3), "xg_2": round(xg_2, 3)},
         "forma_1":      {k: forma_1[k] for k in ["win_rate", "k_wins_rresht", "lodhja_factor"]},
         "forma_2":      {k: forma_2[k] for k in ["win_rate", "k_wins_rresht", "lodhja_factor"]},
+        "training_data": {
+            # ── OUTPUTET FINALE ──
+            "xg_1": round(float(xg_1), 3), "xg_2": round(float(xg_2), 3),
+            "prob_1x2_mc": prob_1x2_mc,
+            # ── FORCA / VLERESIMI ──
+            "elo_1": round(float(elo_1), 1), "elo_2": round(float(elo_2), 1),
+            "p_market_1": round(float(p1_real), 4), "p_market_2": round(float(p2_real), 4),
+            "burimi_xg": burimi_xg,
+            # ── MODULUESIT E APLIKUAR (per te rikrijuar zinxhirin) ──
+            "modulator_1": round(float(_mod_1), 3), "modulator_2": round(float(_mod_2), 3),
+            "clutch_1": round(float(clutch_1), 3), "clutch_2": round(float(clutch_2), 3),
+            "draw_aff_1": round(float(draw_1), 1), "draw_aff_2": round(float(draw_2), 1),
+            "desp_1": round(float(desp_1), 3), "desp_2": round(float(desp_2), 3),
+            "vol_1": round(float(vol_1), 3), "vol_2": round(float(vol_2), 3),
+            "kaos_liges": round(float(kaosi_liges), 3), "is_derbi": bool(is_derbi),
+            "frac_ht_1": round(float(_frac_ht_1), 3) if _frac_ht_1 is not None else None,
+            "frac_ht_2": round(float(_frac_ht_2), 3) if _frac_ht_2 is not None else None,
+            # ── FEATURES-ET E FORMES (inputet qe prodhuan xG — per ritrajnim) ──
+            "home_avg_scored": round(float(forma_1.get("avg_gola_shenuar", 1.3)), 3),
+            "home_avg_conceded": round(float(forma_1.get("avg_gola_prane", 1.3)), 3),
+            "away_avg_scored": round(float(forma_2.get("avg_gola_shenuar", 1.3)), 3),
+            "away_avg_conceded": round(float(forma_2.get("avg_gola_prane", 1.3)), 3),
+            "home_scored_home": round(float(forma_1.get("avg_shenuar_home", forma_1.get("avg_gola_shenuar", 1.3))), 3),
+            "home_conceded_home": round(float(forma_1.get("avg_prane_home", forma_1.get("avg_gola_prane", 1.3))), 3),
+            "away_scored_away": round(float(forma_2.get("avg_shenuar_away", forma_2.get("avg_gola_shenuar", 1.3))), 3),
+            "away_conceded_away": round(float(forma_2.get("avg_prane_away", forma_2.get("avg_gola_prane", 1.3))), 3),
+            "home_forma_pts": float(forma_1.get("piket_forma", 7.0)),
+            "away_forma_pts": float(forma_2.get("piket_forma", 7.0)),
+            "home_win_rate": round(float(forma_1.get("win_rate", 0.5)), 3),
+            "away_win_rate": round(float(forma_2.get("win_rate", 0.5)), 3),
+        },
     }
 
     return anal_dict, besueshmeria, rez_sakt, f"{koef_rez_sakt:.2f}", extradb
@@ -4586,7 +4623,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         "koha_utc", "statusi", "minuta", "rezultati", "koef_1", "koef_x",
         "koef_2", "analiza_custom", "besueshmeria", "rezultati_sakt",
         "koef_rez_sakt", "is_premium", "is_bllof", "koef_plote", "tregjet", "best_bet", "odds_reale", "dist_gola",
-        "liga_emri", "parashikimi_origjinal_ai"
+        "liga_emri", "parashikimi_origjinal_ai", "training_data"
     }
 
     # FREEZE: ngri VETËM fushat që tashmë kanë vlerë në DB (lejon backfill të null-eve, p.sh. dist_gola)
@@ -5249,6 +5286,7 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
                             "tregjet":        extradb["tregjet"],
                             "dist_gola":      extradb["dist_gola"],
                             "best_bet":       _best_bet_value(extradb["tregjet"], bet365_odds.get(id_ndeshja, {})) or extradb["best_bet"],
+                            "training_data":  extradb.get("training_data"),
                         })
                         vip_kandidatet.append(base_match)
                     except Exception as eval_err:
