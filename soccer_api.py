@@ -4870,10 +4870,45 @@ def _emrat_premium_live(max_age_sec=300):
     return emrat
 
 
+_FULL_ACCESS_CACHE = {}
+
+def _ka_akses_te_plote(email):
+    """AKSES I PLOTE (analizat + premium pa maskim): VIP aktiv OSE day-pass i sotem
+    (vipcombo_fundit/generate_fundit == sot). Cache 60s per email."""
+    if not email or not str(email).strip():
+        return False
+    em = str(email).lower().strip()
+    tani = time.time()
+    ck = _FULL_ACCESS_CACHE.get(em)
+    if ck and tani - ck[0] < 60:
+        return ck[1]
+    ok = False
+    try:
+        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{em}&select=isVip,vip_skadon_me,vipcombo_fundit,generate_fundit",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+        rows = r.json() if r.status_code == 200 else []
+        u = rows[0] if rows else None
+        if u:
+            if u.get("isVip"):
+                sk = str(u.get("vip_skadon_me") or "")[:10]
+                ok = (not sk) or (sk >= _data_lokale(0))
+            if not ok:
+                sot = _data_lokale(0)
+                ok = (str(u.get("vipcombo_fundit") or "")[:10] == sot) or (str(u.get("generate_fundit") or "")[:10] == sot)
+    except Exception:
+        ok = False
+    _FULL_ACCESS_CACHE[em] = (tani, ok)
+    return ok
+
+
 @app.get("/api/skedina")
-def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
+def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None, authorization: str = Header(None)):
     data_target = date if date else _data_lokale()
     koha_tani   = time.time()
+    _em_fa = _email_auth(authorization, "", strict=False)
+    _full  = _ka_akses_te_plote(_em_fa)
+    def _maske(x):
+        return x if _full else _fshih_premium(x)
 
     # Auto-refresh PPM të përfunduara (në sfond)
     background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
@@ -4881,7 +4916,7 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
 
     # 1) Cache në memorie (më i shpejti)
     if data_target in SKEDINA_CACHE and (koha_tani - SKEDINA_LAST_UPDATE.get(data_target, 0) < 600):
-        return {"mesazhi": "Sukses", "skedina_grupuar": _fshih_premium(_me_live_fresh(SKEDINA_CACHE[data_target], data_target))}
+        return {"mesazhi": "Sukses", "skedina_grupuar": _maske(_me_live_fresh(SKEDINA_CACHE[data_target], data_target)), "full_access": _full}
 
     # 2) Cache në DB (mbijeton restart-et) — kthe MENJËHERË, pa llogaritur
     payload, fresh = _lexo_cache_db(data_target, max_age_min=60)
@@ -4890,11 +4925,11 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None):
         SKEDINA_LAST_UPDATE[data_target] = koha_tani
         if not fresh:
             background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, data_target)  # rifresko në sfond
-        return {"mesazhi": "Sukses", "skedina_grupuar": _fshih_premium(_me_live_fresh(payload, data_target))}
+        return {"mesazhi": "Sukses", "skedina_grupuar": _maske(_me_live_fresh(payload, data_target)), "full_access": _full}
 
     # 3) Asgjë në cache (hera e parë) → gjenero tani; cron-i do e parahapë më pas
     rez = _kompjuto_dhe_ruaj_skedina(data_target)
-    return {"mesazhi": "Sukses" if rez else "Gabim", "skedina_grupuar": _fshih_premium(rez)}
+    return {"mesazhi": "Sukses" if rez else "Gabim", "skedina_grupuar": _maske(rez), "full_access": _full}
 
 
 def _parse_skor(s):
