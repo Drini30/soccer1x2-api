@@ -6408,8 +6408,22 @@ def merr_koeficientet_shtese(match_id: str):
 # ==========================================
 import secrets as _secrets
 
-RAPIDAPI_PROXY_SECRET = os.environ.get("RAPIDAPI_PROXY_SECRET", "")
-B2B_ADMIN_SECRET = os.environ.get("B2B_ADMIN_SECRET", "")
+RAPIDAPI_PROXY_SECRET = os.environ.get("RAPIDAPI_PROXY_SECRET", "").strip()
+B2B_ADMIN_SECRET = os.environ.get("B2B_ADMIN_SECRET", "").strip()
+
+
+@app.get("/api/admin/env-debug")
+def admin_env_debug():
+    """DIAGNOSTIKË e përkohshme (fshije pas) — NUK zbulon vlerat, vetëm gjatësinë."""
+    raw_b = os.environ.get("B2B_ADMIN_SECRET", "")
+    raw_r = os.environ.get("RAPIDAPI_PROXY_SECRET", "")
+    return {
+        "B2B_ADMIN_SECRET": {"vendosur": bool(raw_b), "gjatesia": len(raw_b),
+                             "kishte_hapesire_fundi": raw_b != raw_b.strip()},
+        "RAPIDAPI_PROXY_SECRET": {"vendosur": bool(raw_r), "gjatesia": len(raw_r),
+                                  "kishte_hapesire_fundi": raw_r != raw_r.strip()},
+        "shenim": "Krahaso 'gjatesia' me numrin e karaktereve që pret. Fshije këtë endpoint pas diagnozës."
+    }
 SUPABASE_URL_APIKEYS = f"{SUPABASE_BASE}/rest/v1/api_keys"
 B2B_LIMIT_FREE = 100   # kërkesa/ditë për çelësat pa limit të vendosur
 
@@ -6417,7 +6431,7 @@ B2B_LIMIT_FREE = 100   # kërkesa/ditë për çelësat pa limit të vendosur
 def _b2b_auth(proxy_secret, api_key):
     """Kthen identitetin ose ngre HTTPException me status të saktë HTTP (401/403/429)."""
     # 1) Trafiku përmes RapidAPI/APILayer — proxy secret i platformës
-    if RAPIDAPI_PROXY_SECRET and proxy_secret and hmac.compare_digest(str(proxy_secret), RAPIDAPI_PROXY_SECRET):
+    if RAPIDAPI_PROXY_SECRET and proxy_secret and hmac.compare_digest(str(proxy_secret).strip(), RAPIDAPI_PROXY_SECRET):
         return {"ok": True, "burimi": "proxy", "plan": "proxy"}
     # 2) Çelës vetjak (klientë direkt)
     if not api_key or not str(api_key).strip():
@@ -6552,7 +6566,7 @@ def b2b_leagues(x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = He
 # ---------- Admin: krijo / fik çelësa (vetëm me B2B_ADMIN_SECRET) ----------
 @app.get("/v1/admin/create-key")
 def b2b_admin_create_key(secret: str = "", name: str = "", email: str = "", plan: str = "free", limit: int = 100):
-    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+    if not B2B_ADMIN_SECRET or (secret or "").strip() != B2B_ADMIN_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized.")
     celes = "s1x2_" + _secrets.token_hex(24)
     try:
@@ -6572,7 +6586,7 @@ def b2b_admin_create_key(secret: str = "", name: str = "", email: str = "", plan
 
 @app.get("/v1/admin/toggle-key")
 def b2b_admin_toggle_key(secret: str = "", key: str = "", active: int = 1):
-    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+    if not B2B_ADMIN_SECRET or (secret or "").strip() != B2B_ADMIN_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized.")
     if not key.strip():
         raise HTTPException(status_code=400, detail="Missing 'key'.")
@@ -6887,7 +6901,7 @@ def _social_postime(d):
 
 @app.get("/api/social/postime")
 def social_postime(secret: str = ""):
-    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+    if not B2B_ADMIN_SECRET or (secret or "").strip() != B2B_ADMIN_SECRET:
         return HTMLResponse("<h3 style='font-family:sans-serif'>401 — Unauthorized. Shto ?secret=… të saktë.</h3>", status_code=401)
     d = _social_te_dhenat()
     postime = _social_postime(d)
