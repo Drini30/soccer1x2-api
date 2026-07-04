@@ -2919,6 +2919,13 @@ def _gjenero_pf():
                 requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{p['id']}",
                                headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
                                json={"is_premium": True}, timeout=8)
+                # Ndeshje e re premium -> zbraz cache-in qe maskimi te aplikohet MENJEHERE
+                try:
+                    _PF_NAMES_CACHE["ts"] = 0.0
+                    if p.get("data"):
+                        SKEDINA_CACHE.pop(p.get("data"), None)
+                except Exception:
+                    pass
             except Exception:
                 pass
         seed = secrets.token_hex(8)
@@ -4789,20 +4796,48 @@ def _me_live_fresh(payload, data_target):
 
 
 def _fshih_premium(grupet):
-    """Heq rezultatin e sakte premium (rezultati_sakt/koef_rez_sakt) nga ndeshjet is_premium
-    para se t'i dergoje klientit. Zbulohet vetem me blerje PPM (/api/ppm/purchase). S'e modifikon cache-n."""
+    """Heq rezultatin e sakte premium (rezultati_sakt/koef_rez_sakt) para se t'i dergoje klientit.
+    MBUROJA E DYFISHTE: maskon si nga flamuri is_premium i payload-it, ashtu edhe nga lista LIVE
+    e emrave premium (tabela PF) — keshtu edhe cache i vjeter (para flamurimit) maskohet sakte."""
     if not grupet:
         return grupet
+    premium_live = _emrat_premium_live()
     out = []
     for liga in grupet:
         nd_list = []
         for nd in (liga.get("ndeshjet") or []):
-            if isinstance(nd, dict) and nd.get("is_premium"):
-                nd = {k: v for k, v in nd.items() if k not in ("rezultati_sakt", "koef_rez_sakt")}
+            if isinstance(nd, dict) and (nd.get("is_premium") or ((nd.get("ndeshja") or "") in premium_live)):
+                nd = {k: v for k, v in nd.items()
+                      if k not in ("rezultati_sakt", "koef_rez_sakt", "analiza_custom",
+                                   "besueshmeria", "best_bet", "tregjet", "dist_gola")}
+                nd["is_premium"] = True   # frontend-i e stilon si premium/te kycur edhe me cache te vjeter
             nd_list.append(nd)
         lc = dict(liga); lc["ndeshjet"] = nd_list
         out.append(lc)
     return out
+
+
+_PF_NAMES_CACHE = {"ts": 0.0, "emrat": set()}
+
+def _emrat_premium_live(max_age_sec=300):
+    """Emrat e ndeshjeve premium (sot+neser) direkt nga tabela PF, me cache 5-min.
+    Mburoje qe maskimi te mos varet nga flamuret e nje payload-i te vjeter."""
+    tani = time.time()
+    if tani - _PF_NAMES_CACHE["ts"] < max_age_sec:
+        return _PF_NAMES_CACHE["emrat"]
+    emrat = set()
+    try:
+        dt_s, dt_n = _data_lokale(0), _data_lokale(1)
+        r = requests.get(f"{PF_URL}?select=ndeshja&data=in.({dt_s},{dt_n})&limit=40",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=6)
+        for x in (r.json() if r.status_code == 200 else []):
+            if x.get("ndeshja"):
+                emrat.add(x["ndeshja"])
+    except Exception:
+        return _PF_NAMES_CACHE["emrat"]   # ne gabim, mbaj listen e fundit
+    _PF_NAMES_CACHE["ts"] = tani
+    _PF_NAMES_CACHE["emrat"] = emrat
+    return emrat
 
 
 @app.get("/api/skedina")
@@ -6410,20 +6445,6 @@ import secrets as _secrets
 
 RAPIDAPI_PROXY_SECRET = os.environ.get("RAPIDAPI_PROXY_SECRET", "").strip()
 B2B_ADMIN_SECRET = os.environ.get("B2B_ADMIN_SECRET", "").strip()
-
-
-@app.get("/api/admin/env-debug")
-def admin_env_debug():
-    """DIAGNOSTIKË e përkohshme (fshije pas) — NUK zbulon vlerat, vetëm gjatësinë."""
-    raw_b = os.environ.get("B2B_ADMIN_SECRET", "")
-    raw_r = os.environ.get("RAPIDAPI_PROXY_SECRET", "")
-    return {
-        "B2B_ADMIN_SECRET": {"vendosur": bool(raw_b), "gjatesia": len(raw_b),
-                             "kishte_hapesire_fundi": raw_b != raw_b.strip()},
-        "RAPIDAPI_PROXY_SECRET": {"vendosur": bool(raw_r), "gjatesia": len(raw_r),
-                                  "kishte_hapesire_fundi": raw_r != raw_r.strip()},
-        "shenim": "Krahaso 'gjatesia' me numrin e karaktereve që pret. Fshije këtë endpoint pas diagnozës."
-    }
 SUPABASE_URL_APIKEYS = f"{SUPABASE_BASE}/rest/v1/api_keys"
 B2B_LIMIT_FREE = 100   # kërkesa/ditë për çelësat pa limit të vendosur
 
@@ -6828,72 +6849,93 @@ def _social_te_dhenat():
 
 
 def _social_postime(d):
-    """Ndërton listën e postimeve (SQ + EN, IG/FB + TikTok) nga të dhënat."""
+    """Ndërton postimet (SQ + EN, IG/FB + TikTok) me TON AGRESIV + ftesë VIP Combo.
+    Përmbajtja shoqërohet me foto/pamje nga aplikacioni (sugjerimet e vendosura brenda)."""
     postime = []
     URL = "soccer1x2pro.com"
+    FOTO_SQ = "[📸 VENDOS KËTU: pamje nga aplikacioni me parashikimin/rezultatin]"
+    FOTO_EN = "[📸 PUT HERE: screenshot from the app showing the prediction/result]"
+    CTA_SQ = f"👉 Parashikimet në KOHË REALE + VIP Combo 👑 vetëm te {URL}"
+    CTA_EN = f"👉 REAL-TIME predictions + VIP Combo 👑 only at {URL}"
+    DIS_SQ = "⚠️ Analizë statistikore · 18+ · Luaj me përgjegjësi"
+    DIS_EN = "⚠️ Statistical analysis · 18+ · Bet responsibly"
 
-    # ── 1) DËSHMI REZULTATESH ──
+    # ── 1) DËSHMI REZULTATESH (arma kryesore — agresive) ──
     if d["goditjet"]:
         lst = d["goditjet"][:5]
-        def _lines(lang):
+        def _lines():
             out = []
             for g in lst:
-                mark = " ✅" + ("🎯" if g["skor_ok"] else "")
+                mark = " 🎯 SKOR SAKTË!" if g["skor_ok"] else " ✅"
                 out.append(f"⚽ {g['ndeshja']} → {g['ft']}{mark}")
             return "\n".join(out)
-        n_ok, n_tot = d["n_ok1x2"], d["n_gja1x2"]
-        sq_igfb = (f"✅ REZULTATET E DJESHME — SOCCER1X2 PRO 🦁\n\nAlgoritmi ynë AI i qëlloi:\n{_lines('sq')}\n\n"
-                   f"📊 {n_ok}/{n_tot} parashikime 1X2 të sakta dje\n🤖 Hybrid AI: Monte Carlo + XGBoost ({_MODEL_TRAJNIM} ndeshje trajnim)\n\n"
-                   f"👉 Parashikimet e sotme: {URL}\n\n⚠️ Vetëm analizë statistikore · 18+ · Luaj me përgjegjësi\n"
-                   f"#futboll #parashikime #AI #soccer1x2pro #superliga #botërori2026 #futbolli")
-        en_igfb = (f"✅ YESTERDAY'S RESULTS — SOCCER1X2 PRO 🦁\n\nOur AI called these correctly:\n{_lines('en')}\n\n"
-                   f"📊 {n_ok}/{n_tot} correct 1X2 predictions yesterday\n🤖 Hybrid AI: Monte Carlo + XGBoost ({_MODEL_TRAJNIM} matches trained)\n\n"
-                   f"👉 Today's predictions: {URL}\n\n⚠️ Statistical analysis only · 18+ · Bet responsibly\n"
-                   f"#football #soccer #predictions #AI #bettingtips #worldcup2026")
-        sq_tt = (f"🎬 HOOK: \"AI-ja jonë parashikoi këto rezultate DJE 👇\"\n[trego goditjet një nga një, shpejt]\n\n"
-                 f"CAPTION: Algoritmi goditi {n_ok}/{n_tot} dje ✅ Parashikimet sot 👉 {URL}\n"
-                 f"#futboll #AI #parashikime #fyp #botërori #futbolli ⚠️ Analizë · 18+")
-        en_tt = (f"🎬 HOOK: \"Our AI predicted these results YESTERDAY 👇\"\n[show each hit fast]\n\n"
-                 f"CAPTION: AI nailed {n_ok}/{n_tot} yesterday ✅ Today's picks 👉 {URL}\n"
-                 f"#football #AI #predictions #fyp #worldcup ⚠️ Analysis · 18+")
-        postime.append({"titull": "✅ Dëshmi rezultatesh (dje)", "sub": f"{n_ok}/{n_tot} 1X2 · {d['n_okskor']} skor të saktë",
+        n_ok, n_tot, n_skor = d["n_ok1x2"], d["n_gja1x2"], d["n_okskor"]
+        # Zgjedh titullin sipas statistikës më mbresëlënëse reale
+        if n_skor >= 2:
+            head_sq = f"🎯🔥 BINGO! {n_skor} REZULTATE TË SAKTA DJE! 🔥🎯"
+            head_en = f"🎯🔥 BINGO! {n_skor} EXACT SCORES YESTERDAY! 🔥🎯"
+        else:
+            head_sq = f"🔥 {n_ok}/{n_tot} GODITJE DJE — AI-ja S'FAL! 🔥"
+            head_en = f"🔥 {n_ok}/{n_tot} HITS YESTERDAY — THE AI DELIVERS! 🔥"
+        sq_igfb = (f"{head_sq}\n\n{FOTO_SQ}\n\n{_lines()}\n\n"
+                   f"📊 {n_ok}/{n_tot} saktë në 1X2" + (f" · {n_skor} rezultate TË SAKTA 🎯" if n_skor else "") + "\n"
+                   f"🤖 Hybrid AI — Monte Carlo + XGBoost, {_MODEL_TRAJNIM} ndeshje trajnim\n\n"
+                   f"Kush na ndoqi dje FITOI. Mos e humb sot 💰\n{CTA_SQ}\n\n{DIS_SQ}\n"
+                   f"#futboll #parashikime #AI #soccer1x2pro #superliga #botërori2026 #bingo #fitim")
+        en_igfb = (f"{head_en}\n\n{FOTO_EN}\n\n{_lines()}\n\n"
+                   f"📊 {n_ok}/{n_tot} correct on 1X2" + (f" · {n_skor} EXACT scores 🎯" if n_skor else "") + "\n"
+                   f"🤖 Hybrid AI — Monte Carlo + XGBoost, {_MODEL_TRAJNIM} matches trained\n\n"
+                   f"Whoever followed us yesterday WON. Don't miss today 💰\n{CTA_EN}\n\n{DIS_EN}\n"
+                   f"#football #soccer #predictions #AI #bettingtips #worldcup2026 #winning")
+        sq_tt = (f"🎬 HOOK (0-2 sek): \"{n_skor} REZULTATE TË SAKTA DJE?! 🤯\" — ose \"{n_ok}/{n_tot} GODITJE 🔥\"\n"
+                 f"📸 PAMJA: video/screenshot i aplikacionit duke treguar goditjet një nga një, shpejt me muzikë hype.\n\n"
+                 f"CAPTION: AI-ja jonë s'fal 🔥 {n_ok}/{n_tot} dje" + (f" · {n_skor} skor saktë 🎯" if n_skor else "") + f" · Parashikimet sot 👉 {URL} 👑\n"
+                 f"#futboll #AI #parashikime #fyp #botërori #bingo #fitim ⚠️ 18+")
+        en_tt = (f"🎬 HOOK (0-2s): \"{n_skor} EXACT SCORES YESTERDAY?! 🤯\" — or \"{n_ok}/{n_tot} HITS 🔥\"\n"
+                 f"📸 VISUAL: app screen recording showing hits one by one, fast, hype music.\n\n"
+                 f"CAPTION: Our AI delivers 🔥 {n_ok}/{n_tot} yesterday · Today's picks 👉 {URL} 👑\n"
+                 f"#football #AI #fyp #worldcup #winning ⚠️ 18+")
+        postime.append({"titull": "🔥 Dëshmi rezultatesh (dje) — AGRESIV",
+                        "sub": f"{n_ok}/{n_tot} 1X2 · {n_skor} skor të saktë",
                         "blloqe": [("Instagram / Facebook · SQ", sq_igfb), ("Instagram / Facebook · EN", en_igfb),
                                    ("TikTok · SQ", sq_tt), ("TikTok · EN", en_tt)]})
 
-    # ── 2) PIKU FALAS I DITËS ──
+    # ── 2) PIKU FALAS I DITËS (teaser drejt VIP Combo) ──
     if d["pik"] and d["pik"].get("tregu"):
         pk = d["pik"]; lab_sq = _MKT_SQ.get(pk["tregu"], pk["tregu"]); lab_en = _MKT_EN.get(pk["tregu"], pk["tregu"])
         conf = pk.get("besu"); nm = d["n_pik_te_tjera"]
-        sq_igfb = (f"🎯 PIKU FALAS I DITËS — SOCCER1X2 PRO 🦁\n\n⚽ {pk['ndeshja']}\n🔮 Parashikimi AI: {lab_sq}\n"
-                   f"📊 Besueshmëria: {conf}%\n\nKemi edhe {nm} parashikime TOP për sot 👑\n👉 {URL}\n\n"
-                   f"⚠️ Vetëm analizë · 18+ · Luaj me përgjegjësi\n#futboll #parashikime #AI #freepick #soccer1x2pro #botërori")
-        en_igfb = (f"🎯 FREE PICK OF THE DAY — SOCCER1X2 PRO 🦁\n\n⚽ {pk['ndeshja']}\n🔮 AI prediction: {lab_en}\n"
-                   f"📊 Confidence: {conf}%\n\n{nm} more TOP predictions today 👑\n👉 {URL}\n\n"
-                   f"⚠️ Analysis only · 18+ · Bet responsibly\n#football #soccer #freepick #predictions #AI #bettingtips")
-        sq_tt = (f"🎬 HOOK: \"Piku FALAS i sotëm nga AI 👇\"\n[trego ndeshjen + parashikimin + %]\n\n"
-                 f"CAPTION: {pk['ndeshja']} → {lab_sq} ({conf}%) 🎯 Të tjerat 👉 {URL}\n#futboll #AI #fyp #parashikime ⚠️ 18+")
-        en_tt = (f"🎬 HOOK: \"Today's FREE AI pick 👇\"\n[show match + prediction + %]\n\n"
-                 f"CAPTION: {pk['ndeshja']} → {lab_en} ({conf}%) 🎯 More 👉 {URL}\n#football #AI #fyp #predictions ⚠️ 18+")
-        postime.append({"titull": "🎯 Piku falas i ditës", "sub": f"{pk['ndeshja']} · {conf}%",
+        sq_igfb = (f"🎁 PIKU FALAS I DITËS 🎁\n\n{FOTO_SQ}\n\n⚽ {pk['ndeshja']}\n🔮 AI: {lab_sq}\n📊 Besueshmëria: {conf}% 🔒\n\n"
+                   f"Ky është VETËM 1 nga {nm} parashikime TOP sot 👑\n"
+                   f"VIP Combo të jep disa rezultate/kombinime për të MAKSIMIZUAR fitimin 🚀\n{CTA_SQ}\n\n{DIS_SQ}\n"
+                   f"#futboll #parashikime #AI #freepick #soccer1x2pro #vipcombo #botërori")
+        en_igfb = (f"🎁 FREE PICK OF THE DAY 🎁\n\n{FOTO_EN}\n\n⚽ {pk['ndeshja']}\n🔮 AI: {lab_en}\n📊 Confidence: {conf}% 🔒\n\n"
+                   f"This is just 1 of {nm} TOP predictions today 👑\n"
+                   f"VIP Combo gives you multiple results/combos to MAXIMIZE winnings 🚀\n{CTA_EN}\n\n{DIS_EN}\n"
+                   f"#football #soccer #freepick #AI #vipcombo #bettingtips #worldcup")
+        sq_tt = (f"🎬 HOOK: \"Piku FALAS i sotëm 👇 (të tjerat te faqja)\"\n📸 PAMJA: screenshot i ndeshjes + parashikimit + %.\n\n"
+                 f"CAPTION: {pk['ndeshja']} → {lab_sq} ({conf}%) 🎯 +{nm} të tjera + VIP Combo 👉 {URL} 👑\n#futboll #AI #fyp #vipcombo ⚠️ 18+")
+        en_tt = (f"🎬 HOOK: \"Today's FREE pick 👇 (rest on the site)\"\n📸 VISUAL: match + prediction + % screenshot.\n\n"
+                 f"CAPTION: {pk['ndeshja']} → {lab_en} ({conf}%) 🎯 +{nm} more + VIP Combo 👉 {URL} 👑\n#football #AI #fyp #vipcombo ⚠️ 18+")
+        postime.append({"titull": "🎁 Piku falas i ditës → VIP Combo", "sub": f"{pk['ndeshja']} · {conf}%",
                         "blloqe": [("Instagram / Facebook · SQ", sq_igfb), ("Instagram / Facebook · EN", en_igfb),
                                    ("TikTok · SQ", sq_tt), ("TikTok · EN", en_tt)]})
 
-    # ── 3) PERFORMANCA (besim) ──
+    # ── 3) PERFORMANCA (besim — agresive) ──
     pf = d["perf"]
     if pf["x1x2"] is not None and pf["n"] >= 10:
-        sq_igfb = (f"📊 SA I SAKTË ËSHTE ALGORITMI YNË? — SOCCER1X2 PRO 🦁\n\nMbi {pf['n']} ndeshje të verifikuara automatikisht:\n"
-                   f"✅ 1X2: {pf['x1x2']}%\n✅ Brenda 1 goli: {pf['b1']}%\n✅ GG/NG: {pf['gg']}%\n✅ Over/Under: {pf['ou']}%\n\n"
-                   f"Transparencë e plotë — çdo rezultat verifikohet vetë.\n👉 {URL}\n\n"
-                   f"⚠️ Vetëm analizë · 18+\n#futboll #AI #statistika #parashikime #soccer1x2pro #transparence")
-        en_igfb = (f"📊 HOW ACCURATE IS OUR ALGORITHM? — SOCCER1X2 PRO 🦁\n\nOver {pf['n']} auto-verified matches:\n"
-                   f"✅ 1X2: {pf['x1x2']}%\n✅ Within 1 goal: {pf['b1']}%\n✅ BTTS: {pf['gg']}%\n✅ Over/Under: {pf['ou']}%\n\n"
-                   f"Full transparency — every result verified automatically.\n👉 {URL}\n\n"
-                   f"⚠️ Analysis only · 18+\n#football #soccer #AI #stats #predictions #transparency")
-        sq_tt = (f"🎬 HOOK: \"AI-ja jonë është {pf['x1x2']}% e saktë në 1X2 👇\"\n[trego metrikat një nga një]\n\n"
-                 f"CAPTION: {pf['n']} ndeshje të verifikuara · 1X2 {pf['x1x2']}% 📊 👉 {URL}\n#futboll #AI #fyp #statistika ⚠️ 18+")
-        en_tt = (f"🎬 HOOK: \"Our AI is {pf['x1x2']}% accurate on 1X2 👇\"\n[show metrics one by one]\n\n"
-                 f"CAPTION: {pf['n']} verified matches · 1X2 {pf['x1x2']}% 📊 👉 {URL}\n#football #AI #fyp #stats ⚠️ 18+")
-        postime.append({"titull": "📊 Performanca (besim)", "sub": f"1X2 {pf['x1x2']}% · {pf['n']} ndeshje",
+        sq_igfb = (f"🤖🔥 AI-JA JONË S'GABON SHPESH 🔥🤖\n\n{FOTO_SQ}\n\nMbi {pf['n']} ndeshje të verifikuara AUTOMATIKISHT:\n"
+                   f"🎯 1X2: {pf['x1x2']}%\n🎯 Brenda 1 goli: {pf['b1']}%\n🎯 GG/NG: {pf['gg']}%\n🎯 Over/Under: {pf['ou']}%\n\n"
+                   f"Pa mashtrime — çdo rezultat verifikohet vetë, publikisht 💯\n{CTA_SQ}\n\n{DIS_SQ}\n"
+                   f"#futboll #AI #statistika #parashikime #soccer1x2pro #transparence #fitim")
+        en_igfb = (f"🤖🔥 OUR AI RARELY MISSES 🔥🤖\n\n{FOTO_EN}\n\nOver {pf['n']} AUTO-verified matches:\n"
+                   f"🎯 1X2: {pf['x1x2']}%\n🎯 Within 1 goal: {pf['b1']}%\n🎯 BTTS: {pf['gg']}%\n🎯 Over/Under: {pf['ou']}%\n\n"
+                   f"No tricks — every result verified automatically, publicly 💯\n{CTA_EN}\n\n{DIS_EN}\n"
+                   f"#football #soccer #AI #stats #predictions #transparency #winning")
+        sq_tt = (f"🎬 HOOK: \"AI-ja jonë: {pf['x1x2']}% saktë në 1X2 mbi {pf['n']} ndeshje 🤯\"\n📸 PAMJA: metrikat një nga një me numra që rriten.\n\n"
+                 f"CAPTION: {pf['x1x2']}% 1X2 · s'gabon shpesh 🔥 Provoje 👉 {URL} 👑\n#futboll #AI #fyp #statistika ⚠️ 18+")
+        en_tt = (f"🎬 HOOK: \"Our AI: {pf['x1x2']}% correct on 1X2 over {pf['n']} matches 🤯\"\n📸 VISUAL: metrics counting up one by one.\n\n"
+                 f"CAPTION: {pf['x1x2']}% 1X2 · rarely misses 🔥 Try it 👉 {URL} 👑\n#football #AI #fyp #stats ⚠️ 18+")
+        postime.append({"titull": "🤖 Performanca (besim) — AGRESIV", "sub": f"1X2 {pf['x1x2']}% · {pf['n']} ndeshje",
                         "blloqe": [("Instagram / Facebook · SQ", sq_igfb), ("Instagram / Facebook · EN", en_igfb),
                                    ("TikTok · SQ", sq_tt), ("TikTok · EN", en_tt)]})
     return postime
