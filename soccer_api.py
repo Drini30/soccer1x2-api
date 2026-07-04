@@ -1,4 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks, Request, Header, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
@@ -6728,3 +6729,204 @@ def admin_ht_mbulimi():
             "mbulimi_skor_ht_pct": round(100.0 * me_skor / tot, 1) if tot else None,
             "pa_skor_ht_shembuj": pa_ht,
             "shenim": "Rreshtat pa HT sherohen vete ne rigjenerimin e radhes (upsert merge-duplicates)."}
+
+
+# ==========================================
+# PANELI I RRJETEVE SOCIALE (admin) — postime të gatshme për kopjim manual
+# IG / TikTok / Facebook · SQ + EN · nga parashikimet, Fitoret dhe Performanca reale
+# Hapet: /api/social/postime?secret=B2B_ADMIN_SECRET
+# ==========================================
+import html as _html
+
+_MKT_SQ = {"1":"Fitore vendase","X":"Barazim","2":"Fitore mysafire","1X":"Vendas ose barazim",
+           "X2":"Barazim ose mysafir","12":"Pa barazim","GG":"Të dy shënojnë","NG":"Vetëm njëra shënon",
+           "Over 1.5":"Mbi 1.5 gola","Under 1.5":"Nën 1.5 gola","Over 2.5":"Mbi 2.5 gola",
+           "Under 2.5":"Nën 2.5 gola","Over 3.5":"Mbi 3.5 gola","Under 3.5":"Nën 3.5 gola"}
+_MKT_EN = {"1":"Home win","X":"Draw","2":"Away win","1X":"Home or draw","X2":"Draw or away",
+           "12":"No draw","GG":"Both teams score","NG":"Not both score","Over 1.5":"Over 1.5 goals",
+           "Under 1.5":"Under 1.5 goals","Over 2.5":"Over 2.5 goals","Under 2.5":"Under 2.5 goals",
+           "Over 3.5":"Over 3.5 goals","Under 3.5":"Under 3.5 goals"}
+
+_MODEL_TRAJNIM = "53.000+"   # ndeshje trajnimi (nga historik_trajnimi)
+
+
+def _social_te_dhenat():
+    """Mbledh të dhënat reale për postimet: goditjet e djeshme, piku i sotëm, performanca."""
+    dt_sot, dt_dje = _data_lokale(0), _data_lokale(-1)
+    out = {"dje": dt_dje, "sot": dt_sot, "goditjet": [], "n_gja1x2": 0, "n_ok1x2": 0,
+           "n_okskor": 0, "pik": None, "n_pik_te_tjera": 0,
+           "perf": {"x1x2": None, "b1": None, "gg": None, "ou": None, "skor": None, "n": 0}}
+    # 1) GODITJET E DJESHME (arkiv)
+    try:
+        r = requests.get(f"{ARKIV_URL}?select=ndeshja,liga,parashikimi,rezultati_ft,goditi_1x2,goditi_skor"
+                         f"&data=eq.{dt_dje}&order=goditi_skor.desc.nullslast,goditi_1x2.desc.nullslast&limit=60",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    for p in rows:
+        if p.get("goditi_1x2") is not None:
+            out["n_gja1x2"] += 1
+            if p.get("goditi_1x2"):
+                out["n_ok1x2"] += 1
+        if p.get("goditi_skor"):
+            out["n_okskor"] += 1
+        if p.get("goditi_1x2") or p.get("goditi_skor"):
+            out["goditjet"].append({"ndeshja": p.get("ndeshja"), "ft": p.get("rezultati_ft"),
+                                    "parashikimi": p.get("parashikimi"), "skor_ok": bool(p.get("goditi_skor"))})
+    # 2) PIKU I SOTËM (parashikimi me besueshmëri më të lartë)
+    try:
+        rp = requests.get(f"{SUPABASE_URL_PREDS}?select=ndeshja,liga_emri,best_bet,besueshmeria,rezultati_sakt"
+                          f"&data=in.({dt_sot},{_data_lokale(1)})&best_bet=not.is.null&besueshmeria=not.is.null"
+                          f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=besueshmeria.desc&limit=30",
+                          headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        preds = rp.json() if rp.status_code == 200 else []
+    except Exception:
+        preds = []
+    if preds:
+        top = preds[0]
+        bb = top.get("best_bet") or {}
+        out["pik"] = {"ndeshja": top.get("ndeshja"), "tregu": bb.get("tregu"),
+                      "besu": top.get("besueshmeria"), "skor": top.get("rezultati_sakt")}
+        out["n_pik_te_tjera"] = max(0, len(preds) - 1)
+    # 3) PERFORMANCA (nga arkivi, si /api/performanca)
+    try:
+        ra = requests.get(f"{ARKIV_URL}?select=parashikimi,rezultati_ft,goditi_1x2,goditi_skor&order=data.desc&limit=600",
+                          headers=SUPABASE_SERVICE_HEADERS, timeout=12)
+        arows = ra.json() if ra.status_code == 200 else []
+    except Exception:
+        arows = []
+    n1=n1ok=ns=nsok=ng1=ng1ok=ngg=nggok=nou=nouok=0
+    for row in arows:
+        par = _parse_score(row.get("parashikimi") or ""); ft = _parse_score(row.get("rezultati_ft") or "")
+        if row.get("goditi_1x2") is not None:
+            n1 += 1; n1ok += 1 if row.get("goditi_1x2") else 0
+        if row.get("goditi_skor") is not None:
+            ns += 1; nsok += 1 if row.get("goditi_skor") else 0
+        if par and ft:
+            ng1 += 1; ng1ok += 1 if (abs(par[0]-ft[0])<=1 and abs(par[1]-ft[1])<=1) else 0
+            ngg += 1; nggok += 1 if ((par[0]>0 and par[1]>0)==(ft[0]>0 and ft[1]>0)) else 0
+            nou += 1; nouok += 1 if (((par[0]+par[1])>2.5)==((ft[0]+ft[1])>2.5)) else 0
+    def _pc(o,n): return round(100*o/n) if n else None
+    out["perf"] = {"x1x2": _pc(n1ok,n1), "b1": _pc(ng1ok,ng1), "gg": _pc(nggok,ngg),
+                   "ou": _pc(nouok,nou), "skor": _pc(nsok,ns), "n": n1}
+    return out
+
+
+def _social_postime(d):
+    """Ndërton listën e postimeve (SQ + EN, IG/FB + TikTok) nga të dhënat."""
+    postime = []
+    URL = "soccer1x2pro.com"
+
+    # ── 1) DËSHMI REZULTATESH ──
+    if d["goditjet"]:
+        lst = d["goditjet"][:5]
+        def _lines(lang):
+            out = []
+            for g in lst:
+                mark = " ✅" + ("🎯" if g["skor_ok"] else "")
+                out.append(f"⚽ {g['ndeshja']} → {g['ft']}{mark}")
+            return "\n".join(out)
+        n_ok, n_tot = d["n_ok1x2"], d["n_gja1x2"]
+        sq_igfb = (f"✅ REZULTATET E DJESHME — SOCCER1X2 PRO 🦁\n\nAlgoritmi ynë AI i qëlloi:\n{_lines('sq')}\n\n"
+                   f"📊 {n_ok}/{n_tot} parashikime 1X2 të sakta dje\n🤖 Hybrid AI: Monte Carlo + XGBoost ({_MODEL_TRAJNIM} ndeshje trajnim)\n\n"
+                   f"👉 Parashikimet e sotme: {URL}\n\n⚠️ Vetëm analizë statistikore · 18+ · Luaj me përgjegjësi\n"
+                   f"#futboll #parashikime #AI #soccer1x2pro #superliga #botërori2026 #futbolli")
+        en_igfb = (f"✅ YESTERDAY'S RESULTS — SOCCER1X2 PRO 🦁\n\nOur AI called these correctly:\n{_lines('en')}\n\n"
+                   f"📊 {n_ok}/{n_tot} correct 1X2 predictions yesterday\n🤖 Hybrid AI: Monte Carlo + XGBoost ({_MODEL_TRAJNIM} matches trained)\n\n"
+                   f"👉 Today's predictions: {URL}\n\n⚠️ Statistical analysis only · 18+ · Bet responsibly\n"
+                   f"#football #soccer #predictions #AI #bettingtips #worldcup2026")
+        sq_tt = (f"🎬 HOOK: \"AI-ja jonë parashikoi këto rezultate DJE 👇\"\n[trego goditjet një nga një, shpejt]\n\n"
+                 f"CAPTION: Algoritmi goditi {n_ok}/{n_tot} dje ✅ Parashikimet sot 👉 {URL}\n"
+                 f"#futboll #AI #parashikime #fyp #botërori #futbolli ⚠️ Analizë · 18+")
+        en_tt = (f"🎬 HOOK: \"Our AI predicted these results YESTERDAY 👇\"\n[show each hit fast]\n\n"
+                 f"CAPTION: AI nailed {n_ok}/{n_tot} yesterday ✅ Today's picks 👉 {URL}\n"
+                 f"#football #AI #predictions #fyp #worldcup ⚠️ Analysis · 18+")
+        postime.append({"titull": "✅ Dëshmi rezultatesh (dje)", "sub": f"{n_ok}/{n_tot} 1X2 · {d['n_okskor']} skor të saktë",
+                        "blloqe": [("Instagram / Facebook · SQ", sq_igfb), ("Instagram / Facebook · EN", en_igfb),
+                                   ("TikTok · SQ", sq_tt), ("TikTok · EN", en_tt)]})
+
+    # ── 2) PIKU FALAS I DITËS ──
+    if d["pik"] and d["pik"].get("tregu"):
+        pk = d["pik"]; lab_sq = _MKT_SQ.get(pk["tregu"], pk["tregu"]); lab_en = _MKT_EN.get(pk["tregu"], pk["tregu"])
+        conf = pk.get("besu"); nm = d["n_pik_te_tjera"]
+        sq_igfb = (f"🎯 PIKU FALAS I DITËS — SOCCER1X2 PRO 🦁\n\n⚽ {pk['ndeshja']}\n🔮 Parashikimi AI: {lab_sq}\n"
+                   f"📊 Besueshmëria: {conf}%\n\nKemi edhe {nm} parashikime TOP për sot 👑\n👉 {URL}\n\n"
+                   f"⚠️ Vetëm analizë · 18+ · Luaj me përgjegjësi\n#futboll #parashikime #AI #freepick #soccer1x2pro #botërori")
+        en_igfb = (f"🎯 FREE PICK OF THE DAY — SOCCER1X2 PRO 🦁\n\n⚽ {pk['ndeshja']}\n🔮 AI prediction: {lab_en}\n"
+                   f"📊 Confidence: {conf}%\n\n{nm} more TOP predictions today 👑\n👉 {URL}\n\n"
+                   f"⚠️ Analysis only · 18+ · Bet responsibly\n#football #soccer #freepick #predictions #AI #bettingtips")
+        sq_tt = (f"🎬 HOOK: \"Piku FALAS i sotëm nga AI 👇\"\n[trego ndeshjen + parashikimin + %]\n\n"
+                 f"CAPTION: {pk['ndeshja']} → {lab_sq} ({conf}%) 🎯 Të tjerat 👉 {URL}\n#futboll #AI #fyp #parashikime ⚠️ 18+")
+        en_tt = (f"🎬 HOOK: \"Today's FREE AI pick 👇\"\n[show match + prediction + %]\n\n"
+                 f"CAPTION: {pk['ndeshja']} → {lab_en} ({conf}%) 🎯 More 👉 {URL}\n#football #AI #fyp #predictions ⚠️ 18+")
+        postime.append({"titull": "🎯 Piku falas i ditës", "sub": f"{pk['ndeshja']} · {conf}%",
+                        "blloqe": [("Instagram / Facebook · SQ", sq_igfb), ("Instagram / Facebook · EN", en_igfb),
+                                   ("TikTok · SQ", sq_tt), ("TikTok · EN", en_tt)]})
+
+    # ── 3) PERFORMANCA (besim) ──
+    pf = d["perf"]
+    if pf["x1x2"] is not None and pf["n"] >= 10:
+        sq_igfb = (f"📊 SA I SAKTË ËSHTE ALGORITMI YNË? — SOCCER1X2 PRO 🦁\n\nMbi {pf['n']} ndeshje të verifikuara automatikisht:\n"
+                   f"✅ 1X2: {pf['x1x2']}%\n✅ Brenda 1 goli: {pf['b1']}%\n✅ GG/NG: {pf['gg']}%\n✅ Over/Under: {pf['ou']}%\n\n"
+                   f"Transparencë e plotë — çdo rezultat verifikohet vetë.\n👉 {URL}\n\n"
+                   f"⚠️ Vetëm analizë · 18+\n#futboll #AI #statistika #parashikime #soccer1x2pro #transparence")
+        en_igfb = (f"📊 HOW ACCURATE IS OUR ALGORITHM? — SOCCER1X2 PRO 🦁\n\nOver {pf['n']} auto-verified matches:\n"
+                   f"✅ 1X2: {pf['x1x2']}%\n✅ Within 1 goal: {pf['b1']}%\n✅ BTTS: {pf['gg']}%\n✅ Over/Under: {pf['ou']}%\n\n"
+                   f"Full transparency — every result verified automatically.\n👉 {URL}\n\n"
+                   f"⚠️ Analysis only · 18+\n#football #soccer #AI #stats #predictions #transparency")
+        sq_tt = (f"🎬 HOOK: \"AI-ja jonë është {pf['x1x2']}% e saktë në 1X2 👇\"\n[trego metrikat një nga një]\n\n"
+                 f"CAPTION: {pf['n']} ndeshje të verifikuara · 1X2 {pf['x1x2']}% 📊 👉 {URL}\n#futboll #AI #fyp #statistika ⚠️ 18+")
+        en_tt = (f"🎬 HOOK: \"Our AI is {pf['x1x2']}% accurate on 1X2 👇\"\n[show metrics one by one]\n\n"
+                 f"CAPTION: {pf['n']} verified matches · 1X2 {pf['x1x2']}% 📊 👉 {URL}\n#football #AI #fyp #stats ⚠️ 18+")
+        postime.append({"titull": "📊 Performanca (besim)", "sub": f"1X2 {pf['x1x2']}% · {pf['n']} ndeshje",
+                        "blloqe": [("Instagram / Facebook · SQ", sq_igfb), ("Instagram / Facebook · EN", en_igfb),
+                                   ("TikTok · SQ", sq_tt), ("TikTok · EN", en_tt)]})
+    return postime
+
+
+@app.get("/api/social/postime")
+def social_postime(secret: str = ""):
+    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+        return HTMLResponse("<h3 style='font-family:sans-serif'>401 — Unauthorized. Shto ?secret=… të saktë.</h3>", status_code=401)
+    d = _social_te_dhenat()
+    postime = _social_postime(d)
+    krerё = ""
+    for pi, post in enumerate(postime):
+        blloqe_html = ""
+        for bi, (etiketa, tekst) in enumerate(post["blloqe"]):
+            _id = f"t{pi}_{bi}"
+            tekst_esc = _html.escape(tekst)
+            blloqe_html += (f"<div class='blok'><div class='blok-krye'><span class='etik'>{_html.escape(etiketa)}</span>"
+                            f"<button class='btn' onclick=\"kopjo('{_id}',this)\">📋 Kopjo</button></div>"
+                            f"<textarea id='{_id}' readonly>{tekst_esc}</textarea></div>")
+        krerё += (f"<div class='karte'><div class='karte-krye'><h2>{_html.escape(post['titull'])}</h2>"
+                  f"<span class='sub'>{_html.escape(post.get('sub',''))}</span></div>{blloqe_html}</div>")
+    if not postime:
+        krerё = "<p class='bosh'>Sot s'ka mjaft të dhëna (goditje/pik/performancë). Provo pasi të mbarojnë ndeshjet ose të gjenerohen parashikimet.</p>"
+    page = """<!DOCTYPE html><html lang="sq"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Postime Sociale — SOCCER1X2 PRO</title>
+<style>
+:root{color-scheme:dark}body{margin:0;background:#0d1117;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+h1{font-size:20px;margin:0 0 4px}.data{color:#8b949e;font-size:13px;margin-bottom:18px}
+.karte{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:14px;margin-bottom:18px;max-width:780px}
+.karte-krye{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.karte-krye h2{font-size:16px;margin:0;color:#ffd700}.sub{color:#8b949e;font-size:12px}
+.blok{margin-bottom:12px}.blok-krye{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.etik{font-size:11px;font-weight:800;color:#58a6ff;letter-spacing:.4px}
+.btn{background:#238636;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-weight:800;font-size:12px;cursor:pointer}
+.btn.ok{background:#1f6feb}textarea{width:100%;box-sizing:border-box;height:130px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:9px;font-size:12.5px;line-height:1.45;resize:vertical;font-family:inherit}
+.bosh{color:#8b949e;max-width:780px}.udhez{max-width:780px;background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:12px;color:#8b949e;font-size:12.5px;line-height:1.6;margin-bottom:18px}
+.udhez b{color:#e6edf3}
+</style></head><body>
+<h1>📣 Postime Sociale — SOCCER1X2 PRO</h1>
+<div class="data">Gjeneruar për: __SOT__ · dëshmi nga: __DJE__</div>
+<div class="udhez"><b>Si përdoret:</b> kliko <b>📋 Kopjo</b>, ngjit te Instagram/TikTok/Facebook. Për IG/TikTok, shto një pamje/video (rezultatet ose luanin). Hashtag-et trimoji nëse duket shumë. <b>Publiko:</b> Dëshminë e rezultateve në mëngjes, Pikun falas para ndeshjeve, Performancën 1-2 herë në javë. <b>Kujdes:</b> mbaje gjithmonë kornizën "analizë · 18+", kurrë "fitim i garantuar".</div>
+__KRERE__
+<script>
+function kopjo(id,btn){var t=document.getElementById(id);t.select();t.setSelectionRange(0,99999);
+try{navigator.clipboard.writeText(t.value);}catch(e){document.execCommand('copy');}
+var o=btn.innerHTML;btn.innerHTML='✓ U kopjua';btn.classList.add('ok');setTimeout(function(){btn.innerHTML=o;btn.classList.remove('ok');},1400);}
+</script></body></html>"""
+    page = page.replace("__SOT__", d["sot"]).replace("__DJE__", d["dje"]).replace("__KRERE__", krerё)
+    return HTMLResponse(page)
