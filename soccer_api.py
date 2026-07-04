@@ -977,6 +977,7 @@ def _legs_per_match(p, market_set):
     tregjet = p.get("tregjet") or {}
     odds = p.get("odds_reale") or {}
     legs = []
+    _pr_km = _parse_score(p.get("rezultati_sakt") or "")
     for m in market_set:
         if m not in tregjet:
             continue
@@ -986,6 +987,8 @@ def _legs_per_match(p, market_set):
             continue
         if prob <= 0:
             continue
+        if _pr_km and not _treg_koherent(m, _pr_km):
+            continue   # KOHERENCA: kurrë treg kundër skorit të parashikuar
         od_real = None
         if m in odds:
             try:
@@ -1463,6 +1466,32 @@ def _eshte_vip(email):
         return False
 
 
+def _treg_koherent(m, pr):
+    """A përputhet tregu m me skorin e parashikuar pr=(h,a)?
+    Parimi: skori i saktë është IDENTITETI i ndeshjes — çdo treg FT duhet të rrjedhë prej tij.
+    Tregjet HT/HTFT/CS/AH trajtohen te ndërtuesit e vet (kanë kontekst shtesë)."""
+    try:
+        h, a = int(pr[0]), int(pr[1])
+    except Exception:
+        return True
+    m = str(m).strip()
+    if m == "1":  return h > a
+    if m == "X":  return h == a
+    if m == "2":  return h < a
+    if m == "1X": return h >= a
+    if m == "X2": return h <= a
+    if m == "12": return h != a
+    if m == "GG": return h > 0 and a > 0
+    if m == "NG": return not (h > 0 and a > 0)
+    if m.startswith("Over "):
+        try:    return (h + a) > float(m.split()[1])
+        except Exception: return True
+    if m.startswith("Under "):
+        try:    return (h + a) < float(m.split()[1])
+        except Exception: return True
+    return True
+
+
 GEN_LEG_FLOOR  = 0.25     # prob min për një leg të vetëm (përjashton baste kundër favoritit, p.sh. barazim te favoriti)
 GEN_DOPT_FLOOR = 0.18     # prob min për një double-option (dy tregje bashkë)
 
@@ -1529,10 +1558,23 @@ def _legs_gjenerator(p, grupet_lejuara):
             ou_lines = ["1.5"]                         # ≤2 gola → Over/Under 1.5
         for ln in ou_lines:
             o, u = P("Over " + ln), P("Under " + ln)
-            if o > 0 or u > 0:
+            if o <= 0 and u <= 0:
+                continue
+            if _tot is not None:
+                # KOHERENCA: ana detyrohet nga golat e skorit të parashikuar (kurrë kundër vetes)
+                side = ("Over " + ln) if _tot > float(ln) else ("Under " + ln)
+                if P(side) > 0:
+                    aligned.append(side)
+            else:
                 aligned.append("Over " + ln if o >= u else "Under " + ln)
     if "gg" in grupet_lejuara and (P("GG") > 0 or P("NG") > 0):
-        aligned.append("GG" if P("GG") >= P("NG") else "NG")
+        if _pr:
+            # KOHERENCA: GG vetëm nëse skori parashikon gol nga të dy; ndryshe NG
+            gg_m = "GG" if (_pr[0] > 0 and _pr[1] > 0) else "NG"
+            if P(gg_m) > 0:
+                aligned.append(gg_m)
+        else:
+            aligned.append("GG" if P("GG") >= P("NG") else "NG")
 
     legs = []
     for m in aligned:
@@ -1568,15 +1610,32 @@ def _legs_gjenerator(p, grupet_lejuara):
                 od = od_real if (od_real and od_real > 1) else round(1.0 / max(prob_cs, 0.001), 2)
                 legs.append({"market": "CS " + sc, "prob": round(prob_cs, 4), "koef": round(od, 2), "grup": "cs"})
 
-    # HT/FT — qeliza më e mundshme nga simulimi i PAVARUR (NUK detyrohet FT=parashikimi)
+    # HT/FT — KOHERENT: FT detyrohet = shenja e skorit të parashikuar; HT = shenja e skor_ht (nëse ka).
+    # Kurrë "1/1" kur parashikimi është 1-1 (barazim). Nëse s'ka qelizë koherente → pa leg HT/FT.
     if "htft" in grupet_lejuara:
         htft = {k: v for k, v in (tregjet.get("ht_ft") or {}).items() if "/" in str(k)}
         if isinstance(htft, dict) and htft:
-            best_k = max(htft, key=lambda k: float(htft.get(k, 0) or 0))
-            prob_hf = float(htft.get(best_k, 0) or 0)
-            if prob_hf > 0:
-                od = round(1.0 / prob_hf, 2)
-                legs.append({"market": "HT/FT " + best_k, "prob": round(prob_hf, 4), "koef": round(od, 2), "grup": "htft"})
+            _ht_pr = _parse_score(str(tregjet.get("skor_ht") or ""))
+            _ht_shenja = None
+            if _ht_pr:
+                _ht_shenja = "1" if _ht_pr[0] > _ht_pr[1] else ("2" if _ht_pr[0] < _ht_pr[1] else "X")
+            def _hf_koherent(cell):
+                pj = str(cell).split("/")
+                if len(pj) != 2:
+                    return False
+                ht_p, ft_p = pj[0].strip(), pj[1].strip()
+                if _pr and ft_p != fav:
+                    return False              # FT kundër parashikimit → i ndaluar
+                if _ht_shenja and ht_p != _ht_shenja:
+                    return False              # HT kundër parashikimit të pjesës → i ndaluar
+                return True
+            koherent = {k: v for k, v in htft.items() if _hf_koherent(k)}
+            if koherent:
+                best_k = max(koherent, key=lambda k: float(koherent.get(k, 0) or 0))
+                prob_hf = float(koherent.get(best_k, 0) or 0)
+                if prob_hf > 0:
+                    od = round(1.0 / prob_hf, 2)
+                    legs.append({"market": "HT/FT " + best_k, "prob": round(prob_hf, 4), "koef": round(od, 2), "grup": "htft"})
 
     # AH — vetëm te favoriti (jo barazim), linja sipas margjinës
     if "ah" in grupet_lejuara and fav in ("1", "2") and dist_gola:
@@ -1594,36 +1653,51 @@ def _legs_gjenerator(p, grupet_lejuara):
             od = od_real if (od_real and od_real > 1) else round(1.0 / prob_ah, 2)
             legs.append({"market": "AH " + side + " -" + str(hcap), "prob": round(prob_ah, 4), "koef": round(od, 2), "grup": "ah"})
 
-    # ── HT si MINI-FT — opsionet HT (secili me koeficientin e vet, koef i lartë → value) ──
+    # ── HT si MINI-FT — KOHERENT me skorin HT të parashikuar (identiteti i pjesës së parë) ──
     if "ht" in grupet_lejuara:
         def _addht(m):
             pr = P(m)
             if pr > 0:
                 legs.append({"market": m, "prob": round(pr, 4), "koef": round(1.0 / pr, 2), "grup": "ht"})
-        # HT 1X2 — favoriti i gjysmës së parë
-        _ht1x2 = max([("HT 1", P("HT 1")), ("HT X", P("HT X")), ("HT 2", P("HT 2"))], key=lambda x: x[1])
-        if _ht1x2[1] > 0:
-            _addht(_ht1x2[0])
-        # HT Double Chance — më e sigurta
-        _htdc = max([("HT 1X", P("HT 1X")), ("HT X2", P("HT X2")), ("HT 12", P("HT 12"))], key=lambda x: x[1])
-        if _htdc[1] > 0:
-            _addht(_htdc[0])
-        # HT Over/Under 0.5 — a shënohet gol në pjesë
-        if P("HT Over 0.5") >= P("HT Under 0.5"):
-            _addht("HT Over 0.5")
+        _ht_pr2 = _parse_score(str(tregjet.get("skor_ht") or ""))
+        if _ht_pr2:
+            _hs = "1" if _ht_pr2[0] > _ht_pr2[1] else ("2" if _ht_pr2[0] < _ht_pr2[1] else "X")
+            _addht("HT " + _hs)
+            _dc_map = {"1": ("1X", "12"), "X": ("1X", "X2"), "2": ("X2", "12")}
+            _dc_koh = [("HT " + d, P("HT " + d)) for d in _dc_map[_hs] if P("HT " + d) > 0]
+            if _dc_koh:
+                _addht(max(_dc_koh, key=lambda x: x[1])[0])
+            _ht_tot = _ht_pr2[0] + _ht_pr2[1]
+            _addht("HT Over 0.5" if _ht_tot > 0 else "HT Under 0.5")
+            _addht("HT GG" if (_ht_pr2[0] > 0 and _ht_pr2[1] > 0) else "HT NG")
+            _ht_cs_key = "HT CS " + str(_ht_pr2[0]) + "-" + str(_ht_pr2[1])
+            if P(_ht_cs_key) > 0:
+                _addht(_ht_cs_key)
         else:
-            _addht("HT Under 0.5")
-        # HT GG/NG
-        if P("HT GG") >= P("HT NG"):
-            _addht("HT GG")
-        else:
-            _addht("HT NG")
-        # HT skor i saktë — më i probabël
-        _htcs = [(k, float(v or 0)) for k, v in tregjet.items() if str(k).startswith("HT CS ")]
-        if _htcs:
-            _hb = max(_htcs, key=lambda x: x[1])
-            if _hb[1] > 0:
-                _addht(_hb[0])
+            # Pa parashikim HT në DB: qeliza më e mundshme e modelit (s'ka parashikim për ta kundërshtuar)
+            _ht1x2 = max([("HT 1", P("HT 1")), ("HT X", P("HT X")), ("HT 2", P("HT 2"))], key=lambda x: x[1])
+            if _ht1x2[1] > 0:
+                _addht(_ht1x2[0])
+            _htdc = max([("HT 1X", P("HT 1X")), ("HT X2", P("HT X2")), ("HT 12", P("HT 12"))], key=lambda x: x[1])
+            if _htdc[1] > 0:
+                _addht(_htdc[0])
+            if P("HT Over 0.5") >= P("HT Under 0.5"):
+                _addht("HT Over 0.5")
+            else:
+                _addht("HT Under 0.5")
+            if P("HT GG") >= P("HT NG"):
+                _addht("HT GG")
+            else:
+                _addht("HT NG")
+            _htcs = [(k, float(v or 0)) for k, v in tregjet.items() if str(k).startswith("HT CS ")]
+            if _htcs:
+                _hb = max(_htcs, key=lambda x: x[1])
+                if _hb[1] > 0:
+                    _addht(_hb[0])
+
+    # ── RRJETA E SIGURISË: asnjë leg FT nuk del kurrë kundër skorit të parashikuar ──
+    if _pr:
+        legs = [l for l in legs if l["grup"] not in ("1x2", "dc", "ou", "gg") or _treg_koherent(l["market"], _pr)]
 
     return legs
 
@@ -3183,14 +3257,20 @@ def _vleso_vip_combot():
 
 
 def _ndeshjet_vipcombo(rows, nr, rez):
-    """Nderton listen e ndeshjeve per VIP Combo nga nje grup rrow-esh (deri ne nr)."""
+    """Nderton listen e ndeshjeve per VIP Combo (deri ne nr). PA DUBLIKATA (sipas emrit)."""
     out = []
+    _pare = set()
     for p in rows:
+        _k = _nm_key(p)
+        if _k and _k in _pare:
+            continue   # e njejta ndeshje dy here ne pool -> merret vetem nje here
         topr = _top_rezultate_sakta(p, rez)
         if len(topr) >= rez:
             out.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
                         "liga": p.get("liga_emri"), "rezultati_sakt": p.get("rezultati_sakt"),
                         "besueshmeria": p.get("besueshmeria"), "rezultatet": topr})
+            if _k:
+                _pare.add(_k)
         if len(out) >= nr:
             break
     return out
@@ -3214,7 +3294,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     dt = _data_lokale(0); dt_neser = _data_lokale(1)
     vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria"
               f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null"
-              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20")
+              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=besueshmeria.desc.nullslast,koef_rez_sakt.asc&limit=30")
     if liga and liga.strip():
         vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(vc_url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -3238,8 +3318,6 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
         rows_plot = [p for p in rows_plot if p.get("id") in _vet or _nm_key(p) in _vet_em]
     if _perj or _perj_em:
         rows_plot = [p for p in rows_plot if p.get("id") not in _perj and _nm_key(p) not in _perj_em]
-    rows_hi = rows_plot if _manual else _filtro_besu(rows_plot, prag=BESU_PRAG_VIPCOMBO)   # manual: pa filtër
-
     given = set() if _manual else _merr_given_ids(email, "vipcombo")
 
     def _provo_vc(rows_x):
@@ -3252,18 +3330,24 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
             rif = True
         return nd, rif
 
-    # TË DY provojnë fillimisht ndeshjet me besueshmëri >= 75 (pretendimi 75–92%)
-    ndeshjet, rifilluar = _provo_vc(rows_hi)
-    rows = rows_hi
+    # SHKALLËZIMI I BESUESHMËRISË: nis GJITHMONË nga % më e lartë (renditja besueshmeria.desc).
+    # Nëse s'plotësohet kërkesa me pragun 70, ulet me shkallë (65→60→55→50). Kurrë nën 50.
+    ndeshjet, rifilluar, rows, prag_perdorur = [], False, rows_plot, None
+    if _manual:
+        ndeshjet, rifilluar = _provo_vc(rows_plot)   # manual: pikërisht ndeshjet e zgjedhura, pa prag
+    else:
+        for _prag in (BESU_PRAG_VIPCOMBO, 65.0, 60.0, 55.0, 50.0):
+            rows_p = _filtro_besu(rows_plot, prag=_prag)
+            nd, rif = _provo_vc(rows_p)
+            if len(nd) >= nr:
+                ndeshjet, rifilluar, rows, prag_perdorur = nd, rif, rows_p, _prag
+                break
+        if len(ndeshjet) < nr and not _drejta["is_vip"]:
+            # Jo-VIP (që paguan): si mundësi e fundit, i gjithë pool-i (i renditur nga besueshmëria)
+            ndeshjet, rifilluar = _provo_vc(rows_plot)
+            rows = rows_plot
     if len(ndeshjet) < nr:
-        if _drejta["is_vip"]:
-            # VIP: premtim i rreptë 75–92% — pa fallback te ndeshjet e dobëta
-            return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF", "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të lartë (≥70%). Provo më vonë."}
-        # Jo-VIP (që paguan): kalon tek ndeshjet e tjera
-        ndeshjet, rifilluar = _provo_vc(rows_plot)
-        rows = rows_plot
-    if len(ndeshjet) < nr:
-        return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH", "arsye": f"Nuk ka {nr} ndeshje me rezultate të sakta sot."}
+        return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF", "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të mjaftueshme (u provua deri në ≥50%). Provo më vonë."}
 
     ndeshjet = ndeshjet[:nr]
     # prodhimi kartezian i rezultateve (rez^nr skedina)
@@ -3295,6 +3379,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     _bv = [float(n["besueshmeria"]) for n in ndeshjet if n.get("besueshmeria") is not None]
     besu_mesatare = round(sum(_bv) / len(_bv)) if _bv else None
     return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez, "rifilluar": rifilluar,
+            "prag_besueshmerie": prag_perdorur,
             "besu_mesatare": besu_mesatare,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet,
             "nr_kombinimesh": len(kombinimet),
@@ -4177,7 +4262,39 @@ def analizo_ndeshjen_premium_master(
         tregjet_mc["skor_ht"] = _skor_ht   # skori HT i pavarur nga FT
         tregjet_mc.update(_ht_mkt)          # HT si mini-FT: të gjitha tregjet HT
     except Exception as _e:
-        print(f"⚠️ HT/FT dështoi ({_e})")
+        # GARANCIA: HT s'lejohet të mungojë — fallback analitik Poisson (deterministik)
+        # nga të NJËJTAT xG hibride të gjysmëve. Skori HT = moda e rrjetës Poisson.
+        print(f"⚠️ HT/FT MC dështoi ({_e}) — fallback analitik Poisson")
+        try:
+            tregjet_mc["ht_ft"] = _ht_ft_distribuim(_xg_ht_1, _xg_ht_2, _xg_2h_1, _xg_2h_2)
+        except Exception:
+            pass
+        try:
+            def _pmf_ht(lam, kmax=6):
+                out = []; p = math.exp(-lam)
+                for k in range(kmax + 1):
+                    out.append(p); p = p * lam / (k + 1)
+                return out
+            _ph, _pa = _pmf_ht(max(0.05, _xg_ht_1)), _pmf_ht(max(0.05, _xg_ht_2))
+            _grid = {(i, j): _ph[i] * _pa[j] for i in range(7) for j in range(7)}
+            _tot_g = sum(_grid.values()) or 1.0
+            _bi, _bj = max(_grid, key=_grid.get)
+            tregjet_mc["skor_ht"] = f"{_bi}-{_bj}"
+            # Tregjet bazë HT nga e njëjta rrjetë (koherente me skor_ht)
+            _p1 = sum(v for (i, j), v in _grid.items() if i > j) / _tot_g
+            _px = sum(v for (i, j), v in _grid.items() if i == j) / _tot_g
+            _p2 = sum(v for (i, j), v in _grid.items() if i < j) / _tot_g
+            _po05 = sum(v for (i, j), v in _grid.items() if i + j > 0) / _tot_g
+            _pgg = sum(v for (i, j), v in _grid.items() if i > 0 and j > 0) / _tot_g
+            tregjet_mc.update({
+                "HT 1": round(_p1, 4), "HT X": round(_px, 4), "HT 2": round(_p2, 4),
+                "HT 1X": round(_p1 + _px, 4), "HT X2": round(_px + _p2, 4), "HT 12": round(_p1 + _p2, 4),
+                "HT Over 0.5": round(_po05, 4), "HT Under 0.5": round(1 - _po05, 4),
+                "HT GG": round(_pgg, 4), "HT NG": round(1 - _pgg, 4),
+                ("HT CS " + str(_bi) + "-" + str(_bj)): round(_grid[(_bi, _bj)] / _tot_g, 4),
+            })
+        except Exception:
+            tregjet_mc.setdefault("skor_ht", "0-0")   # mburoja e fundit — kurrë pa skor HT
 
     try:
         g1, g2 = map(int, rez_sakt.split("-"))
@@ -6514,29 +6631,46 @@ def vip_combo_nde(email: str = "", nr: int = 4, madhesi: str = "23", liga: str =
     if liga and liga.strip():
         url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
-    rows = r.json() if r.status_code == 200 else []
-    # PËRZGJEDHJA NIS NGA % MË E LARTË — vetëm mbi pragun VIP Combo (70)
-    rows = _filtro_besu(rows, prag=BESU_PRAG_VIPCOMBO)
-    ndeshjet = []
-    for p in rows:
-        pr = _prob_rez_sakt(p)
-        if pr <= 0:
-            continue
-        try:
-            kf = float(p.get("koef_rez_sakt") or 0)
-        except Exception:
-            kf = 0.0
-        if kf <= 1:
-            kf = round(1.0 / pr, 2)
-        ndeshjet.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
-                         "liga": p.get("liga_emri"), "skor": p.get("rezultati_sakt"),
-                         "koef": round(kf, 2), "prob": round(pr, 4),
-                         "besueshmeria": p.get("besueshmeria")})
-        if len(ndeshjet) >= nr:
+    rows_plot = r.json() if r.status_code == 200 else []
+
+    def _ndertimi_nde(rws):
+        """PA DUBLIKATA (sipas emrit); vetëm rreshta me probabilitet real të skorit."""
+        nd = []
+        _pare = set()
+        for p in rws:
+            _k = _nm_key(p)
+            if _k and _k in _pare:
+                continue
+            pr = _prob_rez_sakt(p)
+            if pr <= 0:
+                continue
+            try:
+                kf = float(p.get("koef_rez_sakt") or 0)
+            except Exception:
+                kf = 0.0
+            if kf <= 1:
+                kf = round(1.0 / pr, 2)
+            nd.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "ora": p.get("ora"),
+                       "liga": p.get("liga_emri"), "skor": p.get("rezultati_sakt"),
+                       "koef": round(kf, 2), "prob": round(pr, 4),
+                       "besueshmeria": p.get("besueshmeria")})
+            if _k:
+                _pare.add(_k)
+            if len(nd) >= nr:
+                break
+        return nd
+
+    # PËRZGJEDHJA NIS NGA % MË E LARTË (besueshmeria.desc); pragu ulet me shkallë vetëm po s'mjaftoi
+    ndeshjet, prag_perdorur = [], None
+    for _prag in (BESU_PRAG_VIPCOMBO, 65.0, 60.0, 55.0, 50.0):
+        nd = _ndertimi_nde(_filtro_besu(rows_plot, prag=_prag))
+        if len(nd) > len(ndeshjet):
+            ndeshjet, prag_perdorur = nd, _prag
+        if len(nd) >= nr:
             break
     if len(ndeshjet) < 2 or (madhesi == "3" and len(ndeshjet) < 3):
         return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF",
-                "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të lartë (≥70%). Provo më vonë."}
+                "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të mjaftueshme (u provua deri në ≥50%). Provo më vonë."}
 
     madhesite = {"2": [2], "3": [3], "23": [2, 3]}[madhesi]
     kombinimet = []
@@ -6556,7 +6690,41 @@ def vip_combo_nde(email: str = "", nr: int = 4, madhesi: str = "23", liga: str =
     _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
     _bv = [float(n["besueshmeria"]) for n in ndeshjet if n.get("besueshmeria") is not None]
     return {"sukses": True, "nr_ndeshje": len(ndeshjet), "madhesi": madhesi,
+            "prag_besueshmerie": prag_perdorur,
             "besu_mesatare": round(sum(_bv) / len(_bv)) if _bv else None,
             "ndeshjet": ndeshjet, "kombinimet": kombinimet, "nr_kombinimesh": len(kombinimet),
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
             "cmimi": CMIM_VIPCOMBO}
+
+
+@app.get("/api/admin/ht-mbulimi")
+def admin_ht_mbulimi():
+    """DIAGNOSTIKË: sa % e parashikimeve aktive (sot+nesër) kanë skor HT nga simulimi hibrid."""
+    dt, dt_n = _data_lokale(0), _data_lokale(1)
+    try:
+        r = requests.get(f"{SUPABASE_URL_PREDS}?select=id,ndeshja,data,tregjet&data=in.({dt},{dt_n})&tregjet=not.is.null&limit=500",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=12)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception:
+        rows = []
+    tot = len(rows); me_skor = 0; me_htft = 0; pa_ht = []
+    for p in rows:
+        tg = p.get("tregjet") or {}
+        if isinstance(tg, str):
+            try:
+                tg = json.loads(tg)
+            except Exception:
+                tg = {}
+        ka_skor = bool(_parse_score(str(tg.get("skor_ht") or "")))
+        ka_htft = bool(tg.get("ht_ft"))
+        if ka_skor:
+            me_skor += 1
+        if ka_htft:
+            me_htft += 1
+        if not ka_skor and len(pa_ht) < 20:
+            pa_ht.append({"id": p.get("id"), "ndeshja": p.get("ndeshja"), "data": p.get("data")})
+    return {"sukses": True, "data": [dt, dt_n], "gjithsej": tot,
+            "me_skor_ht": me_skor, "me_ht_ft": me_htft,
+            "mbulimi_skor_ht_pct": round(100.0 * me_skor / tot, 1) if tot else None,
+            "pa_skor_ht_shembuj": pa_ht,
+            "shenim": "Rreshtat pa HT sherohen vete ne rigjenerimin e radhes (upsert merge-duplicates)."}
