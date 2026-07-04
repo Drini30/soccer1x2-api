@@ -753,30 +753,35 @@ async def crypto_webhook(request: Request):
         data = json.loads(raw)
     except Exception:
         return {"state": 0}
-    order_id = data.get("order_id")
+    _kredito_porosine(data.get("order_id"))
+    return {"state": 0}
+
+
+def _kredito_porosine(order_id):
+    """Krediton porosinë NËSE është paguar (verifikim autoritar me Cryptomus). IDEMPOTENT.
+    Përdoret nga webhook DHE nga order-status DHE nga rakordimi — kështu pagesa kompletohet
+    edhe kur webhook-u humbet (Render në gjumë). Kthen True nëse krediton tani."""
     if not order_id:
-        return {"state": 0}
-
-    # GATE AUTORITATIV: pyet VETË Cryptomus (webhook i falsifikuar s'kalon dot)
-    info = _crypto_info(order_id)
-    status = info.get("payment_status") or data.get("status")
-    if status not in ("paid", "paid_over"):
-        return {"state": 0}
-
+        return False
     pres = requests.get(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}&select=*",
                         headers=SUPABASE_SERVICE_HEADERS)
     pros = pres.json() if pres.status_code == 200 else []
     if not pros or pros[0].get("status") == "paid":
-        return {"state": 0}
+        return False   # s'ekziston ose tashmë e kredituar (idempotent)
     po = pros[0]
-    email = po.get("email"); tipi = po.get("tipi")
 
+    # GATE AUTORITATIV: pyet VETË Cryptomus (webhook/thirrje e falsifikuar s'kalon dot)
+    info = _crypto_info(order_id)
+    if (info.get("payment_status") or "") not in ("paid", "paid_over"):
+        return False
+
+    email = po.get("email"); tipi = po.get("tipi")
     ures = requests.get(
         f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,isVip,vip_skadon_me,blerjet",
         headers=SUPABASE_SERVICE_HEADERS)
     users = ures.json() if ures.status_code == 200 else []
     if not users:
-        return {"state": 0}
+        return False
     u = users[0]
     update = {}
 
@@ -786,7 +791,7 @@ async def crypto_webhook(request: Request):
         except Exception:
             shuma = 0.0
         update["portofoli"] = round(float(u.get("portofoli", 0) or 0) + shuma, 2)
-    elif tipi == "vip":
+    elif tipi in ("vip", "trial"):
         baza = datetime.utcnow()
         if u.get("vip_skadon_me"):
             try:
@@ -795,19 +800,9 @@ async def crypto_webhook(request: Request):
                     baza = d
             except Exception:
                 pass
+        dite = VIP_DITE if tipi == "vip" else TRIAL_DITE
         update["isVip"] = True
-        update["vip_skadon_me"] = (baza + timedelta(days=VIP_DITE)).strftime("%Y-%m-%d")
-    elif tipi == "trial":
-        baza = datetime.utcnow()
-        if u.get("vip_skadon_me"):
-            try:
-                d = datetime.strptime(str(u["vip_skadon_me"])[:10], "%Y-%m-%d")
-                if d > baza:
-                    baza = d
-            except Exception:
-                pass
-        update["isVip"] = True
-        update["vip_skadon_me"] = (baza + timedelta(days=TRIAL_DITE)).strftime("%Y-%m-%d")
+        update["vip_skadon_me"] = (baza + timedelta(days=dite)).strftime("%Y-%m-%d")
     elif tipi == "donate":
         pass  # donacion — s'ndryshon llogarinë
     elif tipi == "ditore":
@@ -826,22 +821,34 @@ async def crypto_webhook(request: Request):
     requests.patch(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}",
                    headers=SUPABASE_SERVICE_HEADERS,
                    json={"status": "paid", "paguar": datetime.utcnow().isoformat()})
-    return {"state": 0}
+    return True
+
+
+def task_rakordo_porosite():
+    """Rakordim: kalon porositë 'wait' të 24h të fundit dhe i krediton nëse janë paguar
+    (mburojë kur webhook-u humbet). Thirret nga cron-i."""
+    try:
+        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        r = requests.get(f"{SUPABASE_URL_POROSITE}?status=eq.wait&krijuar=gte.{cutoff}&select=order_id&limit=50",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        for o in (r.json() if r.status_code == 200 else []):
+            try:
+                _kredito_porosine(o.get("order_id"))
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 @app.get("/api/cryptomus/order-status")
 def crypto_order_status(order_id: str):
+    _kredito_porosine(order_id)   # MBUROJË: krediton nëse është paguar por webhook-u humbi
     pres = requests.get(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}&select=status",
                         headers=SUPABASE_SERVICE_HEADERS)
     pros = pres.json() if pres.status_code == 200 else []
     if not pros:
         return {"status": "panjohur"}
-    st = pros[0].get("status")
-    if st != "paid":
-        info = _crypto_info(order_id)
-        if info.get("payment_status") in ("paid", "paid_over"):
-            return {"status": "paid"}
-    return {"status": st}
+    return {"status": pros[0].get("status")}
 
 
 # ==========================================================
@@ -5002,6 +5009,8 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     background_tasks.add_task(_snapshot_skedina_ditore)
     background_tasks.add_task(_vlereso_skedina_historik)
     background_tasks.add_task(_regjistro_rezultatet_training)
+    # 5) Rakordim pagesash Cryptomus: krediton porositë 'wait' të paguara (webhook i humbur)
+    background_tasks.add_task(task_rakordo_porosite)
 
     # ── E RËNDË (me throttle): rigjenerim Monte Carlo + odds për 3 ditë ──
     tani = time.time()
