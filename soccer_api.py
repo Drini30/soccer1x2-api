@@ -103,10 +103,10 @@ app.add_middleware(
 )
 
 # KREDENCIALET (nga env vars — Render → Environment)
-API_KEY = os.environ.get("API_SPORTS_KEY", "")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-TELEGRAM_CRON_KEY = os.environ.get("TELEGRAM_CRON_KEY", "")
+API_KEY = os.environ.get("API_SPORTS_KEY", "").strip()
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_CRON_KEY = os.environ.get("TELEGRAM_CRON_KEY", "").strip()
 HEADERS = {"x-apisports-key": API_KEY}
 _ngjyra_live_cache = {}
 
@@ -145,11 +145,11 @@ def _api_sports_get(endpoint, params=None, retries=3, timeout=10):
 
 SUPABASE_BASE = os.environ.get(
     "SUPABASE_URL", "https://oqfhlyybwwkjbkvfpsxi.supabase.co"
-).rstrip("/")
+).strip().rstrip("/")
 
-SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
 # Service key për shkrime të privilegjuara (auth/admin/Cryptomus/Modulator):
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
 
 SUPABASE_URL_PREDS = f"{SUPABASE_BASE}/rest/v1/predictions"
 SUPABASE_URL_TRAINING = f"{SUPABASE_BASE}/rest/v1/training_results"
@@ -219,12 +219,12 @@ class ResetInput(BaseModel):
     password: str = ""
 
 # ── SIGURIA: helpers për hashim + service headers + admin ──
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
 
 # ── EMAIL (Resend) ──
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "SOCCER1X2 PRO <noreply@soccer1x2pro.com>")
-SITE_URL = os.environ.get("SITE_URL", "https://soccer1x2pro.com")
+SITE_URL = os.environ.get("SITE_URL", "https://soccer1x2pro.com").strip()
 
 def _dergo_email(to_email, subject, html):
     """Dergon nje email permes Resend. Kthen (ok, mesazh)."""
@@ -254,7 +254,7 @@ def _eshte_hash(s):
     return isinstance(s, str) and s.startswith("pbkdf2$")
 
 # ================== AUTENTIKIM ME TOKEN (JWT vetjak, HMAC-SHA256) ==================
-JWT_SECRET = os.environ.get("JWT_SECRET", "")
+JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 TOKEN_TTL = 30 * 24 * 3600  # 30 ditë
 AUTH_STRICT = True   # Faza 1: backward-compatible (s'bllokon). Vëre True (Faza 2) -> mbyll IDOR.
 
@@ -563,11 +563,11 @@ CMIMI_TRIAL  = 4.90   # provë 1-javore me pagesë (jo falas — bllokon llogari
 TRIAL_DITE   = 7
 
 # -- ARGETOHU (Gemini): kuote motivuese + kuiz trivie --
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL   = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL   = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
-CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "")
-CRYPTOMUS_PAYMENT_KEY = os.environ.get("CRYPTOMUS_PAYMENT_KEY", "")
+CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "").strip()
+CRYPTOMUS_PAYMENT_KEY = os.environ.get("CRYPTOMUS_PAYMENT_KEY", "").strip()
 PUBLIC_API_URL  = os.environ.get("PUBLIC_API_URL", "https://soccer1x2-api.onrender.com").rstrip("/")
 PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://soccer1x2pro.com").rstrip("/")
 SUPABASE_URL_POROSITE = f"{SUPABASE_BASE}/rest/v1/porosite"
@@ -3001,9 +3001,14 @@ def _zbulo_pf():
             except Exception:
                 pass
 
+_ARG_CACHE = {}   # gjuha -> {"quote","quiz"} — përgjigja e fundit e suksesshme (fallback kur Gemini 503)
+_GEMINI_REZERVA = ["gemini-2.5-flash-lite", "gemini-2.0-flash"]   # provohen kur modeli kryesor mbingarkohet
+
+
 @app.get("/api/argetohu")
 def argetohu(gjuha: str = "sq", authorization: str = Header(None)):
-    """Kuote motivuese origjinale + pyetje kuiz trivie futbolli (Gemini), sipas gjuhes."""
+    """Kuote motivuese origjinale + pyetje kuiz trivie futbolli (Gemini), sipas gjuhes.
+    Qëndrueshmëri: zinxhir modelesh (503 → provo rezervën) + kujtesa e fundit e mirë për gjuhë."""
     _email_auth(authorization, "", strict=False)
     gj = gjuha if gjuha in ("en", "sq", "de", "fr", "it") else "sq"
     emri_gj = {"en": "English", "sq": "Albanian", "de": "German", "fr": "French", "it": "Italian"}[gj]
@@ -3018,33 +3023,51 @@ def argetohu(gjuha: str = "sq", authorization: str = Header(None)):
         "quiz = ONE football trivia question about a widely-known, verifiable fact (World Cup winners, legendary players, famous clubs), "
         "and answer = the correct answer in max 5 words. Make sure the answer is factually correct."
     )
-    try:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + GEMINI_API_KEY
-        r = requests.post(url, json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 1.0, "maxOutputTokens": 1024, "responseMimeType": "application/json", "thinkingConfig": {"thinkingBudget": 0}}
-        }, timeout=25)
-        if r.status_code != 200:
-            return {"ok": False, "quote": "", "quiz": None, "arsye": "gemini %d: %s" % (r.status_code, (r.text or "")[:160])}
-        jd = r.json()
-        cands = jd.get("candidates") or []
-        if not cands:
-            return {"ok": False, "quote": "", "quiz": None, "arsye": "pa-candidates: " + str(jd)[:160]}
-        parts = ((cands[0].get("content") or {}).get("parts")) or []
-        txt = ""
-        for _p in parts:
-            if _p.get("text"):
-                txt = _p["text"]; break
-        if not txt:
-            return {"ok": False, "quote": "", "quiz": None, "arsye": "pa-tekst (finishReason=%s)" % cands[0].get("finishReason", "?")}
-        txt = txt.strip().replace("```json", "").replace("```", "").strip()
-        data = json.loads(txt)
-        q = data.get("quiz") or {}
-        return {"ok": True,
-                "quote": (data.get("quote") or "").strip(),
-                "quiz": {"question": (q.get("question") or "").strip(), "answer": (q.get("answer") or "").strip()}}
-    except Exception as e:
-        return {"ok": False, "quote": "", "quiz": None, "arsye": "gabim: " + str(e)[:160]}
+    modelet = [GEMINI_MODEL] + [m for m in _GEMINI_REZERVA if m != GEMINI_MODEL]
+    arsye_fundit = ""
+    for _model in modelet:
+        try:
+            url = "https://generativelanguage.googleapis.com/v1beta/models/" + _model + ":generateContent?key=" + GEMINI_API_KEY
+            r = requests.post(url, json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 1.0, "maxOutputTokens": 1024, "responseMimeType": "application/json", "thinkingConfig": {"thinkingBudget": 0}}
+            }, timeout=25)
+            if r.status_code in (503, 429):
+                arsye_fundit = "gemini %d (%s)" % (r.status_code, _model)
+                continue   # model i mbingarkuar → provo rezervën
+            if r.status_code != 200:
+                arsye_fundit = "gemini %d: %s" % (r.status_code, (r.text or "")[:160])
+                break      # gabim real (çelës/model) — s'ndihmoi ndërrimi
+            jd = r.json()
+            cands = jd.get("candidates") or []
+            if not cands:
+                arsye_fundit = "pa-candidates: " + str(jd)[:160]
+                continue
+            parts = ((cands[0].get("content") or {}).get("parts")) or []
+            txt = ""
+            for _p in parts:
+                if _p.get("text"):
+                    txt = _p["text"]; break
+            if not txt:
+                arsye_fundit = "pa-tekst (finishReason=%s)" % cands[0].get("finishReason", "?")
+                continue
+            txt = txt.strip().replace("```json", "").replace("```", "").strip()
+            data = json.loads(txt)
+            q = data.get("quiz") or {}
+            rez = {"ok": True,
+                   "quote": (data.get("quote") or "").strip(),
+                   "quiz": {"question": (q.get("question") or "").strip(), "answer": (q.get("answer") or "").strip()}}
+            if rez["quote"]:
+                _ARG_CACHE[gj] = {"quote": rez["quote"], "quiz": rez["quiz"]}   # ruaj të fundit e mirë
+            return rez
+        except Exception as e:
+            arsye_fundit = "gabim: " + str(e)[:160]
+            continue
+    # Të gjitha modelet dështuan → kthe të fundit e mirë për këtë gjuhë (nëse ka)
+    ck = _ARG_CACHE.get(gj)
+    if ck and ck.get("quote"):
+        return {"ok": True, "quote": ck["quote"], "quiz": ck.get("quiz"), "burimi": "cache", "arsye": arsye_fundit}
+    return {"ok": False, "quote": "", "quiz": None, "arsye": arsye_fundit}
 
 
 @app.get("/api/pf/risinkro")
