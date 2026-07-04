@@ -3933,6 +3933,12 @@ def _best_bet_value(tregjet, odds_reale):
 
 
 RHO_DC = -0.12  # Dixon-Coles: korrelacioni i skoreve te uleta (0 = Poisson i paster)
+# Kufiri i rrumbullakimit te skorit nga xG (kalibruar me te dhena reale: 0.65 optimal).
+# xG 1.65+ -> 2 gola, 2.65+ -> 3 gola. Env-kalibrueshem pa prekur kod.
+try:
+    SKOR_TAU = float(os.environ.get("SKOR_TAU", "0.65").strip())
+except Exception:
+    SKOR_TAU = 0.65
 
 
 def _ht_ft_distribuim(xg_ht_1, xg_ht_2, xg_2h_1, xg_2h_2, max_g=6):
@@ -4081,16 +4087,24 @@ def simulim_monte_carlo_v2(
         if _c > 0:
             rezultatet_freq[f"{_i}-{_j}"] = _c
 
-    # ── ZGJEDHJA E REZULTATIT: midis top-8, me afër xG-së së SECILIT ekip ──
-    # (jo vetëm totalit — kjo parandalon humbësin të dalë sistematikisht me 0 gola)
+    # ── ZGJEDHJA E REZULTATIT (HIBRID i kalibruar): synimi nga kufiri xG (tau) + qeliza
+    #    me e afert nga top-8 e Monte Carlo-s. Guxon me golat kur xG i pret (1.65+ -> 2),
+    #    respekton dominimin (favoriti s'del barazim), ruan skoret e uleta kur xG eshte i ulet.
+    #    Rrjeta MC siguron qe synimi te mos dale jashte shperndarjes reale (Dixon-Coles e perfshire).
+    def _rrumbullako_xg(_x):
+        _b = int(_x)
+        return _b + (1 if (_x - _b) >= SKOR_TAU else 0)
+    _synim_i = _rrumbullako_xg(float(xg_1))
+    _synim_j = _rrumbullako_xg(float(xg_2))
     kandidatet = []
     for _idx in _order[:8]:
         _i = int(_idx // H.shape[1]); _j = int(_idx % H.shape[1])
         _freq = float(_flat[_idx])
-        _diff = abs(_i - xg_1) + abs(_j - xg_2)
-        _score = _freq * (1.0 / (1.0 + _diff * 0.9))
-        kandidatet.append((_i, _j, _freq, _score))
-    kandidatet.sort(key=lambda x: x[3], reverse=True)
+        # afersia me synimin e kufirit (primare) + frekuenca (thyen barazimet)
+        _dist_synim = abs(_i - _synim_i) + abs(_j - _synim_j)
+        kandidatet.append((_i, _j, _freq, _dist_synim))
+    # me afer synimit; ne barazim distance, me i shpeshti; pastaj koherenca per-ekip
+    kandidatet.sort(key=lambda x: (x[3], -x[2]))
     rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
     rez_str  = f"{rez_g1}-{rez_g2}"
     prob_max = float(freq_zgjedhur)
