@@ -818,6 +818,10 @@ def _kredito_porosine(order_id):
     if update:
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
                        headers=SUPABASE_SERVICE_HEADERS, json=update)
+        try:
+            _FULL_ACCESS_CACHE.pop(str(email).lower().strip(), None)   # VIP/trial → pastro cache aksesi
+        except Exception:
+            pass
     requests.patch(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}",
                    headers=SUPABASE_SERVICE_HEADERS,
                    json={"status": "paid", "paguar": datetime.utcnow().isoformat()})
@@ -1920,6 +1924,7 @@ def _konfirmo_perdorimin(email: str, produkt: str, cmimi: float, is_vip: bool, p
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
                        headers=SUPABASE_SERVICE_HEADERS,
                        json={"portofoli": ri, fusha: dt}, timeout=8)
+        _FULL_ACCESS_CACHE.pop(str(email).lower().strip(), None)   # akses ndryshoi → pastro cache
         return ri
     except Exception:
         return portofoli
