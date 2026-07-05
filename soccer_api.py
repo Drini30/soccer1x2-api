@@ -5069,6 +5069,47 @@ def _regjistro_rezultatet_training():
 _LAST_HEAVY_GEN = 0.0
 HEAVY_GEN_INTERVAL = 30 * 60   # pjesa e rëndë (Monte Carlo + odds për 3 ditë) maksimum çdo 30 min
 
+
+
+@app.get("/api/admin/rikalibro-tau")
+def admin_rikalibro_tau(secret: str = ""):
+    """TE PERKOHSHEM (fshije pas perdorimit): pastron rezultati_sakt/dist_gola/koef_rez_sakt
+    per ndeshjet E ARDHME QE S'KANE NISUR (statusi=NS), qe rigjenerimi i radhes t'i llogarise
+    me formulen e re (tau). NUK prek ndeshjet e nisura/mbaruara. Kerkohet B2B_ADMIN_SECRET.
+    Perdorim: thirre kete -> pastaj thirr /api/cron/gjenero."""
+    if not B2B_ADMIN_SECRET or (secret or "").strip() != B2B_ADMIN_SECRET:
+        return {"ok": False, "arsye": "Unauthorized"}
+    dt0, dt1, dt2 = _data_lokale(0), _data_lokale(1), _data_lokale(2)
+    # VETEM ndeshje qe S'KANE NISUR (statusi=NS/TBD) dhe jane sot+2 dite
+    url = (f"{SUPABASE_URL_PREDS}?data=in.({dt0},{dt1},{dt2})"
+           f"&statusi=in.(NS,TBD)&select=id,ndeshja,statusi")
+    try:
+        r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=15)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        return {"ok": False, "arsye": f"lexim deshtoi: {e}"}
+    ids = [str(p.get("id")) for p in rows if p.get("id") is not None]
+    if not ids:
+        return {"ok": True, "pastruar": 0, "mesazhi": "S'ka ndeshje te ardhme te panisura per te pastruar."}
+    # Pastro fushat e ngrira -> rigjenerimi do t'i rimbushe me formulen e re
+    pastruar = 0
+    for i in range(0, len(ids), 50):
+        grup = ids[i:i+50]
+        try:
+            pr = requests.patch(
+                f"{SUPABASE_URL_PREDS}?id=in.({','.join(grup)})",
+                headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
+                json={"rezultati_sakt": None, "dist_gola": None,
+                      "koef_rez_sakt": None, "parashikimi_origjinal_ai": None},
+                timeout=20)
+            if pr.status_code in (200, 204):
+                pastruar += len(grup)
+        except Exception:
+            pass
+    return {"ok": True, "pastruar": pastruar, "ndeshje": [p.get("ndeshja") for p in rows][:30],
+            "hapi_tjeter": "Tani thirr /api/cron/gjenero per t'i rigjeneruar me tau=0.65."}
+
+
 @app.get("/api/cron/gjenero")
 def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     """Cron i PLOTË (thirret nga cron-job.org çdo ~10 min). Kthen përgjigje TË VOGËL.
