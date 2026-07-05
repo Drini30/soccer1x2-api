@@ -122,6 +122,7 @@ try:
     RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "2000").strip())
 except Exception:
     RATE_LIMIT_PER_HOUR = 2000
+WATERMARK_ON = os.environ.get("WATERMARK_ON", "true").strip().lower() not in ("0", "false", "off", "no")
 
 # Rruget e perjashtuara: RapidAPI (ka limitet e veta + IP e perbashket proxy),
 # cron (frekuence e ulet), webhook (pagesa - kurre mos blloko), admin (i mbrojtur me sekret).
@@ -367,6 +368,77 @@ def _email_auth(authorization, fallback="", strict=None):
         raise HTTPException(status_code=401, detail="AUTH_REQUIRED")
     return (fallback or "").lower().strip()
 # ===================================================================================
+
+
+# ============================================================
+# WATERMARK I PADUKSHEM — gjurmim per-perdorues (VIP/akses i plote)
+# Fut nje sekuence zero-width (te padukshme) ne tekstin e analizes, qe kodon
+# nje identitet determinist te perdoruesit (HMAC me JWT_SECRET). NUK prek vlerat
+# e parashikimit (skor/koef). Aplikohet ne SHERBIM (jo gjenerim) => per-perdorues.
+# ============================================================
+_ZW0 = "\u200b"    # zero-width space  -> bit 0
+_ZW1 = "\u200c"    # zero-width non-joiner -> bit 1
+_ZWM = "\u2060"    # word joiner -> kufizues (fillim/fund i shenjes)
+
+def _wm_code(email):
+    """Kod determinist 3-byte (hex) per email — HMAC-SHA256 me JWT_SECRET."""
+    if not email or not JWT_SECRET:
+        return None
+    h = hmac.new(JWT_SECRET.encode("utf-8"), str(email).lower().strip().encode("utf-8"), hashlib.sha256).digest()
+    return h[:3]  # 24 bit — mjafton per te dalluar perdoruesit
+
+def _wm_encode(email):
+    """Sekuenca zero-width qe kodon kodin e perdoruesit (ose '' nese s'ka)."""
+    code = _wm_code(email)
+    if not code:
+        return ""
+    bits = "".join("{:08b}".format(b) for b in code)  # 24 bit
+    return _ZWM + "".join(_ZW1 if b == "1" else _ZW0 for b in bits) + _ZWM
+
+def _wm_inject_raw(text, mark):
+    """Fut shenjen e para-llogaritur pas fjalise se pare (ose ne fund)."""
+    if not text or not isinstance(text, str) or not mark:
+        return text
+    idx = text.find(". ")
+    return (text[:idx+1] + mark + text[idx+1:]) if idx != -1 else (text + mark)
+
+def _wm_extract(text):
+    """Nxjerr kodin (hex) nga tekst i watermark-uar, ose None."""
+    if not text or _ZWM not in text:
+        return None
+    try:
+        for seg in text.split(_ZWM):
+            zw = [c for c in seg if c in (_ZW0, _ZW1)]
+            if len(zw) == 24:
+                bits = "".join("1" if c == _ZW1 else "0" for c in zw)
+                return bytes(int(bits[i:i+8], 2) for i in range(0, 24, 8)).hex()
+    except Exception:
+        pass
+    return None
+
+def _wm_apply(grouped, email):
+    """Injekton watermark-un ne analiza_custom per perdoruesin — NDERTON KOPJE (s'prek cache)."""
+    try:
+        mark = _wm_encode(email)
+        if not mark:
+            return grouped
+        out = []
+        for liga in grouped:
+            lc = dict(liga); nds = []
+            for nd in (liga.get("ndeshjet") or []):
+                ac = nd.get("analiza_custom") if isinstance(nd, dict) else None
+                if isinstance(ac, dict):
+                    ndc = dict(nd)
+                    ndc["analiza_custom"] = {k: (_wm_inject_raw(v, mark) if isinstance(v, str) else v)
+                                             for k, v in ac.items()}
+                    nds.append(ndc)
+                else:
+                    nds.append(nd)
+            lc["ndeshjet"] = nds
+            out.append(lc)
+        return out
+    except Exception:
+        return grouped
 
 
 def _hash_fjalekalimi(pw):
@@ -5030,7 +5102,9 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None, autho
     _em_fa = _email_auth(authorization, "", strict=False)
     _full  = _ka_akses_te_plote(_em_fa)
     def _maske(x):
-        return x if _full else _fshih_premium(x)
+        if _full:
+            return _wm_apply(x, _em_fa) if (WATERMARK_ON and _em_fa) else x
+        return _fshih_premium(x)
 
     # Auto-refresh PPM të përfunduara (në sfond)
     background_tasks.add_task(task_perditeso_ppm_te_perfunduara)
@@ -5172,8 +5246,56 @@ def admin_rikalibro_tau(secret: str = ""):
                 pastruar += len(grup)
         except Exception:
             pass
-    return {"ok": True, "pastruar": pastruar, "ndeshje": [p.get("ndeshja") for p in rows][:30],
-            "hapi_tjeter": "Tani thirr /api/cron/gjenero per t'i rigjeneruar me tau=0.65."}
+    # Pastro edhe COMMITMENT-et PF te kycura per ndeshjet e panisura (sot+),
+    # qe te rikycen me formulen e re (perndryshe kutia HASH mban skorin e vjeter).
+    pf_pastruar = 0
+    try:
+        pd = requests.delete(
+            f"{PF_URL}?statusi=eq.kycur&data=in.({dt0},{dt1},{dt2})",
+            headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"}, timeout=20)
+        if pd.status_code in (200, 204):
+            pf_pastruar = 1
+    except Exception:
+        pass
+    return {"ok": True, "pastruar": pastruar, "pf_commitment_pastruar": bool(pf_pastruar),
+            "ndeshje": [p.get("ndeshja") for p in rows][:30],
+            "hapi_tjeter": "Tani thirr /api/cron/gjenero per t'i rigjeneruar+rikycur me tau=0.65."}
+
+
+
+
+@app.post("/api/admin/watermark-check")
+async def admin_watermark_check(request: Request, secret: str = ""):
+    """Identifikon kush rrjedhi te dhena: ngjit tekstin e rrjedhur (me zero-width),
+    dhe kthen perdoruesin qe perputhet. Kerkon B2B_ADMIN_SECRET.
+    Body JSON: {"teksti": "<tekst i kopjuar>"}  (POST qe te ruaje zero-width chars)."""
+    if not B2B_ADMIN_SECRET or (secret or "").strip() != B2B_ADMIN_SECRET:
+        return {"ok": False, "arsye": "Unauthorized"}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    teksti = (body or {}).get("teksti", "")
+    kodi = _wm_extract(teksti)
+    if not kodi:
+        return {"ok": True, "gjetur": False, "mesazhi": "S'u gjet watermark ne tekst (mund te jete fshire ose rishkruar me dore)."}
+    # Krahaso kundrejt te gjithe perdoruesve
+    try:
+        r = requests.get(f"{SUPABASE_URL_USERS}?select=email", headers=SUPABASE_SERVICE_HEADERS, timeout=15)
+        users = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        return {"ok": False, "arsye": f"lexim perdoruesish deshtoi: {e}", "kodi": kodi}
+    perputhje = []
+    for u in users:
+        em = u.get("email")
+        c = _wm_code(em)
+        if c and c.hex() == kodi:
+            perputhje.append(em)
+    return {"ok": True, "gjetur": bool(perputhje), "kodi": kodi,
+            "perdoruesi": perputhje[0] if perputhje else None,
+            "te_gjitha_perputhjet": perputhje,
+            "mesazhi": ("Watermark-u perket ketij perdoruesi." if perputhje
+                        else "Watermark u gjet po s'perputhet me asnje perdorues aktual.")}
 
 
 @app.get("/api/cron/gjenero")
