@@ -6680,16 +6680,20 @@ def merr_koeficientet_shtese(match_id: str):
 import secrets as _secrets
 
 RAPIDAPI_PROXY_SECRET = os.environ.get("RAPIDAPI_PROXY_SECRET", "").strip()
+ZYLA_PROXY_SECRET = os.environ.get("ZYLA_PROXY_SECRET", "").strip()
 B2B_ADMIN_SECRET = os.environ.get("B2B_ADMIN_SECRET", "").strip()
 SUPABASE_URL_APIKEYS = f"{SUPABASE_BASE}/rest/v1/api_keys"
 B2B_LIMIT_FREE = 100   # kërkesa/ditë për çelësat pa limit të vendosur
 
 
-def _b2b_auth(proxy_secret, api_key):
+def _b2b_auth(proxy_secret, api_key, zyla_secret=None):
     """Kthen identitetin ose ngre HTTPException me status të saktë HTTP (401/403/429)."""
     # 1) Trafiku përmes RapidAPI/APILayer — proxy secret i platformës
     if RAPIDAPI_PROXY_SECRET and proxy_secret and hmac.compare_digest(str(proxy_secret).strip(), RAPIDAPI_PROXY_SECRET):
         return {"ok": True, "burimi": "proxy", "plan": "proxy"}
+    # 1b) Trafiku përmes Zyla API Hub — proxy secret i Zyla-s (header i vendosur te Access Control)
+    if ZYLA_PROXY_SECRET and zyla_secret and hmac.compare_digest(str(zyla_secret).strip(), ZYLA_PROXY_SECRET):
+        return {"ok": True, "burimi": "zyla", "plan": "proxy"}
     # 2) Çelës vetjak (klientë direkt)
     if not api_key or not str(api_key).strip():
         raise HTTPException(status_code=401, detail="Missing API key. Pass it in the 'X-API-Key' header.")
@@ -6761,14 +6765,13 @@ def b2b_status():
             "engine": "Hybrid XGBoost + Monte Carlo (53k+ matches trained)",
             "coverage": "today + tomorrow fixtures",
             "markets": "1X2, Over/Under 1.5-3.5, BTTS (GG/NG), Double Chance, Correct Score",
-            "auth": "X-API-Key header (or via RapidAPI marketplace)",
-            "website": "https://soccer1x2pro.com"}
+            "auth": "X-API-Key header (or via API marketplace)"}
 
 
 @app.get("/v1/predictions")
 def b2b_predictions(date: str = "today", league: str = "", limit: int = 50,
-                    x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None)):
-    _b2b_auth(x_rapidapi_proxy_secret, x_api_key)
+                    x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None), x_zyla_secret: str = Header(None)):
+    _b2b_auth(x_rapidapi_proxy_secret, x_api_key, x_zyla_secret)
     dt_sot, dt_neser = _data_lokale(0), _data_lokale(1)
     d = (date or "today").strip().lower()
     if d in ("today", ""):
@@ -6795,8 +6798,8 @@ def b2b_predictions(date: str = "today", league: str = "", limit: int = 50,
 
 @app.get("/v1/predictions/{pred_id}")
 def b2b_prediction_single(pred_id: int,
-                          x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None)):
-    _b2b_auth(x_rapidapi_proxy_secret, x_api_key)
+                          x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None), x_zyla_secret: str = Header(None)):
+    _b2b_auth(x_rapidapi_proxy_secret, x_api_key, x_zyla_secret)
     r = requests.get(f"{SUPABASE_URL_PREDS}?select={_B2B_SELECT}&id=eq.{int(pred_id)}&limit=1",
                      headers=SUPABASE_SERVICE_HEADERS, timeout=10)
     rows = r.json() if r.status_code == 200 else []
@@ -6806,8 +6809,8 @@ def b2b_prediction_single(pred_id: int,
 
 
 @app.get("/v1/leagues")
-def b2b_leagues(x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None)):
-    _b2b_auth(x_rapidapi_proxy_secret, x_api_key)
+def b2b_leagues(x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = Header(None), x_zyla_secret: str = Header(None)):
+    _b2b_auth(x_rapidapi_proxy_secret, x_api_key, x_zyla_secret)
     dt_sot, dt_neser = _data_lokale(0), _data_lokale(1)
     r = requests.get(f"{SUPABASE_URL_PREDS}?select=liga_emri,data&data=in.({dt_sot},{dt_neser})&tregjet=not.is.null&limit=1000",
                      headers=SUPABASE_SERVICE_HEADERS, timeout=12)
