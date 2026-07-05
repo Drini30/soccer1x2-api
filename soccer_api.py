@@ -102,6 +102,72 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============================================================
+# RATE LIMITING — mbrojtje nga skrapimi automatik (bot/kopjues)
+# Per-IP, dritare rreshkitese (60s + 3600s). Fail-open: kurre s'bllokon per gabim.
+# Env: RATE_LIMIT_PER_MIN (default 120), RATE_LIMIT_PER_HOUR (default 2000).
+# ============================================================
+from collections import deque as _deque
+import threading as _threading
+from fastapi.responses import JSONResponse as _JSONResponse
+
+_RL_LOCK = _threading.Lock()
+_RL_MIN = {}    # ip -> deque[timestamp] (dritarja 60s)
+_RL_HOUR = {}   # ip -> deque[timestamp] (dritarja 3600s)
+try:
+    RATE_LIMIT_PER_MIN = int(os.environ.get("RATE_LIMIT_PER_MIN", "120").strip())
+except Exception:
+    RATE_LIMIT_PER_MIN = 120
+try:
+    RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "2000").strip())
+except Exception:
+    RATE_LIMIT_PER_HOUR = 2000
+
+# Rruget e perjashtuara: RapidAPI (ka limitet e veta + IP e perbashket proxy),
+# cron (frekuence e ulet), webhook (pagesa - kurre mos blloko), admin (i mbrojtur me sekret).
+_RL_EXEMPT = ("/v1/", "/api/cron/", "/api/cryptomus/", "/api/admin/", "/api/social/")
+
+def _rl_ip(request):
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    try:
+        path = request.url.path
+        if request.method == "OPTIONS" or path == "/" or any(path.startswith(p) for p in _RL_EXEMPT):
+            return await call_next(request)
+        ip = _rl_ip(request)
+        now = time.time()
+        bllokuar = False
+        with _RL_LOCK:
+            dq = _RL_MIN.setdefault(ip, _deque())
+            dh = _RL_HOUR.setdefault(ip, _deque())
+            while dq and now - dq[0] > 60:
+                dq.popleft()
+            while dh and now - dh[0] > 3600:
+                dh.popleft()
+            if len(dq) >= RATE_LIMIT_PER_MIN or len(dh) >= RATE_LIMIT_PER_HOUR:
+                bllokuar = True
+            else:
+                dq.append(now); dh.append(now)
+            # Pastrim periodik i IP-ve te vjetra (mbron memorjen)
+            if len(_RL_MIN) > 5000:
+                for k in list(_RL_MIN.keys()):
+                    if not _RL_MIN.get(k) or now - _RL_MIN[k][-1] > 3600:
+                        _RL_MIN.pop(k, None); _RL_HOUR.pop(k, None)
+        if bllokuar:
+            return _JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Ju lutem ngadalësoni dhe provoni pas pak."},
+                headers={"Retry-After": "60"})
+        return await call_next(request)
+    except Exception:
+        # Fail-open: nese middleware deshton per çfardo arsye, LEJO kerkesen (mos blloko trafik legjitim)
+        return await call_next(request)
+
 # KREDENCIALET (nga env vars — Render → Environment)
 API_KEY = os.environ.get("API_SPORTS_KEY", "").strip()
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
