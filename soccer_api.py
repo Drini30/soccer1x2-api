@@ -2133,37 +2133,6 @@ def _rivendos_given(email, produkt):
 print("LARMIA: gjurmimi i gjenerimeve aktiv (users.gen_historik) — Generate + VIP Combo")
 
 
-@app.get("/api/debug_genhist")
-def debug_genhist(email: str = ""):
-    """Diagnostikë: tregon çfarë ruhet te users.gen_historik për këtë email."""
-    dt = _data_lokale()
-    out = {"email": email, "data_sot": dt}
-    try:
-        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=gen_historik",
-                         headers=SUPABASE_SERVICE_HEADERS, timeout=6)
-        out["status"] = r.status_code
-        out["raw"] = r.text[:600]
-    except Exception as e:
-        out["gabim"] = str(e)
-    out["parsed"] = _lexo_gen_historik(email)
-    out["given_generate"] = _merr_given_ids(email, "generate")
-    out["given_vipcombo"] = _merr_given_ids(email, "vipcombo")
-    # Sa ndeshje kualifikohen sot per VIP Combo (per te pare nese pool-i eshte i vogel)
-    try:
-        vc = (f"{SUPABASE_URL_PREDS}?select=id,dist_gola,rezultati_sakt,koef_rez_sakt&data=eq.{dt}"
-              f"&dist_gola=not.is.null&rezultati_sakt=not.is.null"
-              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=20")
-        rv = requests.get(vc, headers=SUPABASE_SERVICE_HEADERS, timeout=8)
-        rws = rv.json() if rv.status_code == 200 else []
-        out["vipcombo_pool_total"] = len(rws)
-        out["vipcombo_kualifikojne_rez3"] = sum(1 for p in rws if len(_top_rezultate_sakta(p, 3)) >= 3)
-        out["vipcombo_kualifikojne_rez4"] = sum(1 for p in rws if len(_top_rezultate_sakta(p, 4)) >= 4)
-        out["vipcombo_ids_pool"] = [p.get("id") for p in rws]
-    except Exception as e:
-        out["vc_gabim"] = str(e)
-    return out
-
-
 # ============ SKEDINA IME (regjistri i skedinave te gjeneruara) ============
 SKEDINA_IME_URL = f"{SUPABASE_BASE}/rest/v1/skedina_ime"
 
@@ -4044,6 +4013,37 @@ TREGJET_KANDIDATE = ["1", "X", "2", "Under 1.5", "Over 2.5",
                      "Under 2.5", "Over 3.5", "GG", "NG"]
 
 
+_ODDS_FIXTURE_CACHE = {}   # fix_id -> (timestamp, parsed_or_None)
+_ODDS_FIXTURE_TTL = 1800   # 30 min (cache edhe rezultatet bosh, per te kursyer API)
+
+def _merr_odds_per_fixture(fix_id):
+    """Odds per NJE fixture specifik — fallback kur marrja sipas dates s'i kap
+    (p.sh. World Cup i pritur jashte 10 faqeve). Provon bookmakers me prioritet.
+    Cache 30-min (perfshire 'pa odds') qe te mos hamendesohet API-ja."""
+    key = str(fix_id)
+    now = time.time()
+    ck = _ODDS_FIXTURE_CACHE.get(key)
+    if ck and now - ck[0] < _ODDS_FIXTURE_TTL:
+        return ck[1]
+    result = None
+    for _bm in [8, 4, 6, 2, 11]:   # Bet365, Pinnacle, 1xBet, Marathon, William Hill
+        try:
+            r = requests.get("https://v3.football.api-sports.io/odds", headers=HEADERS,
+                             params={"fixture": fix_id, "bookmaker": _bm}, timeout=10).json()
+            resp = r.get("response") or []
+            if not resp:
+                continue
+            bets = resp[0]["bookmakers"][0]["bets"]
+            parsed = _nxirr_odds_reale(bets)
+            if parsed.get("1") and parsed.get("X") and parsed.get("2"):
+                result = parsed
+                break
+        except Exception:
+            continue
+    _ODDS_FIXTURE_CACHE[key] = (now, result)
+    return result
+
+
 def _best_bet_value(tregjet, odds_reale):
     """Best bet me VALUE: midis tregjeve të sigurta (prob>=0.5) zgjedh value-n më
     të lartë (prob_model × koef_real). Përdor odds reale ku ka, përndryshe fair."""
@@ -5210,60 +5210,6 @@ _LAST_HEAVY_GEN = 0.0
 HEAVY_GEN_INTERVAL = 30 * 60   # pjesa e rëndë (Monte Carlo + odds për 3 ditë) maksimum çdo 30 min
 
 
-
-@app.get("/api/admin/rikalibro-tau")
-def admin_rikalibro_tau(secret: str = ""):
-    """TE PERKOHSHEM (fshije pas perdorimit): pastron rezultati_sakt/dist_gola/koef_rez_sakt
-    per ndeshjet E ARDHME QE S'KANE NISUR (statusi=NS), qe rigjenerimi i radhes t'i llogarise
-    me formulen e re (tau). NUK prek ndeshjet e nisura/mbaruara. Kerkohet B2B_ADMIN_SECRET.
-    Perdorim: thirre kete -> pastaj thirr /api/cron/gjenero."""
-    if not B2B_ADMIN_SECRET or (secret or "").strip() != B2B_ADMIN_SECRET:
-        return {"ok": False, "arsye": "Unauthorized"}
-    dt0, dt1, dt2 = _data_lokale(0), _data_lokale(1), _data_lokale(2)
-    # VETEM ndeshje qe S'KANE NISUR (statusi=NS/TBD) dhe jane sot+2 dite
-    url = (f"{SUPABASE_URL_PREDS}?data=in.({dt0},{dt1},{dt2})"
-           f"&statusi=in.(NS,TBD)&select=id,ndeshja,statusi")
-    try:
-        r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=15)
-        rows = r.json() if r.status_code == 200 else []
-    except Exception as e:
-        return {"ok": False, "arsye": f"lexim deshtoi: {e}"}
-    ids = [str(p.get("id")) for p in rows if p.get("id") is not None]
-    if not ids:
-        return {"ok": True, "pastruar": 0, "mesazhi": "S'ka ndeshje te ardhme te panisura per te pastruar."}
-    # Pastro fushat e ngrira -> rigjenerimi do t'i rimbushe me formulen e re
-    pastruar = 0
-    for i in range(0, len(ids), 50):
-        grup = ids[i:i+50]
-        try:
-            pr = requests.patch(
-                f"{SUPABASE_URL_PREDS}?id=in.({','.join(grup)})",
-                headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
-                json={"rezultati_sakt": None, "dist_gola": None,
-                      "koef_rez_sakt": None, "parashikimi_origjinal_ai": None},
-                timeout=20)
-            if pr.status_code in (200, 204):
-                pastruar += len(grup)
-        except Exception:
-            pass
-    # Pastro edhe COMMITMENT-et PF te kycura per ndeshjet e panisura (sot+),
-    # qe te rikycen me formulen e re (perndryshe kutia HASH mban skorin e vjeter).
-    pf_pastruar = 0
-    try:
-        pd = requests.delete(
-            f"{PF_URL}?statusi=eq.kycur&data=in.({dt0},{dt1},{dt2})",
-            headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"}, timeout=20)
-        if pd.status_code in (200, 204):
-            pf_pastruar = 1
-    except Exception:
-        pass
-    return {"ok": True, "pastruar": pastruar, "pf_commitment_pastruar": bool(pf_pastruar),
-            "ndeshje": [p.get("ndeshja") for p in rows][:30],
-            "hapi_tjeter": "Tani thirr /api/cron/gjenero per t'i rigjeneruar+rikycur me tau=0.65."}
-
-
-
-
 @app.post("/api/admin/watermark-check")
 async def admin_watermark_check(request: Request, secret: str = ""):
     """Identifikon kush rrjedhi te dhena: ngjit tekstin e rrjedhur (me zero-width),
@@ -5454,6 +5400,12 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
                     k1 = str(bet365_odds[id_ndeshja]["1"])
                     kx = str(bet365_odds[id_ndeshja]["X"])
                     k2 = str(bet365_odds[id_ndeshja]["2"])
+                elif eshte_liga_vip and statusi_kod in ("NS", "TBD"):
+                    # FALLBACK: liga VIP pa odds nga marrja sipas dates -> merr direkt per fixture
+                    _fb = _merr_odds_per_fixture(id_ndeshja)
+                    if _fb:
+                        bet365_odds[id_ndeshja] = _fb
+                        k1 = str(_fb["1"]); kx = str(_fb["X"]); k2 = str(_fb["2"])
 
                 try:
                     ora_sakte = datetime.strptime(n["fixture"]["date"][:19], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M")
@@ -5917,75 +5869,6 @@ def merr_ndeshjet_live(background_tasks: BackgroundTasks):
     except Exception as e:
         return {"mesazhi": "Gabim", "detaje": str(e), "ndeshjet": []}
 
-
-@app.get("/api/test-parashikim")
-def test_parashikim(fixture: str, k1: str = None, kx: str = None, k2: str = None):
-    """TEST: rigjeneron parashikimin për një fixture me parametrat AKTUALË (pa e ruajtur).
-    Përdoret për të parë si do ta parashikonte algoritmi i ri një ndeshje — edhe pas FT.
-    Koeficientët opsionalë: nëse jepen k1/kx/k2, përdoren; ndryshe merren nga API."""
-    try:
-        # Konverto koeficientët opsionalë (string → float)
-        try:
-            k1 = float(k1) if k1 else None
-            kx = float(kx) if kx else None
-            k2 = float(k2) if k2 else None
-        except Exception:
-            k1 = kx = k2 = None
-        fdata = _api_sports_get("fixtures", {"id": fixture})
-        if not fdata or not fdata.get("response"):
-            return {"sukses": False, "mesazhi": "Fixture s'u gjet"}
-        n = fdata["response"][0]
-        ekipi_1 = n["teams"]["home"]["name"].replace("'", "")
-        ekipi_2 = n["teams"]["away"]["name"].replace("'", "")
-        e1_id = n["teams"]["home"]["id"]; e2_id = n["teams"]["away"]["id"]
-        emri_liges = f"{n['league']['country']} - {n['league']['name']}"
-        rez_real = None
-        if n["goals"]["home"] is not None and n["goals"]["away"] is not None:
-            rez_real = f"{n['goals']['home']}-{n['goals']['away']}"
-
-        # Koeficientët — manualë ose nga API
-        odds_full = {}
-        if k1 and kx and k2:
-            kk1, kkx, kk2 = k1, kx, k2
-        else:
-            kk1 = kkx = kk2 = None
-            odata = _api_sports_get("odds", {"fixture": fixture, "bookmaker": 8})
-            if odata and odata.get("response"):
-                try:
-                    bets = odata["response"][0]["bookmakers"][0]["bets"]
-                    parsed = _nxirr_odds_reale(bets)
-                    kk1, kkx, kk2 = parsed.get("1"), parsed.get("X"), parsed.get("2")
-                    odds_full = parsed
-                except Exception:
-                    pass
-            if not (kk1 and kkx and kk2):
-                return {"sukses": False, "mesazhi": "Koeficientët s'u gjetën — jepi manualisht: ?fixture=ID&k1=..&kx=..&k2=.."}
-
-        dna_1 = merr_dna_nga_db(e1_id)
-        dna_2 = merr_dna_nga_db(e2_id)
-
-        analiza, bes, rez_sakt, koef_str, extradb = analizo_ndeshjen_premium_master(
-            str(fixture), ekipi_1, ekipi_2, e1_id, e2_id,
-            str(kk1), str(kkx), str(kk2), emri_liges, [],
-            dna_1=dna_1, dna_2=dna_2, odds_full=odds_full
-        )
-        tregjet = (extradb or {}).get("tregjet", {})
-        return {
-            "sukses": True,
-            "ndeshja": f"{ekipi_1} vs {ekipi_2}",
-            "liga": emri_liges,
-            "koeficientet": {"1": kk1, "X": kkx, "2": kk2},
-            "parashikimi_skor": rez_sakt,
-            "rezultati_real": rez_real,
-            "perputhet_sakt": (rez_sakt.replace(" ", "") == rez_real) if rez_real else None,
-            "best_bet": (extradb or {}).get("best_bet", {}),
-            "skor_ht": tregjet.get("skor_ht"),
-            "tregjet_1x2": {k: tregjet.get(k) for k in ["1", "X", "2"] if k in tregjet},
-            "tregjet_gola": {k: tregjet.get(k) for k in ["GG", "NG", "Over 2.5", "Under 2.5"] if k in tregjet},
-            "besueshmeria": bes,
-        }
-    except Exception as e:
-        return {"sukses": False, "mesazhi": f"Gabim: {e}"}
 
 # ==========================================
 # DNA ENGINE V2 — Mbushje dhe përditësim i team_dna_cache
