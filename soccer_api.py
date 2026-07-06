@@ -2973,7 +2973,7 @@ def _arkivo_sweep():
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,rezultati"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,rezultati"
             f"&statusi=in.({fund})&rezultati=not.is.null"
             f"&order=data.desc&limit=150",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -3772,17 +3772,17 @@ def llogarit_xg_te_perparuara(
     xg1_forma = (xg1_forma_raw * 0.85 + 0.25)
     xg2_forma = (xg2_forma_raw * 0.85 + 0.25)
 
-    # Burimi 2: ELO — konvertim me INTERCEPT (jo p*3 linear, që nën-vlerëson underdog-un)
-    # Një ekip me 15% gjasa fitore shënon ~0.9 gola, JO 0.45. Floor realizmi 0.45 + p*2.3.
+    # Burimi 2: ELO — pjerresi e plote 3.0 + dysheme e vogel XG_FLOOR (0 = origjinali p*3).
+    # Underdogu ngrihet vetem pak; favoriti ruan gamen e plote qe te arrije 3-0.
     diff_elo = (elo_1 - elo_2) / 400.0
     p1_elo   = 1 / (1 + 10 ** (-diff_elo))
     p2_elo   = 1 - p1_elo
-    xg1_elo  = 0.45 + p1_elo * 2.3
-    xg2_elo  = 0.45 + p2_elo * 2.3
+    xg1_elo  = XG_FLOOR + p1_elo * (3.0 - XG_FLOOR)
+    xg2_elo  = XG_FLOOR + p2_elo * (3.0 - XG_FLOOR)
 
-    # Burimi 3: Tregu — po ashtu me intercept realizmi (floor për underdog-un)
-    xg1_market = 0.45 + p1_real * 2.4
-    xg2_market = 0.45 + p2_real * 2.4
+    # Burimi 3: Tregu — pjerresi 3.2 (si 27/06) + e njejta dysheme e vogel.
+    xg1_market = XG_FLOOR + p1_real * (3.2 - XG_FLOOR)
+    xg2_market = XG_FLOOR + p2_real * (3.2 - XG_FLOOR)
 
     # Burimi 4: Baza e golave (mesatarja globale e futbollit ~1.35 gola/ekip)
     xg1_base = 1.35
@@ -4082,6 +4082,12 @@ try:
 except Exception:
     SKOR_TAU = 0.65
 
+# Dysheme e vogel per golat e underdog-ut (tunable). 0 = origjinali 27/06 (p*3).
+try:
+    XG_FLOOR = float(os.environ.get("XG_FLOOR", "0.10").strip())
+except Exception:
+    XG_FLOOR = 0.10
+
 
 def _ht_ft_distribuim(xg_ht_1, xg_ht_2, xg_2h_1, xg_2h_2, max_g=6):
     """
@@ -4229,24 +4235,16 @@ def simulim_monte_carlo_v2(
         if _c > 0:
             rezultatet_freq[f"{_i}-{_j}"] = _c
 
-    # ── ZGJEDHJA E REZULTATIT (HIBRID i kalibruar): synimi nga kufiri xG (tau) + qeliza
-    #    me e afert nga top-8 e Monte Carlo-s. Guxon me golat kur xG i pret (1.65+ -> 2),
-    #    respekton dominimin (favoriti s'del barazim), ruan skoret e uleta kur xG eshte i ulet.
-    #    Rrjeta MC siguron qe synimi te mos dale jashte shperndarjes reale (Dixon-Coles e perfshire).
-    def _rrumbullako_xg(_x):
-        _b = int(_x)
-        return _b + (1 if (_x - _b) >= SKOR_TAU else 0)
-    _synim_i = _rrumbullako_xg(float(xg_1))
-    _synim_j = _rrumbullako_xg(float(xg_2))
+    # ── ZGJEDHJA E REZULTATIT: midis top-5, me afer totalit te pritur (metoda 27/06) ──
+    total_pritur = xg_1 + xg_2
     kandidatet = []
-    for _idx in _order[:8]:
+    for _idx in _order[:5]:
         _i = int(_idx // H.shape[1]); _j = int(_idx % H.shape[1])
         _freq = float(_flat[_idx])
-        # afersia me synimin e kufirit (primare) + frekuenca (thyen barazimet)
-        _dist_synim = abs(_i - _synim_i) + abs(_j - _synim_j)
-        kandidatet.append((_i, _j, _freq, _dist_synim))
-    # me afer synimit; ne barazim distance, me i shpeshti; pastaj koherenca per-ekip
-    kandidatet.sort(key=lambda x: (x[3], -x[2]))
+        _difft = abs((_i + _j) - total_pritur)
+        _score = _freq * (1.0 / (1.0 + _difft * 0.5))
+        kandidatet.append((_i, _j, _freq, _score))
+    kandidatet.sort(key=lambda x: x[3], reverse=True)
     rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
     rez_str  = f"{rez_g1}-{rez_g2}"
     prob_max = float(freq_zgjedhur)
@@ -4824,7 +4822,7 @@ def task_perditeso_ppm_te_perfunduara():
         # select i plotë → mundëson arkivim automatik në të njëjtin hap
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,statusi,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS, timeout=8
         )
@@ -5708,7 +5706,7 @@ def rindertimi_arkivit():
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,rezultati"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,rezultati"
             f"&statusi=in.(FT,AET,PEN,AWD,WO)&rezultati=not.is.null&order=data.desc&limit=2000",
             headers=SUPABASE_SERVICE_HEADERS, timeout=15)
         rows = r.json() if r.status_code == 200 else []
@@ -5747,7 +5745,7 @@ def perditeso_rezultatet_perfunduara():
         # Merr të gjitha ndeshjet që nuk kanë mbaruar (me fushat për arkivim)
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS,
             timeout=10
