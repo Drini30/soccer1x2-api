@@ -4110,6 +4110,13 @@ try:
 except Exception:
     MOD_KUFI_LART = 0.35
 
+# ── RREGULLI I FITUESIT: pragu i "favoritit te qarte" (diferenca p_fitues - p_barazim).
+# Nen kete prag -> ndeshje e ngushte -> lejo barazim. Mbi -> skori DETYROHET te respektoje favoritin.
+try:
+    WINNER_PRAG = float(os.environ.get("WINNER_PRAG", "0.15").strip())
+except Exception:
+    WINNER_PRAG = 0.15
+
 
 def _ht_ft_distribuim(xg_ht_1, xg_ht_2, xg_2h_1, xg_2h_2, max_g=6):
     """
@@ -4267,6 +4274,17 @@ def simulim_monte_carlo_v2(
         _score = _freq * (1.0 / (1.0 + _difft * 0.5))
         kandidatet.append((_i, _j, _freq, _score))
     kandidatet.sort(key=lambda x: x[3], reverse=True)
+    # ── RREGULLI I FITUESIT: skori respekton favoritin e QARTE (nga p1/px/p2). ──
+    # NUK prek frekuencat/Dixon-Coles; vetem filtron kandidatet kur ka favorit te qarte.
+    _wp1 = prob_1x2["p1"]; _wpx = prob_1x2["px"]; _wp2 = prob_1x2["p2"]
+    if _wp1 >= _wp2 and (_wp1 - _wpx) > WINNER_PRAG:
+        _fkand = [_k for _k in kandidatet if _k[0] > _k[1]]   # favorit vendas -> vetem fitore vendase
+    elif _wp2 > _wp1 and (_wp2 - _wpx) > WINNER_PRAG:
+        _fkand = [_k for _k in kandidatet if _k[1] > _k[0]]   # favorit mysafir -> vetem fitore mysafiri
+    else:
+        _fkand = kandidatet                                    # ngushte -> lejo barazim
+    if _fkand:
+        kandidatet = _fkand                                    # mbrojtje: mos zbraz listen
     rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
     rez_str  = f"{rez_g1}-{rez_g2}"
     prob_max = float(freq_zgjedhur)
