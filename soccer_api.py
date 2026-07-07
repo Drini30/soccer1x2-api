@@ -7260,3 +7260,82 @@ var o=btn.innerHTML;btn.innerHTML='✓ U kopjua';btn.classList.add('ok');setTime
 </script></body></html>"""
     page = page.replace("__SOT__", d["sot"]).replace("__DJE__", d["dje"]).replace("__KRERE__", krerё)
     return HTMLResponse(page)
+
+@app.get("/api/krahaso_predictions")
+def krahaso_predictions(date: str = None, limit: int = 40):
+    """Krahason parashikimet TONA vs Predictions te API-Football per nje date.
+    API-Football perdor Poisson + statistika PA koeficiente -> sinjal i pavarur."""
+    dt = date or _data_lokale(0)
+    try:
+        r = requests.get(
+            SUPABASE_URL_PREDS + "?data=eq." + str(dt)
+            + "&select=id,ekipi_1,ekipi_2,rezultati_sakt,training_data"
+            + "&rezultati_sakt=not.is.null&limit=" + str(int(limit)),
+            headers=SUPABASE_SERVICE_HEADERS, timeout=15)
+        ndeshjet = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        return {"sukses": False, "gabim": "supabase: " + str(e)}
+
+    dakord = 0; total = 0; rezultatet = []
+    for nd in ndeshjet:
+        fid = nd.get("id")
+        e1 = nd.get("ekipi_1") or ""; e2 = nd.get("ekipi_2") or ""
+        yni_skor = (nd.get("rezultati_sakt") or "").replace(" ", "")
+        td = nd.get("training_data") or {}
+        try:
+            g1, g2 = [int(x) for x in yni_skor.split("-")]
+            _yn = "1" if g1 > g2 else ("2" if g2 > g1 else "X")
+        except Exception:
+            _yn = "?"
+        af_adv = ""; af_pct = ""; af_ou = ""; _af = "?"
+        if fid:
+            try:
+                pr = requests.get(
+                    "https://v3.football.api-sports.io/predictions?fixture=" + str(fid),
+                    headers=HEADERS, timeout=8)
+                resp = pr.json().get("response", [])
+                if resp:
+                    pp = resp[0].get("predictions", {}) or {}
+                    w = pp.get("winner") or {}
+                    wname = w.get("name") or ""
+                    af_adv = pp.get("advice") or ""
+                    pc = pp.get("percent") or {}
+                    af_pct = str(pc.get("home", "?")) + "/" + str(pc.get("draw", "?")) + "/" + str(pc.get("away", "?"))
+                    af_ou = pp.get("under_over") or ""
+                    if not wname:
+                        _af = "X"
+                    elif wname == e1:
+                        _af = "1"
+                    elif wname == e2:
+                        _af = "2"
+                    else:
+                        _af = "X"
+            except Exception:
+                _af = "gab"
+        pajt = (_yn == _af)
+        if _af in ("1", "2", "X"):
+            total += 1
+            if pajt:
+                dakord += 1
+        _xg1 = td.get("xg_1"); _xg2 = td.get("xg_2")
+        rezultatet.append({
+            "ndeshja": e1 + " - " + e2,
+            "yni_xg": (str(round(_xg1, 2)) + "/" + str(round(_xg2, 2))) if (_xg1 is not None and _xg2 is not None) else "",
+            "yni_skor": yni_skor,
+            "yni_fitues": _yn,
+            "af_fitues": _af,
+            "af_gjasat_H_D_A": af_pct,
+            "af_over_under": af_ou,
+            "af_keshilla": af_adv,
+            "pajtohen": pajt
+        })
+    perq = round(100.0 * dakord / total, 1) if total else 0.0
+    return {
+        "sukses": True, "data": dt,
+        "gjithsej_ndeshje": len(rezultatet),
+        "krahasime_te_vlefshme": total,
+        "fitues_qe_pajtohen": dakord,
+        "perqindja_pajtimit": str(perq) + "%",
+        "shpjegim": "af = API-Football (Poisson, pa koeficiente). Krahaso af_fitues me yni_fitues.",
+        "krahasimi": rezultatet
+    }
