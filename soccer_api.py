@@ -3799,14 +3799,6 @@ def llogarit_xg_te_perparuara(
     xg_1_final = float(np.clip(xg_1_final, 0.35, 5.00))
     xg_2_final = float(np.clip(xg_2_final, 0.35, 5.00))
 
-    # ── MODULATORI: shtyj xG-ne per-ekip drejt tregut (+ELO), i kufizuar ──
-    # Dy vlera te PAVARURA. Underdog i fryre nga forma -> tregu e ul -> decisivitet.
-    _mod1 = (xg1_market - xg_1_final) * MOD_K_TREG + (xg1_elo - xg_1_final) * MOD_K_ELO
-    _mod2 = (xg2_market - xg_2_final) * MOD_K_TREG + (xg2_elo - xg_2_final) * MOD_K_ELO
-    _mod1 = float(np.clip(_mod1, MOD_KUFI_POSHTE, MOD_KUFI_LART))
-    _mod2 = float(np.clip(_mod2, MOD_KUFI_POSHTE, MOD_KUFI_LART))
-    xg_1_final = float(np.clip(xg_1_final + _mod1, 0.30, 5.00))
-    xg_2_final = float(np.clip(xg_2_final + _mod2, 0.30, 5.00))
 
     return round(xg_1_final, 3), round(xg_2_final, 3)
 
@@ -4447,6 +4439,21 @@ def analizo_ndeshjen_premium_master(
         ah_line=_ah_l, ah_home=_ah_h, ah_away=_ah_a,
         ou_over=_ou_o, ou_under=_ou_u
     )
+
+    # ── MODULATORI (treg/ELO) — PAS hibridit, mbi xG-nE FINALE (jo te holluar nga XGBoost) ──
+    # De-kompreson xG-nE reale drejt tregut+ELO. Underdog i fryrE -> ulet -> decisivitet.
+    _p1e_m = 1.0 / (1.0 + 10 ** (-((elo_1 * desp_1) - (elo_2 * desp_2)) / 400.0))
+    _p2e_m = 1.0 - _p1e_m
+    _xg1_mkt = XG_FLOOR + p1_real * (3.2 - XG_FLOOR)
+    _xg2_mkt = XG_FLOOR + p2_real * (3.2 - XG_FLOOR)
+    _xg1_elo = XG_FLOOR + _p1e_m * (3.0 - XG_FLOOR)
+    _xg2_elo = XG_FLOOR + _p2e_m * (3.0 - XG_FLOOR)
+    _mod1 = (_xg1_mkt - xg_1) * MOD_K_TREG + (_xg1_elo - xg_1) * MOD_K_ELO
+    _mod2 = (_xg2_mkt - xg_2) * MOD_K_TREG + (_xg2_elo - xg_2) * MOD_K_ELO
+    _mod1 = float(np.clip(_mod1, MOD_KUFI_POSHTE, MOD_KUFI_LART))
+    _mod2 = float(np.clip(_mod2, MOD_KUFI_POSHTE, MOD_KUFI_LART))
+    xg_1 = float(np.clip(xg_1 + _mod1, 0.30, 5.00))
+    xg_2 = float(np.clip(xg_2 + _mod2, 0.30, 5.00))
 
     # Apliko clutch
     xg_1 *= clutch_1
