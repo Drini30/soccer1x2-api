@@ -3799,6 +3799,15 @@ def llogarit_xg_te_perparuara(
     xg_1_final = float(np.clip(xg_1_final, 0.35, 5.00))
     xg_2_final = float(np.clip(xg_2_final, 0.35, 5.00))
 
+    # ── MODULATORI: shtyj xG-ne per-ekip drejt tregut (+ELO), i kufizuar ──
+    # Dy vlera te PAVARURA. Underdog i fryre nga forma -> tregu e ul -> decisivitet.
+    _mod1 = (xg1_market - xg_1_final) * MOD_K_TREG + (xg1_elo - xg_1_final) * MOD_K_ELO
+    _mod2 = (xg2_market - xg_2_final) * MOD_K_TREG + (xg2_elo - xg_2_final) * MOD_K_ELO
+    _mod1 = float(np.clip(_mod1, MOD_KUFI_POSHTE, MOD_KUFI_LART))
+    _mod2 = float(np.clip(_mod2, MOD_KUFI_POSHTE, MOD_KUFI_LART))
+    xg_1_final = float(np.clip(xg_1_final + _mod1, 0.30, 5.00))
+    xg_2_final = float(np.clip(xg_2_final + _mod2, 0.30, 5.00))
+
     return round(xg_1_final, 3), round(xg_2_final, 3)
 
 # ==========================================
@@ -4087,6 +4096,27 @@ try:
     XG_FLOOR = float(os.environ.get("XG_FLOOR", "0.10").strip())
 except Exception:
     XG_FLOOR = 0.10
+
+# ── MODULATORI: de-kompresim per-ekip drejt tregut + ELO (sinjalet me spekter real) ──
+# xG baze ngjeshet nga forma+baza. Modulatori e shtyn drejt tregut/ELO-s, per-ekip.
+# Kufij ASIMETRIK: me shume liri per te ULUR underdog-un e fryre (-0.45) se per te ngritur (+0.35).
+# k_treg/k_elo tunable (env) -> me vone kalibrohen nga arkivi.
+try:
+    MOD_K_TREG = float(os.environ.get("MOD_K_TREG", "0.50").strip())
+except Exception:
+    MOD_K_TREG = 0.50
+try:
+    MOD_K_ELO = float(os.environ.get("MOD_K_ELO", "0.20").strip())
+except Exception:
+    MOD_K_ELO = 0.20
+try:
+    MOD_KUFI_POSHTE = float(os.environ.get("MOD_KUFI_POSHTE", "-0.45").strip())
+except Exception:
+    MOD_KUFI_POSHTE = -0.45
+try:
+    MOD_KUFI_LART = float(os.environ.get("MOD_KUFI_LART", "0.35").strip())
+except Exception:
+    MOD_KUFI_LART = 0.35
 
 
 def _ht_ft_distribuim(xg_ht_1, xg_ht_2, xg_2h_1, xg_2h_2, max_g=6):
