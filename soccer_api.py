@@ -4490,6 +4490,26 @@ def llogarit_desperation_index(ekipi_id, standings):
         pass
     return 1.0
 
+def _info_renditje(ekipi_id, standings):
+    """Nxjerr pozicionin/piket/diferencen/ndeshjet e nje ekipi nga tabela (standings).
+    Kthen {} nese s'ka tabele (knockout/kombetare) ose ekipi s'gjendet."""
+    if not standings:
+        return {}
+    try:
+        for r in standings:
+            if r.get("team", {}).get("id") == ekipi_id:
+                _all = r.get("all", {}) or {}
+                return {
+                    "pozicion": r.get("rank"),
+                    "pike": r.get("points"),
+                    "diferenca_golash": r.get("goalsDiff"),
+                    "ndeshje_luajtura": _all.get("played"),
+                    "total_ekipe": len(standings),
+                }
+    except Exception:
+        pass
+    return {}
+
 def apliko_kaosin_e_liges(emri_liges: str, vol_1: float = 15.0, vol_2: float = 15.0) -> float:
     liga = emri_liges.lower()
     if any(x in liga for x in ["world cup", "euro", "copa america", "nations league"]):
@@ -4555,6 +4575,9 @@ def analizo_ndeshjen_premium_master(
 
     desp_1 = llogarit_desperation_index(ekipi_1_id, standings)
     desp_2 = llogarit_desperation_index(ekipi_2_id, standings)
+
+    _rend_1 = _info_renditje(ekipi_1_id, standings)
+    _rend_2 = _info_renditje(ekipi_2_id, standings)
 
     # ── FORMA REALE (me cache) ──
     forma_1 = merr_formen_reale(ekipi_1_id, emri_liges)
@@ -4918,6 +4941,19 @@ def analizo_ndeshjen_premium_master(
             "away_forma_pts": float(forma_2.get("piket_forma", 7.0)),
             "home_win_rate": round(float(forma_1.get("win_rate", 0.5)), 3),
             "away_win_rate": round(float(forma_2.get("win_rate", 0.5)), 3),
+            # ── RENDITJA NE ATE MOMENT (nga tabela; bosh per knockout/kombetare) ──
+            "pozicion_1": _rend_1.get("pozicion"), "pozicion_2": _rend_2.get("pozicion"),
+            "pike_1": _rend_1.get("pike"), "pike_2": _rend_2.get("pike"),
+            "diferenca_golash_1": _rend_1.get("diferenca_golash"), "diferenca_golash_2": _rend_2.get("diferenca_golash"),
+            "ndeshje_luajtura_1": _rend_1.get("ndeshje_luajtura"), "ndeshje_luajtura_2": _rend_2.get("ndeshje_luajtura"),
+            "total_ekipe_liga": _rend_1.get("total_ekipe") or _rend_2.get("total_ekipe"),
+            # ── LINJAT E TREGUT (O/U 2.5 + AH — sinjali qe mungonte per O/U/total) ──
+            "p_market_x": round(float(px_real), 4),
+            "ah_line": _ah_l, "ah_home_odds": _ah_h, "ah_away_odds": _ah_a,
+            "ou_over_odds": _ou_o, "ou_under_odds": _ou_u,
+            # ── INPUTET E MODULATORIT (per akordim me vone) ──
+            "streak_1": int(forma_1.get("k_wins_rresht", 0) or 0), "streak_2": int(forma_2.get("k_wins_rresht", 0) or 0),
+            "kongjestion_1": int(forma_1.get("ndeshje_14d", 0) or 0), "kongjestion_2": int(forma_2.get("ndeshje_14d", 0) or 0),
         },
     }
 
