@@ -710,6 +710,11 @@ PUBLIC_API_URL  = os.environ.get("PUBLIC_API_URL", "https://soccer1x2-api.onrend
 PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://soccer1x2pro.com").rstrip("/")
 SUPABASE_URL_POROSITE = f"{SUPABASE_BASE}/rest/v1/porosite"
 
+# ── PAYPAL (paralel me Cryptomus; ripERdor _kredito_porosine, tabela e njEjtE me prefiks pp_) ──
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
+PAYPAL_SECRET    = os.environ.get("PAYPAL_SECRET", "").strip()
+PAYPAL_BASE      = os.environ.get("PAYPAL_BASE", "https://api-m.paypal.com").rstrip("/")  # sandbox: https://api-m.sandbox.paypal.com
+
 
 def _data_lokale(offset_ditesh=0):
     """Data lokale e Shqiperise (Europe/Tirane) + offset ditesh.
@@ -821,6 +826,30 @@ def _crypto_info(order_id):
         return {}
 
 
+def _paypal_token():
+    """Merr access token nga PayPal (client_credentials)."""
+    try:
+        r = requests.post(f"{PAYPAL_BASE}/v1/oauth2/token",
+                          auth=(PAYPAL_CLIENT_ID, PAYPAL_SECRET),
+                          data={"grant_type": "client_credentials"},
+                          headers={"Accept": "application/json"}, timeout=20)
+        return r.json().get("access_token") if r.status_code == 200 else None
+    except Exception:
+        return None
+
+
+def _paypal_paid(pp_id):
+    """GATE AUTORITATIV: verifiko VETE te PayPal qe porosia eshte COMPLETED."""
+    tok = _paypal_token()
+    if not tok:
+        return False
+    try:
+        r = requests.get(f"{PAYPAL_BASE}/v2/checkout/orders/{pp_id}",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=20)
+        return r.status_code == 200 and (r.json().get("status") == "COMPLETED")
+    except Exception:
+        return False
+
 @app.post("/api/cryptomus/create-invoice")
 def crypto_krijo_fature(payload: dict):
     email = payload.get("email", "").lower().strip()
@@ -909,9 +938,13 @@ def _kredito_porosine(order_id):
     po = pros[0]
 
     # GATE AUTORITATIV: pyet VETË Cryptomus (webhook/thirrje e falsifikuar s'kalon dot)
-    info = _crypto_info(order_id)
-    if (info.get("payment_status") or "") not in ("paid", "paid_over"):
-        return False
+    if str(order_id).startswith("pp_"):
+        if not _paypal_paid(order_id[3:]):
+            return False
+    else:
+        info = _crypto_info(order_id)
+        if (info.get("payment_status") or "") not in ("paid", "paid_over"):
+            return False
 
     email = po.get("email"); tipi = po.get("tipi")
     ures = requests.get(
@@ -991,6 +1024,102 @@ def crypto_order_status(order_id: str):
     if not pros:
         return {"status": "panjohur"}
     return {"status": pros[0].get("status")}
+
+
+@app.post("/api/paypal/create-order")
+def paypal_krijo_porosi(payload: dict):
+    email = payload.get("email", "").lower().strip()
+    tipi  = payload.get("tipi")
+    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial"):
+        return {"sukses": False, "kod": "DATA_INVALID", "mesazhi": "Te dhena te pavlefshme"}
+    if not PAYPAL_CLIENT_ID:
+        return {"sukses": False, "kod": "PAYPAL_OFF", "mesazhi": "PayPal s'eshte konfiguruar"}
+
+    match_id = payload.get("match_id")
+    ndeshja = rezultati = koef = None
+    if tipi == "vip":
+        shuma = CMIMI_VIP
+    elif tipi == "trial":
+        shuma = CMIMI_TRIAL
+    elif tipi == "ditore":
+        shuma = CMIMI_DITORE
+    elif tipi in ("topup", "donate"):
+        try:
+            shuma = float(payload.get("shuma", 0))
+        except Exception:
+            shuma = 0.0
+        if shuma <= 0:
+            return {"sukses": False, "kod": "AMOUNT_INVALID", "mesazhi": "Shuma e pavlefshme"}
+    else:  # ppm
+        pres = requests.get(
+            f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=ndeshja,rezultati_sakt,koef_rez_sakt",
+            headers=SUPABASE_SERVICE_HEADERS)
+        preds = pres.json() if pres.status_code == 200 else []
+        if not preds:
+            return {"sukses": False, "kod": "MATCH_NOT_FOUND", "mesazhi": "Ndeshja s'u gjet"}
+        ndeshja = preds[0].get("ndeshja"); rezultati = preds[0].get("rezultati_sakt")
+        koef = preds[0].get("koef_rez_sakt")
+        shuma = _cmimi_ppm(koef)
+
+    tok = _paypal_token()
+    if not tok:
+        return {"sukses": False, "kod": "PAYPAL_AUTH", "mesazhi": "PayPal auth deshtoi"}
+    trupi = {
+        "intent": "CAPTURE",
+        "purchase_units": [{"amount": {"currency_code": "USD", "value": f"{shuma:.2f}"}}],
+        "application_context": {
+            "brand_name": "SOCCER1X2 PRO", "user_action": "PAY_NOW",
+            "return_url": f"{PUBLIC_SITE_URL}/?paypal=return",
+            "cancel_url": f"{PUBLIC_SITE_URL}/?paypal=anulluar",
+        },
+    }
+    try:
+        r = requests.post(f"{PAYPAL_BASE}/v2/checkout/orders",
+                          headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                          json=trupi, timeout=20)
+        res = r.json()
+    except Exception as e:
+        return {"sukses": False, "mesazhi": f"Gabim PayPal: {e}"}
+    pp_id = res.get("id")
+    approve = next((l["href"] for l in res.get("links", []) if l.get("rel") == "approve"), None)
+    if not pp_id or not approve:
+        return {"sukses": False, "kod": "PAYPAL_ERR", "mesazhi": "Pergjigje e papritur nga PayPal"}
+
+    order_id = "pp_" + pp_id
+    requests.post(SUPABASE_URL_POROSITE,
+                  headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=merge-duplicates"},
+                  json={"order_id": order_id, "email": email, "tipi": tipi, "amount": f"{shuma:.2f}",
+                        "match_id": str(match_id) if match_id else None,
+                        "ndeshja": ndeshja, "rezultati": rezultati,
+                        "koef": str(koef) if koef is not None else None,
+                        "status": "wait", "krijuar": datetime.utcnow().isoformat()})
+    return {"sukses": True, "url": approve, "order_id": order_id}
+
+
+@app.get("/api/paypal/capture")
+def paypal_kap(order_id: str = None, token: str = None):
+    """Kap pagesen te PayPal, pastaj krediton (idempotent). Pranon order_id ('pp_'+id) ose token (id nga PayPal)."""
+    if not order_id and token:
+        order_id = "pp_" + token
+    if not order_id:
+        return {"status": "panjohur"}
+    pp_id = order_id[3:] if str(order_id).startswith("pp_") else order_id
+    tok = _paypal_token()
+    if tok:
+        try:
+            requests.post(f"{PAYPAL_BASE}/v2/checkout/orders/{pp_id}/capture",
+                          headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                          timeout=20)
+        except Exception:
+            pass
+    _kredito_porosine(order_id)   # porta verifikon COMPLETED te PayPal (idempotent)
+    pres = requests.get(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}&select=status",
+                        headers=SUPABASE_SERVICE_HEADERS)
+    pros = pres.json() if pres.status_code == 200 else []
+    if not pros:
+        return {"status": "panjohur"}
+    return {"status": pros[0].get("status")}
+
 
 
 # ==========================================================
