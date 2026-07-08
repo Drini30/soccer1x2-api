@@ -1068,7 +1068,7 @@ def paypal_krijo_porosi(payload: dict):
         "intent": "CAPTURE",
         "purchase_units": [{"amount": {"currency_code": "USD", "value": f"{shuma:.2f}"}}],
         "application_context": {
-            "brand_name": "SOCCER1X2 PRO", "user_action": "PAY_NOW",
+            "brand_name": "SOCCER1X2 PRO", "user_action": "PAY_NOW", "landing_page": "BILLING",
             "return_url": f"{PUBLIC_SITE_URL}/?paypal=return",
             "cancel_url": f"{PUBLIC_SITE_URL}/?paypal=anulluar",
         },
