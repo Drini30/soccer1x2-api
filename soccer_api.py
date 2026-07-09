@@ -978,6 +978,10 @@ def _kredito_porosine(order_id):
         pass  # donacion — s'ndryshon llogarinë
     elif tipi == "ditore":
         update["ditore_unlock_date"] = _data_lokale()
+    elif tipi == "combo":
+        update["vipcombo_fundit"] = _data_lokale()
+    elif tipi == "gjenero":
+        update["generate_fundit"] = _data_lokale()
     elif tipi == "ppm":
         blerjet = u.get("blerjet") or []
         if not any(str(b.get("id")) == str(po.get("match_id")) for b in blerjet):
@@ -1030,7 +1034,7 @@ def crypto_order_status(order_id: str):
 def paypal_krijo_porosi(payload: dict):
     email = payload.get("email", "").lower().strip()
     tipi  = payload.get("tipi")
-    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial"):
+    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial", "combo", "gjenero"):
         return {"sukses": False, "kod": "DATA_INVALID", "mesazhi": "Te dhena te pavlefshme"}
     if not PAYPAL_CLIENT_ID:
         return {"sukses": False, "kod": "PAYPAL_OFF", "mesazhi": "PayPal s'eshte konfiguruar"}
@@ -1043,6 +1047,10 @@ def paypal_krijo_porosi(payload: dict):
         shuma = CMIMI_TRIAL
     elif tipi == "ditore":
         shuma = CMIMI_DITORE
+    elif tipi == "combo":
+        shuma = CMIM_VIPCOMBO
+    elif tipi == "gjenero":
+        shuma = CMIM_GENERATE
     elif tipi in ("topup", "donate"):
         try:
             shuma = float(payload.get("shuma", 0))
@@ -4239,6 +4247,31 @@ try:
 except Exception:
     MOD_KUFI_LART = 0.35
 
+# ── LËNDIMET (API-Football): dënim i vogël xG per lojtar te lenduar/pezulluar (tunable). ──
+try:
+    INJURY_PEN_PER = float(os.environ.get("INJURY_PEN_PER", "0.025").strip())
+except Exception:
+    INJURY_PEN_PER = 0.025
+try:
+    INJURY_PEN_CAP = float(os.environ.get("INJURY_PEN_CAP", "0.12").strip())
+except Exception:
+    INJURY_PEN_CAP = 0.12
+
+# ── MODULATORI I TOTALIT: fut variancE te totali (nga forma + treg O/U) — ruan drejtimin. ──
+# total_xg eshte i ngjeshur (std ~0.18); kjo e shtyn drejt sinjalit real (korr +0.53). K tunable.
+try:
+    TOTAL_K = float(os.environ.get("TOTAL_K", "0.70").strip())
+except Exception:
+    TOTAL_K = 0.70
+try:
+    TOTAL_MIN = float(os.environ.get("TOTAL_MIN", "1.20").strip())
+except Exception:
+    TOTAL_MIN = 1.20
+try:
+    TOTAL_MAX = float(os.environ.get("TOTAL_MAX", "4.50").strip())
+except Exception:
+    TOTAL_MAX = 4.50
+
 # ── RREGULLI I FITUESIT: pragu i "favoritit te qarte" (diferenca p_fitues - p_barazim).
 # Nen kete prag -> ndeshje e ngushte -> lejo barazim. Mbi -> skori DETYROHET te respektoje favoritin.
 try:
@@ -4476,6 +4509,31 @@ def llogarit_besueshmeria_v2(
 # MODULI 6: DESPERATION & KAOS LIGES
 # ==========================================
 
+INJURIES_CACHE = {}
+INJURIES_CACHE_TTL = 6 * 3600  # 6 orE — lendimet nuk ndryshojne shpesh
+
+def _merr_lendimet(fixture_id):
+    """Numri i lojtareve te lenduar/pezulluar per ekip nga API-Football (/injuries?fixture).
+    Kthen {team_id: count}. Cache per fixture 6h. Bosh nese s'ka mbulim (kualifikime/klube te vogla)."""
+    if not fixture_id:
+        return {}
+    ck = str(fixture_id)
+    tani = time.time()
+    cached = INJURIES_CACHE.get(ck)
+    if cached and (tani - cached[1] < INJURIES_CACHE_TTL):
+        return cached[0]
+    out = {}
+    try:
+        data = _api_sports_get("injuries", {"fixture": fixture_id})
+        for it in (data.get("response", []) if data else []):
+            tid = (it.get("team", {}) or {}).get("id")
+            if tid is not None:
+                out[tid] = out.get(tid, 0) + 1
+    except Exception:
+        pass
+    INJURIES_CACHE[ck] = (out, tani)
+    return out
+
 def llogarit_desperation_index(ekipi_id, standings):
     if not standings:
         return 1.0
@@ -4528,16 +4586,32 @@ def apliko_kaosin_e_liges(emri_liges: str, vol_1: float = 15.0, vol_2: float = 1
 # MOTORI KRYESOR I ANALIZËS V2
 # ==========================================
 
-def llogarit_modulator(forma):
+def _lambda_nga_p_over(p_over):
+    """Gjej lambda (totali i pritur i golave) qe jep kete P(mbi 2.5) sipas Poisson. Bisection."""
+    import math
+    def _p_mbi(lam):
+        return 1.0 - math.exp(-lam) * (1.0 + lam + lam * lam / 2.0)
+    lo, hi = 0.4, 6.0
+    p_over = min(0.98, max(0.02, float(p_over)))
+    for _ in range(40):
+        mid = (lo + hi) / 2.0
+        if _p_mbi(mid) < p_over:
+            lo = mid
+        else:
+            hi = mid
+    return round((lo + hi) / 2.0, 3)
+
+def llogarit_modulator(forma, lendime=0):
     """MODULATORI — rregullim i xG-së në FUND, nga fakte të verifikueshme.
-    Aktive tani: regresion i serisë së fitoreve + kongjestioni (ndeshje në 14 ditë).
-    Hapësirë e ardhshme: formacione/lëndime, lëvizje kuotash, mot."""
+    Aktive tani: regresion i serisë së fitoreve + kongjestioni (ndeshje në 14 ditë)
+    + LËNDIME/pezullime (API-Football). Hapësirë e ardhshme: formacione, lëvizje kuotash, mot."""
     k    = int(forma.get("k_wins_rresht", 0) or 0)
     cong = int(forma.get("ndeshje_14d", 0) or 0)
     streak_pen = 0.030 * max(0, k - 3)      # mean reversion pas serive të gjata
     cong_pen   = 0.035 * max(0, cong - 3)   # lodhje nga kongjestioni
-    mod = 1.0 - min(0.20, streak_pen + cong_pen)
-    return round(mod, 3)
+    injury_pen = min(INJURY_PEN_CAP, INJURY_PEN_PER * max(0, int(lendime or 0)))  # lëndime (tunable)
+    mod = 1.0 - min(0.20, streak_pen + cong_pen) - injury_pen
+    return round(max(0.60, mod), 3)         # dysheme që të mos bjerë shumë
 
 
 def analizo_ndeshjen_premium_master(
@@ -4639,15 +4713,39 @@ def analizo_ndeshjen_premium_master(
         xg_1 *= 1.10
         xg_2 *= 1.10
 
-    # ── MODULATORI (lodhje + kongjestion) — aplikohet në FUND mbi xG ──
-    _mod_1 = llogarit_modulator(forma_1)
-    _mod_2 = llogarit_modulator(forma_2)
+    # ── MODULATORI (lodhje + kongjestion + lëndime) — aplikohet në FUND mbi xG ──
+    _lend = _merr_lendimet(id_ndeshja)
+    _lend_1 = int(_lend.get(ekipi_1_id, 0))
+    _lend_2 = int(_lend.get(ekipi_2_id, 0))
+    _mod_1 = llogarit_modulator(forma_1, _lend_1)
+    _mod_2 = llogarit_modulator(forma_2, _lend_2)
     xg_1 *= _mod_1
     xg_2 *= _mod_2
 
     # Kap brenda kufijve pas modifikimeve
     xg_1 = float(np.clip(xg_1, 0.30, 5.00))
     xg_2 = float(np.clip(xg_2, 0.30, 5.00))
+
+    # ── MODULATORI I TOTALIT: shtyn totalin drejt sinjalit real (forma + treg O/U) — RUAN drejtimin ──
+    # total_xg eshte i ngjeshur; kjo fut variancE (rishkallezon te dyja me te njejtin faktor -> raporti/drejtimi s'ndryshon).
+    _total_aktual = xg_1 + xg_2
+    _home_form_g = (float(forma_1.get("avg_gola_shenuar", 1.3)) + float(forma_2.get("avg_gola_prane", 1.3))) / 2.0
+    _away_form_g = (float(forma_2.get("avg_gola_shenuar", 1.3)) + float(forma_1.get("avg_gola_prane", 1.3))) / 2.0
+    _total_form = _home_form_g + _away_form_g
+    _total_target = _total_form
+    if _ou_o and _ou_u:
+        try:
+            _p_over = (1.0 / float(_ou_o)) / (1.0 / float(_ou_o) + 1.0 / float(_ou_u))
+            _lam_treg = _lambda_nga_p_over(_p_over)
+            _total_target = 0.5 * _total_form + 0.5 * _lam_treg   # blend forma + treg (kur ka odds O/U)
+        except Exception:
+            pass
+    _total_i_ri = _total_aktual + TOTAL_K * (_total_target - _total_aktual)
+    _total_i_ri = float(np.clip(_total_i_ri, TOTAL_MIN, TOTAL_MAX))
+    if _total_aktual > 0.10:
+        _shk_total = _total_i_ri / _total_aktual
+        xg_1 = float(np.clip(xg_1 * _shk_total, 0.20, 5.00))
+        xg_2 = float(np.clip(xg_2 * _shk_total, 0.20, 5.00))
 
     # ── MONTE CARLO V2 (numpy, 50k) ──
     _seed_ndeshja = int(hashlib.sha256(str(id_ndeshja).encode()).hexdigest()[:8], 16)
@@ -4954,6 +5052,8 @@ def analizo_ndeshjen_premium_master(
             # ── INPUTET E MODULATORIT (per akordim me vone) ──
             "streak_1": int(forma_1.get("k_wins_rresht", 0) or 0), "streak_2": int(forma_2.get("k_wins_rresht", 0) or 0),
             "kongjestion_1": int(forma_1.get("ndeshje_14d", 0) or 0), "kongjestion_2": int(forma_2.get("ndeshje_14d", 0) or 0),
+            "lendime_1": _lend_1, "lendime_2": _lend_2,
+            "total_form": round(float(_total_form), 3), "total_target": round(float(_total_target), 3),
         },
     }
 
