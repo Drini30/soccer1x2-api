@@ -4499,6 +4499,18 @@ def simulim_monte_carlo_v2(
         "NG": _pf((_ii == 0) | (_jj == 0)),
     }
 
+    # ── KALIBRIMI I O/U (I SHKEPUTUR): Over/Under nga total i kalibruar, skori s'preket. ──
+    # Skori/drejtimi/1-1/GG-NG perdorin xG te paster; VETEM Over/Under X.5 perdorin totalin -TOTAL_CALIB.
+    if TOTAL_CALIB != 0.0:
+        import math as _m
+        _lam_ou = max(0.30, (xg_1 + xg_2) - TOTAL_CALIB)
+        def _pcdf(_k, _lam):
+            return sum(_m.exp(-_lam) * _lam ** _i / _m.factorial(_i) for _i in range(_k + 1))
+        for _kk, _lbl in [(1, "1.5"), (2, "2.5"), (3, "3.5")]:
+            _u = round(_pcdf(_kk, _lam_ou), 4)
+            tregjet["Under " + _lbl] = _u
+            tregjet["Over " + _lbl] = round(1.0 - _u, 4)
+
     return rez_str, round(prob_max, 4), rezultatet_freq, prob_1x2, tregjet
 
 # ==========================================
@@ -4773,7 +4785,6 @@ def analizo_ndeshjen_premium_master(
         except Exception:
             pass
     _total_i_ri = _total_aktual + TOTAL_K * (_total_target - _total_aktual)
-    _total_i_ri = _total_i_ri - TOTAL_CALIB   # kalibrim i mesatares poshte (fix O/U mean-bias)
     _total_i_ri = float(np.clip(_total_i_ri, TOTAL_MIN, TOTAL_MAX))
     if _total_aktual > 0.10:
         _shk_total = _total_i_ri / _total_aktual
