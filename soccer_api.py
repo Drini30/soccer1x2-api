@@ -94,6 +94,9 @@ _ngarko_modelet_xgb()
 
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
+# Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
+VERSION = "2026-07-10-A · rregulli 1-1 + kalibrim O/U i shkeputur + odds multi-bookmaker"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^https://(www\.)?soccer1x2pro\.com$|^https://([a-z0-9-]+\.)?rapidapi\.com$",
@@ -4164,20 +4167,22 @@ def _merr_odds_per_fixture(fix_id):
     if ck and now - ck[0] < _ODDS_FIXTURE_TTL:
         return ck[1]
     result = None
-    for _bm in [8, 4, 6, 2, 11]:   # Bet365, Pinnacle, 1xBet, Marathon, William Hill
-        try:
-            r = requests.get("https://v3.football.api-sports.io/odds", headers=HEADERS,
-                             params={"fixture": fix_id, "bookmaker": _bm}, timeout=10).json()
-            resp = r.get("response") or []
-            if not resp:
-                continue
-            bets = resp[0]["bookmakers"][0]["bets"]
-            parsed = _nxirr_odds_reale(bets)
-            if parsed.get("1") and parsed.get("X") and parsed.get("2"):
-                result = parsed
-                break
-        except Exception:
-            continue
+    # Prioritet bukmejkeret SERIOZE, por marrim TE GJITHE ne nje thirrje (mbulim maksimal).
+    _PRIOR = [8, 4, 6, 2, 11, 3, 5, 1, 9, 16]  # Bet365, Pinnacle, 1xBet, Marathon, WilliamHill, Betfair, Bwin, 10Bet, Dafabet, Unibet
+    try:
+        r = requests.get("https://v3.football.api-sports.io/odds", headers=HEADERS,
+                         params={"fixture": fix_id}, timeout=12).json()
+        resp = r.get("response") or []
+        if resp:
+            bmks = resp[0].get("bookmakers") or []
+            bmks.sort(key=lambda b: _PRIOR.index(b.get("id")) if b.get("id") in _PRIOR else 999)
+            for b in bmks:
+                parsed = _nxirr_odds_reale(b.get("bets") or [])
+                if parsed.get("1") and parsed.get("X") and parsed.get("2"):
+                    result = parsed
+                    break
+    except Exception:
+        pass
     _ODDS_FIXTURE_CACHE[key] = (now, result)
     return result
 
@@ -5909,6 +5914,46 @@ def root():
         "engine":      "VIP_PPM_Engine_V2",
         "monte_carlo": "50k_numpy",
         "uptime":      datetime.utcnow().isoformat()
+    }
+
+
+@app.get("/api/status")
+def api_status():
+    """Statusi i backend-it: version, konfigurimi aktiv (env-var), sherbimet e konfiguruara.
+    Perdore per te konfirmuar cka eshte LIVE ne Render pas nje deploy-i."""
+    try:
+        _koha = _data_lokale().isoformat()
+    except Exception:
+        _koha = datetime.utcnow().isoformat()
+    return {
+        "status":  "ok",
+        "version": VERSION,
+        "koha":    _koha,
+        "konfigurimi": {
+            "TOTAL_K":        TOTAL_K,
+            "TOTAL_CALIB":    TOTAL_CALIB,
+            "TOTAL_MIN":      TOTAL_MIN,
+            "TOTAL_MAX":      TOTAL_MAX,
+            "WINNER_PRAG":    WINNER_PRAG,
+            "ONE_ONE_MIN":    ONE_ONE_MIN,
+            "ONE_ONE_MAX":    ONE_ONE_MAX,
+            "ONE_ONE_CAP":    ONE_ONE_CAP,
+            "INJURY_PEN_PER": INJURY_PEN_PER,
+            "INJURY_PEN_CAP": INJURY_PEN_CAP,
+        },
+        "sherbimet": {
+            "supabase":     bool(SUPABASE_URL_PREDS),
+            "api_football": bool(API_KEY),
+            "paypal":       bool(PAYPAL_CLIENT_ID),
+            "paypal_mode":  ("sandbox" if "sandbox" in PAYPAL_BASE else "live"),
+        },
+        "vecorite": {
+            "modulator_totali":      True,
+            "rregulli_1_1":          True,
+            "kalibrim_ou_shkeputur": (TOTAL_CALIB != 0.0),
+            "lendimet":              True,
+            "renditja":              True,
+        },
     }
 
 # ==========================================
