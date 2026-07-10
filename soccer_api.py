@@ -4272,6 +4272,29 @@ try:
 except Exception:
     TOTAL_MAX = 4.50
 
+# ── KALIBRIMI I MESATARES: zbrit nga totali final (fix O/U mean-bias). ──
+# total_xg rrinte ~0.45 mbi realen -> parashikonte Over shume. Fillimisht konservativ 0.20.
+try:
+    TOTAL_CALIB = float(os.environ.get("TOTAL_CALIB", "0.20").strip())
+except Exception:
+    TOTAL_CALIB = 0.20
+
+# ── RREGULLI 1-1: kur skori del 1-1, riinterpreto sipas leanit te xG. ──
+# Te dyja xG ne [ONE_ONE_MIN, ONE_ONE_MAX] -> mbetet 1-1 (vertet i balancuar).
+# Ndryshe: fituesi = round(xG)+1, humbesi = round(xG), me kufi ONE_ONE_CAP gola.
+try:
+    ONE_ONE_MIN = float(os.environ.get("ONE_ONE_MIN", "1.20").strip())
+except Exception:
+    ONE_ONE_MIN = 1.20
+try:
+    ONE_ONE_MAX = float(os.environ.get("ONE_ONE_MAX", "1.46").strip())
+except Exception:
+    ONE_ONE_MAX = 1.46
+try:
+    ONE_ONE_CAP = int(float(os.environ.get("ONE_ONE_CAP", "3").strip()))
+except Exception:
+    ONE_ONE_CAP = 3
+
 # ── RREGULLI I FITUESIT: pragu i "favoritit te qarte" (diferenca p_fitues - p_barazim).
 # Nen kete prag -> ndeshje e ngushte -> lejo barazim. Mbi -> skori DETYROHET te respektoje favoritin.
 try:
@@ -4448,6 +4471,15 @@ def simulim_monte_carlo_v2(
     if _fkand:
         kandidatet = _fkand                                    # mbrojtje: mos zbraz listen
     rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
+    # ── RREGULLI 1-1: kur skori del 1-1, apliko rregullin e xG (lean). ──
+    if (rez_g1 == 1 and rez_g2 == 1 and xg_1 != xg_2
+            and not (ONE_ONE_MIN <= xg_1 <= ONE_ONE_MAX and ONE_ONE_MIN <= xg_2 <= ONE_ONE_MAX)):
+        _rhu = lambda _x: int(_x + 0.5)   # round half-up
+        if xg_1 > xg_2:
+            rez_g1 = min(_rhu(xg_1) + 1, ONE_ONE_CAP); rez_g2 = min(_rhu(xg_2), ONE_ONE_CAP)
+        else:
+            rez_g2 = min(_rhu(xg_2) + 1, ONE_ONE_CAP); rez_g1 = min(_rhu(xg_1), ONE_ONE_CAP)
+        freq_zgjedhur = float(H[rez_g1, rez_g2])
     rez_str  = f"{rez_g1}-{rez_g2}"
     prob_max = float(freq_zgjedhur)
 
@@ -4741,6 +4773,7 @@ def analizo_ndeshjen_premium_master(
         except Exception:
             pass
     _total_i_ri = _total_aktual + TOTAL_K * (_total_target - _total_aktual)
+    _total_i_ri = _total_i_ri - TOTAL_CALIB   # kalibrim i mesatares poshte (fix O/U mean-bias)
     _total_i_ri = float(np.clip(_total_i_ri, TOTAL_MIN, TOTAL_MAX))
     if _total_aktual > 0.10:
         _shk_total = _total_i_ri / _total_aktual
