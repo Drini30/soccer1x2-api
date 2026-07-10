@@ -5805,7 +5805,8 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
                     "liga_emri":      emri_liges,
                 }
 
-                if eshte_liga_vip and k1 and kx and k2:
+                # ── Gjenero VETEM ndeshjet e PALUAJTURA (NS/TBD) — mos ripredikto te mbaruarat/live. ──
+                if eshte_liga_vip and k1 and kx and k2 and statusi_kod in ("NS", "TBD"):
                     try:
                         # Merr DNA për të dyja skuadrat
                         dna_1 = merr_dna_nga_db(n["teams"]["home"]["id"])
