@@ -95,7 +95,7 @@ _ngarko_modelet_xgb()
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
-VERSION = "2026-07-10-B · skori ndjek xG (affinity 0 + kalibrim force) + rregulli 1-1 + O/U i shkeputur"
+VERSION = "2026-07-10-D · delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
 
 app.add_middleware(
     CORSMiddleware,
@@ -286,6 +286,11 @@ class ForgotInput(BaseModel):
 
 class ResetInput(BaseModel):
     token: str = ""
+    password: str = ""
+
+
+class DeleteAccountInput(BaseModel):
+    email: str = ""
     password: str = ""
 
 # ── SIGURIA: helpers për hashim + service headers + admin ──
@@ -633,6 +638,60 @@ def perditeso_perdorues(user_data: dict):
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
                        headers=SUPABASE_SERVICE_HEADERS, json=payload)
     return {"sukses": True}
+
+
+@app.post("/api/delete_account")
+def fshij_llogarine(data: DeleteAccountInput):
+    """Fshin llogarine e perdoruesit. Kerkon FJALEKALIMIN (siguri).
+    Fshihen: users + skedina_ime + skedina_gjenero.
+    Porosite RUHEN (te anonimizuara) — nevojiten per kontabilitet/mosmarreveshje."""
+    email = (data.email or "").lower().strip()
+    if not email or not data.password:
+        return {"sukses": False, "kod": "DATA_MISSING", "mesazhi": "Email dhe fjalëkalimi kërkohen."}
+
+    # 1) Verifiko fjalekalimin (mbrojtje: askush s'fshin llogarine e tjetrit)
+    try:
+        res = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}", headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        rows = res.json() if res.status_code == 200 else []
+    except Exception:
+        return {"sukses": False, "kod": "DB_ERROR", "mesazhi": "Gabim databaze."}
+    if not rows:
+        return {"sukses": False, "kod": "AUTH_FAILED", "mesazhi": "Email ose fjalëkalim i gabuar."}
+    u = rows[0]
+    if not _verifiko_fjalekalimi(data.password, u.get("password", "")):
+        return {"sukses": False, "kod": "AUTH_FAILED", "mesazhi": "Email ose fjalëkalim i gabuar."}
+
+    # 2) Paralajmerim per vlera te humbura (VIP aktiv / kredit ne portofol)
+    _portofoli = float(u.get("portofoli") or 0)
+    _isvip = bool(u.get("isVip"))
+
+    # 3) Anonimizo porosite (RUHEN per kontabilitet, pa te dhena personale)
+    try:
+        requests.patch(f"{SUPABASE_URL_POROSITE}?email=eq.{email}",
+                       headers=SUPABASE_SERVICE_HEADERS,
+                       json={"email": f"deleted_{secrets.token_hex(6)}@deleted.local"}, timeout=10)
+    except Exception:
+        pass
+
+    # 4) Fshij aktivitetin personal
+    for _url, _kol in ((SKEDINA_IME_URL, "email"),
+                       (f"{SUPABASE_BASE}/rest/v1/skedina_gjenero", "user_email")):
+        try:
+            requests.delete(f"{_url}?{_kol}=eq.{email}", headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        except Exception:
+            pass
+
+    # 5) Fshij llogarine
+    try:
+        rdel = requests.delete(f"{SUPABASE_URL_USERS}?email=eq.{email}",
+                               headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+        if rdel.status_code not in (200, 204):
+            return {"sukses": False, "kod": "DELETE_FAILED", "mesazhi": "Fshirja dështoi. Provo përsëri."}
+    except Exception:
+        return {"sukses": False, "kod": "DELETE_FAILED", "mesazhi": "Fshirja dështoi. Provo përsëri."}
+
+    return {"sukses": True, "mesazhi": "Llogaria u fshi.",
+            "kishte_vip": _isvip, "portofoli_i_humbur": round(_portofoli, 2)}
 
 
 @app.get("/api/users")
@@ -4310,10 +4369,30 @@ try:
     FORCA_PIVOT = float(os.environ.get("FORCA_PIVOT", "1.30").strip())
 except Exception:
     FORCA_PIVOT = 1.30
+# Affinity DINAMIK sipas forcës mbrojtëse (golat e pesuar):
+#   pesuar < AFF_THRESH (mbrojtje e fortë) -> AFF_LOW -> skori zbret te modat e ulëta (0-0,1-0)
+#   pesuar >= AFF_THRESH (mbrojtje e dobët/sulmuese) -> AFF_HIGH -> skori i lartë (favoritët e mëdhenj)
 try:
-    AFFINITY_FACTOR = float(os.environ.get("AFFINITY_FACTOR", "0.0").strip())
+    AFF_HIGH = float(os.environ.get("AFF_HIGH", "0.5").strip())
 except Exception:
-    AFFINITY_FACTOR = 0.0
+    AFF_HIGH = 0.5
+try:
+    AFF_LOW = float(os.environ.get("AFF_LOW", "0.0").strip())
+except Exception:
+    AFF_LOW = 0.0
+try:
+    AFF_THRESH = float(os.environ.get("AFF_THRESH", "1.20").strip())
+except Exception:
+    AFF_THRESH = 1.20
+
+# ── MODALITETI I MIREMBAJTJES: ndizet/fiket nga Render env-var, PA deploy. ──
+# MAINTENANCE=1 -> faqja bllokohet me ekranin "System updating".
+# MAINTENANCE_MSG -> mesazh opsional i personalizuar.
+def _maintenance_on() -> bool:
+    return os.environ.get("MAINTENANCE", "0").strip() in ("1", "true", "True", "yes", "on")
+
+def _maintenance_msg() -> str:
+    return os.environ.get("MAINTENANCE_MSG", "").strip()
 
 # ── RREGULLI I FITUESIT: pragu i "favoritit te qarte" (diferenca p_fitues - p_barazim).
 # Nen kete prag -> ndeshje e ngushte -> lejo barazim. Mbi -> skori DETYROHET te respektoje favoritin.
@@ -4415,7 +4494,8 @@ def simulim_monte_carlo_v2(
     is_derbi: bool = False,
     iteracione: int = 50_000,
     rho: float = RHO_DC,
-    seed: int = None
+    seed: int = None,
+    aff: float = 0.5
 ) -> tuple:
     """
     Monte Carlo vectorized me numpy — 50,000 simulime në ~60ms.
@@ -4476,7 +4556,7 @@ def simulim_monte_carlo_v2(
         _i = int(_idx // H.shape[1]); _j = int(_idx % H.shape[1])
         _freq = float(_flat[_idx])
         _difft = abs((_i + _j) - total_pritur)
-        _score = _freq * (1.0 / (1.0 + _difft * AFFINITY_FACTOR))
+        _score = _freq * (1.0 / (1.0 + _difft * aff))
         kandidatet.append((_i, _j, _freq, _score))
     kandidatet.sort(key=lambda x: x[3], reverse=True)
     # ── RREGULLI I FITUESIT: skori respekton favoritin e QARTE (nga p1/px/p2). ──
@@ -4818,8 +4898,11 @@ def analizo_ndeshjen_premium_master(
 
     # ── MONTE CARLO V2 (numpy, 50k) ──
     _seed_ndeshja = int(hashlib.sha256(str(id_ndeshja).encode()).hexdigest()[:8], 16)
+    # affinity DINAMIK: mbrojtje e fortë (pesuar<THRESH) -> AFF_LOW (skorë të ulëta); ndryshe AFF_HIGH
+    _def_str_aff = (float(forma_1.get("avg_gola_prane", 1.3)) + float(forma_2.get("avg_gola_prane", 1.3))) / 2.0
+    _aff_dyn = AFF_LOW if _def_str_aff < AFF_THRESH else AFF_HIGH
     rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
-        xg_1, xg_2, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja
+        xg_1, xg_2, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja, aff=_aff_dyn
     )
 
     # ── HT/FT — SIMULIM I PAVARUR (gjysma e parë simulohet veçmas, jo nga skori FT) ──
@@ -5947,6 +6030,8 @@ def api_status():
         _koha = datetime.utcnow().isoformat()
     return {
         "status":  "ok",
+        "maintenance": _maintenance_on(),
+        "maintenance_msg": _maintenance_msg(),
         "version": VERSION,
         "koha":    _koha,
         "konfigurimi": {
