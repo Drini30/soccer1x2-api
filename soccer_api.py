@@ -95,7 +95,7 @@ _ngarko_modelet_xgb()
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
-VERSION = "2026-07-10-A · rregulli 1-1 + kalibrim O/U i shkeputur + odds multi-bookmaker"
+VERSION = "2026-07-10-B · skori ndjek xG (affinity 0 + kalibrim force) + rregulli 1-1 + O/U i shkeputur"
 
 app.add_middleware(
     CORSMiddleware,
@@ -4300,6 +4300,21 @@ try:
 except Exception:
     ONE_ONE_CAP = 3
 
+# ── SKORI NDJEK xG: (a) affinity 0 -> skori = moda e xG-se; (b) kalibrim force -> ul ──
+# xG-ne per ndeshjet mbrojtese (pesuar i ulet) qe moda te bjere te 0-0/1-0/0-1.
+try:
+    FORCA_CALIB = float(os.environ.get("FORCA_CALIB", "0.80").strip())
+except Exception:
+    FORCA_CALIB = 0.80
+try:
+    FORCA_PIVOT = float(os.environ.get("FORCA_PIVOT", "1.30").strip())
+except Exception:
+    FORCA_PIVOT = 1.30
+try:
+    AFFINITY_FACTOR = float(os.environ.get("AFFINITY_FACTOR", "0.0").strip())
+except Exception:
+    AFFINITY_FACTOR = 0.0
+
 # ── RREGULLI I FITUESIT: pragu i "favoritit te qarte" (diferenca p_fitues - p_barazim).
 # Nen kete prag -> ndeshje e ngushte -> lejo barazim. Mbi -> skori DETYROHET te respektoje favoritin.
 try:
@@ -4461,7 +4476,7 @@ def simulim_monte_carlo_v2(
         _i = int(_idx // H.shape[1]); _j = int(_idx % H.shape[1])
         _freq = float(_flat[_idx])
         _difft = abs((_i + _j) - total_pritur)
-        _score = _freq * (1.0 / (1.0 + _difft * 0.5))
+        _score = _freq * (1.0 / (1.0 + _difft * AFFINITY_FACTOR))
         kandidatet.append((_i, _j, _freq, _score))
     kandidatet.sort(key=lambda x: x[3], reverse=True)
     # ── RREGULLI I FITUESIT: skori respekton favoritin e QARTE (nga p1/px/p2). ──
@@ -4790,6 +4805,11 @@ def analizo_ndeshjen_premium_master(
         except Exception:
             pass
     _total_i_ri = _total_aktual + TOTAL_K * (_total_target - _total_aktual)
+    # ── KALIBRIMI I FORCES: ndeshjet mbrojtese (pesuar i ulet) -> ul totalin -> skorë të ulëta ──
+    if FORCA_CALIB > 0.0:
+        _def_str = (float(forma_1.get("avg_gola_prane", 1.3)) + float(forma_2.get("avg_gola_prane", 1.3))) / 2.0
+        _forca_shift = FORCA_CALIB * max(0.0, min(1.0, (FORCA_PIVOT - _def_str) / FORCA_PIVOT))
+        _total_i_ri = _total_i_ri - _forca_shift
     _total_i_ri = float(np.clip(_total_i_ri, TOTAL_MIN, TOTAL_MAX))
     if _total_aktual > 0.10:
         _shk_total = _total_i_ri / _total_aktual
