@@ -95,7 +95,7 @@ _ngarko_modelet_xgb()
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
-VERSION = "2026-07-10-D · delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
+VERSION = "2026-07-10-E · aktiviteti + delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
 
 app.add_middleware(
     CORSMiddleware,
@@ -225,6 +225,22 @@ SUPABASE_URL_PREDS = f"{SUPABASE_BASE}/rest/v1/predictions"
 SUPABASE_URL_TRAINING = f"{SUPABASE_BASE}/rest/v1/training_results"
 SUPABASE_URL_USERS = f"{SUPABASE_BASE}/rest/v1/users"
 SUPABASE_URL_DNA   = f"{SUPABASE_BASE}/rest/v1/team_dna_cache"
+SUPABASE_URL_AKTIVITETI = f"{SUPABASE_BASE}/rest/v1/aktiviteti"
+
+
+def _log_aktivitet(email: str, veprimi: str, detaje: dict = None):
+    """Logon nje veprim te perdoruesit (fire-and-forget: kurre s'e bllokon kerkesen).
+    Veprimet: register | login | gjenero_skedine | vip_combo | pagese_nis | pagese_sukses"""
+    try:
+        if not email or not veprimi:
+            return
+        _rrjeshti = {"email": str(email).lower().strip(), "veprimi": veprimi}
+        if detaje:
+            _rrjeshti["detaje"] = detaje
+        requests.post(SUPABASE_URL_AKTIVITETI, headers=SUPABASE_SERVICE_HEADERS,
+                      json=_rrjeshti, timeout=3)
+    except Exception:
+        pass   # logimi kurre s'prish funksionalitetin kryesor
 
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -488,11 +504,13 @@ def regjistro_perdorues(data: LoginData):
         "password": _hash_fjalekalimi(data.password),   # HASH, jo plaintext
         "emri": emri, "mbiemri": mbiemri,
         "portofoli": 10.0, "isVip": False, "vip_skadon_me": None,
-        "auto_rinovim": False, "blerjet": []
+        "auto_rinovim": False, "blerjet": [],
+        "krijuar": datetime.utcnow().isoformat()
     }
     res_insert = requests.post(SUPABASE_URL_USERS, headers=SUPABASE_SERVICE_HEADERS, json=user_payload)
     if res_insert.status_code in [200, 201, 204]:
         u = dict(user_payload); u.pop("password", None)
+        _log_aktivitet(email_clean, "register")
         return {"sukses": True, "perdoruesi": u, "token": _krijo_token(u.get("email", ""))}
     return {"sukses": False, "mesazhi": f"Gabim Databaze: {res_insert.text}"}
 
@@ -519,6 +537,14 @@ def login_perdorues(data: LoginData):
         except Exception:
             pass
     u.pop("password", None)
+    # Aktiviteti: last_login + log (fire-and-forget, s'bllokon login-in)
+    try:
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email_clean}",
+                       headers=SUPABASE_SERVICE_HEADERS,
+                       json={"last_login": datetime.utcnow().isoformat()}, timeout=3)
+    except Exception:
+        pass
+    _log_aktivitet(email_clean, "login")
     return {"sukses": True, "perdoruesi": u, "token": _krijo_token(u.get("email", ""))}
 
 
@@ -972,6 +998,7 @@ def crypto_krijo_fature(payload: dict):
                         "ndeshja": ndeshja, "rezultati": rezultati,
                         "koef": str(koef) if koef is not None else None,
                         "status": "wait", "krijuar": datetime.utcnow().isoformat()})
+    _log_aktivitet(email, "pagese_nis", {"tipi": tipi, "shuma": round(float(shuma), 2), "order_id": order_id})
     return {"sukses": True, "url": result["url"], "order_id": order_id}
 
 
@@ -1062,6 +1089,7 @@ def _kredito_porosine(order_id):
     requests.patch(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}",
                    headers=SUPABASE_SERVICE_HEADERS,
                    json={"status": "paid", "paguar": datetime.utcnow().isoformat()})
+    _log_aktivitet(email, "pagese_sukses", {"tipi": tipi, "shuma": shuma, "order_id": order_id})
     return True
 
 
@@ -2710,6 +2738,7 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     _porto_ri = _konfirmo_perdorimin(email, "generate", CMIM_GENERATE, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
     if not _manual: _ruaj_given_ids(email, _prod_key, [n.get("id") for n in sked.get("ndeshjet", []) if n.get("id")])
     _ruaj_gjenero_legs(email, sked, pool)
+    _log_aktivitet(email, "gjenero_skedine", {"nr": nr, "liga": liga or None})
     return {"sukses": True, "skedina": sked, "rifilluar": rifilluar,
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
             "cmimi": CMIM_GENERATE,
@@ -3731,6 +3760,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     _ruaj_vip_legs(email, ndeshjet, rows)
     _bv = [float(n["besueshmeria"]) for n in ndeshjet if n.get("besueshmeria") is not None]
     besu_mesatare = round(sum(_bv) / len(_bv)) if _bv else None
+    _log_aktivitet(email, "vip_combo", {"nr_ndeshje": nr, "nr_rezultate": rez})
     return {"sukses": True, "nr_ndeshje": nr, "nr_rezultate": rez, "rifilluar": rifilluar,
             "prag_besueshmerie": prag_perdorur,
             "besu_mesatare": besu_mesatare,
