@@ -95,7 +95,7 @@ _ngarko_modelet_xgb()
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
-VERSION = "2026-07-12-G · NORMALIZIM i xG (drejtim 59%->67%) + protezat e hequra + aktiviteti + delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
+VERSION = "2026-07-12-H · fallback respekton fituesin (fix 1-1) + NORMALIZIM i xG (drejtim 59%->67%) + protezat e hequra + aktiviteti + delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
 
 app.add_middleware(
     CORSMiddleware,
@@ -5015,16 +5015,28 @@ def analizo_ndeshjen_premium_master(
     except:
         g1, g2 = 1, 0
 
-    # Fallback: nëse total gola shumë i ulët por xG tregon lojë të hapur
+    # Fallback: nëse total gola shumë i ulët por xG tregon lojë të hapur.
+    # ⚠️ VARIANTI C: fallback-u RESPEKTON rregullin e fituesit (perndryshe kthente 1-1
+    #    edhe kur modeli tregonte favorit te qarte — bug i vjeter, ~15/41 ndeshje).
     if (g1 + g2 <= 1) and (xg_1 + xg_2 > 2.5):
+        _p1f = float(prob_1x2_mc.get("p1", 0.0))
+        _pxf = float(prob_1x2_mc.get("px", 0.0))
+        _p2f = float(prob_1x2_mc.get("p2", 0.0))
+        _forco_1 = (_p1f - _pxf) > WINNER_PRAG and _p1f >= _p2f
+        _forco_2 = (_p2f - _pxf) > WINNER_PRAG and _p2f > _p1f
         for r, freq in sorted(rezultatet_freq.items(), key=lambda x: x[1], reverse=True):
             try:
                 rg1, rg2 = map(int, r.split("-"))
-                if rg1 + rg2 > 1:
-                    rez_sakt       = r
-                    g1, g2         = rg1, rg2
-                    prob_rez_sakt  = freq / 50_000
-                    break
+                if rg1 + rg2 <= 1:
+                    continue
+                if _forco_1 and rg1 <= rg2:   # duhet fitore vendase
+                    continue
+                if _forco_2 and rg2 <= rg1:   # duhet fitore mysafire
+                    continue
+                rez_sakt       = r
+                g1, g2         = rg1, rg2
+                prob_rez_sakt  = freq / 50_000
+                break
             except:
                 continue
 
