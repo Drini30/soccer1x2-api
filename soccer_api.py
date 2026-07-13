@@ -95,7 +95,7 @@ _ngarko_modelet_xgb()
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
-VERSION = "2026-07-10-E · aktiviteti + delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
+VERSION = "2026-07-12-G · NORMALIZIM i xG (drejtim 59%->67%) + protezat e hequra + aktiviteti + delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
 
 app.add_middleware(
     CORSMiddleware,
@@ -4373,17 +4373,18 @@ try:
 except Exception:
     TOTAL_CALIB = 0.20
 
-# ── RREGULLI 1-1: kur skori del 1-1, riinterpreto sipas leanit te xG. ──
+# ── RREGULLI 1-1 (FIKUR si default: MIN=0, MAX=99 -> s'aktivizohet kurre). ──
+# Testi mbi 49 ndeshje: rregulli ULTE rez-saktEn 23%->18%. Per ta ringjallur: MIN=1.20, MAX=1.46.
 # Te dyja xG ne [ONE_ONE_MIN, ONE_ONE_MAX] -> mbetet 1-1 (vertet i balancuar).
 # Ndryshe: fituesi = round(xG)+1, humbesi = round(xG), me kufi ONE_ONE_CAP gola.
 try:
-    ONE_ONE_MIN = float(os.environ.get("ONE_ONE_MIN", "1.20").strip())
+    ONE_ONE_MIN = float(os.environ.get("ONE_ONE_MIN", "0").strip())
 except Exception:
-    ONE_ONE_MIN = 1.20
+    ONE_ONE_MIN = 0.0
 try:
-    ONE_ONE_MAX = float(os.environ.get("ONE_ONE_MAX", "1.46").strip())
+    ONE_ONE_MAX = float(os.environ.get("ONE_ONE_MAX", "99").strip())
 except Exception:
-    ONE_ONE_MAX = 1.46
+    ONE_ONE_MAX = 99.0
 try:
     ONE_ONE_CAP = int(float(os.environ.get("ONE_ONE_CAP", "3").strip()))
 except Exception:
@@ -4392,9 +4393,9 @@ except Exception:
 # ── SKORI NDJEK xG: (a) affinity 0 -> skori = moda e xG-se; (b) kalibrim force -> ul ──
 # xG-ne per ndeshjet mbrojtese (pesuar i ulet) qe moda te bjere te 0-0/1-0/0-1.
 try:
-    FORCA_CALIB = float(os.environ.get("FORCA_CALIB", "0.80").strip())
+    FORCA_CALIB = float(os.environ.get("FORCA_CALIB", "0").strip())
 except Exception:
-    FORCA_CALIB = 0.80
+    FORCA_CALIB = 0.0
 try:
     FORCA_PIVOT = float(os.environ.get("FORCA_PIVOT", "1.30").strip())
 except Exception:
@@ -4403,17 +4404,40 @@ except Exception:
 #   pesuar < AFF_THRESH (mbrojtje e fortë) -> AFF_LOW -> skori zbret te modat e ulëta (0-0,1-0)
 #   pesuar >= AFF_THRESH (mbrojtje e dobët/sulmuese) -> AFF_HIGH -> skori i lartë (favoritët e mëdhenj)
 try:
-    AFF_HIGH = float(os.environ.get("AFF_HIGH", "0.5").strip())
+    AFF_HIGH = float(os.environ.get("AFF_HIGH", "0.35").strip())
 except Exception:
-    AFF_HIGH = 0.5
+    AFF_HIGH = 0.35
 try:
-    AFF_LOW = float(os.environ.get("AFF_LOW", "0.0").strip())
+    AFF_LOW = float(os.environ.get("AFF_LOW", "0.35").strip())
 except Exception:
-    AFF_LOW = 0.0
+    AFF_LOW = 0.35
 try:
     AFF_THRESH = float(os.environ.get("AFF_THRESH", "1.20").strip())
 except Exception:
     AFF_THRESH = 1.20
+
+# ── NORMALIZIMI I xG (regresion): xG dilte i FRYRE (+0.48 gola total). ──
+# Formula: xg_norm = A + B * xg   (fituar nga 49 ndeshje me regresion linear)
+#   Vendas:  gola_realë ≈ -0.42 + 1.06 × xg_1
+#   Mysafir: gola_realë ≈ -0.29 + 1.11 × xg_2
+# Rezultati: drejtimi (1X2) 59% -> 67%.
+# ⚠️ KETO jane parametrat qe do AUTO-KALIBROHEN nga arkivi (me tkurrje) kur te kete 200+ ndeshje.
+try:
+    XG_NORM_A_HOME = float(os.environ.get("XG_NORM_A_HOME", "-0.42").strip())
+except Exception:
+    XG_NORM_A_HOME = -0.42
+try:
+    XG_NORM_B_HOME = float(os.environ.get("XG_NORM_B_HOME", "1.06").strip())
+except Exception:
+    XG_NORM_B_HOME = 1.06
+try:
+    XG_NORM_A_AWAY = float(os.environ.get("XG_NORM_A_AWAY", "-0.29").strip())
+except Exception:
+    XG_NORM_A_AWAY = -0.29
+try:
+    XG_NORM_B_AWAY = float(os.environ.get("XG_NORM_B_AWAY", "1.11").strip())
+except Exception:
+    XG_NORM_B_AWAY = 1.11
 
 # ── MODALITETI I MIREMBAJTJES: ndizet/fiket nga Render env-var, PA deploy. ──
 # MAINTENANCE=1 -> faqja bllokohet me ekranin "System updating".
@@ -4928,11 +4952,15 @@ def analizo_ndeshjen_premium_master(
 
     # ── MONTE CARLO V2 (numpy, 50k) ──
     _seed_ndeshja = int(hashlib.sha256(str(id_ndeshja).encode()).hexdigest()[:8], 16)
-    # affinity DINAMIK: mbrojtje e fortë (pesuar<THRESH) -> AFF_LOW (skorë të ulëta); ndryshe AFF_HIGH
+    # ── NORMALIZIMI I xG (regresion A + B*xG): hiq bias-in sistematik. ──
+    # Perdoret VETEM per perzgjedhjen e skorit; xg_1/xg_2 origjinale ruhen per logim/tregje.
+    _xg1_norm = float(np.clip(XG_NORM_A_HOME + XG_NORM_B_HOME * xg_1, XG_FLOOR, 5.00))
+    _xg2_norm = float(np.clip(XG_NORM_A_AWAY + XG_NORM_B_AWAY * xg_2, XG_FLOOR, 5.00))
+    # affinity DINAMIK: mbrojtje e fortë (pesuar<THRESH) -> AFF_LOW; ndryshe AFF_HIGH
     _def_str_aff = (float(forma_1.get("avg_gola_prane", 1.3)) + float(forma_2.get("avg_gola_prane", 1.3))) / 2.0
     _aff_dyn = AFF_LOW if _def_str_aff < AFF_THRESH else AFF_HIGH
     rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
-        xg_1, xg_2, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja, aff=_aff_dyn
+        _xg1_norm, _xg2_norm, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja, aff=_aff_dyn
     )
 
     # ── HT/FT — SIMULIM I PAVARUR (gjysma e parë simulohet veçmas, jo nga skori FT) ──
