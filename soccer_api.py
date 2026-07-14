@@ -95,7 +95,7 @@ _ngarko_modelet_xgb()
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
-VERSION = "2026-07-12-H · fallback respekton fituesin (fix 1-1) + NORMALIZIM i xG (drejtim 59%->67%) + protezat e hequra + aktiviteti + delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
+VERSION = "2026-07-13-I · sinjali i tregut te skori (variacion: 3-0/2-1) + AFF 0.65 + fallback respekton fituesin + NORMALIZIM i xG (drejtim 59%->67%) + protezat e hequra + aktiviteti + delete account + affinity dinamik (pesuar<1.2->skorë të ulëta, favoritët e mëdhenj të saktë) + kalibrim force + 1-1 + O/U i shkeputur"
 
 app.add_middleware(
     CORSMiddleware,
@@ -4404,13 +4404,13 @@ except Exception:
 #   pesuar < AFF_THRESH (mbrojtje e fortë) -> AFF_LOW -> skori zbret te modat e ulëta (0-0,1-0)
 #   pesuar >= AFF_THRESH (mbrojtje e dobët/sulmuese) -> AFF_HIGH -> skori i lartë (favoritët e mëdhenj)
 try:
-    AFF_HIGH = float(os.environ.get("AFF_HIGH", "0.35").strip())
+    AFF_HIGH = float(os.environ.get("AFF_HIGH", "0.65").strip())
 except Exception:
-    AFF_HIGH = 0.35
+    AFF_HIGH = 0.65
 try:
-    AFF_LOW = float(os.environ.get("AFF_LOW", "0.35").strip())
+    AFF_LOW = float(os.environ.get("AFF_LOW", "0.65").strip())
 except Exception:
-    AFF_LOW = 0.35
+    AFF_LOW = 0.65
 try:
     AFF_THRESH = float(os.environ.get("AFF_THRESH", "1.20").strip())
 except Exception:
@@ -4438,6 +4438,16 @@ try:
     XG_NORM_B_AWAY = float(os.environ.get("XG_NORM_B_AWAY", "1.11").strip())
 except Exception:
     XG_NORM_B_AWAY = 1.11
+
+# ── SINJALI I TREGUT te totali i SKORIT (variacion: dalin 3-0, 2-1, 3-1). ──
+# Pas normalizimit, totali i skorit ri-synohet drejt totalit qe pret TREGU (nga odds O/U).
+# 0 = pa treg (vetem modeli) | 0.50 = blend 50/50 | 1.0 = vetem tregu.
+# Testuar: 0.50 + AFF 0.65 -> gola 2.33 (real 2.37), dalin 3-0/4-0/2-1, saktesia ruhet.
+# Vlen VETEM kur ndeshja ka odds O/U; ndryshe s'ka efekt.
+try:
+    MKT_TOTAL_W = float(os.environ.get("MKT_TOTAL_W", "0.50").strip())
+except Exception:
+    MKT_TOTAL_W = 0.50
 
 # ── MODALITETI I MIREMBAJTJES: ndizet/fiket nga Render env-var, PA deploy. ──
 # MAINTENANCE=1 -> faqja bllokohet me ekranin "System updating".
@@ -4956,6 +4966,21 @@ def analizo_ndeshjen_premium_master(
     # Perdoret VETEM per perzgjedhjen e skorit; xg_1/xg_2 origjinale ruhen per logim/tregje.
     _xg1_norm = float(np.clip(XG_NORM_A_HOME + XG_NORM_B_HOME * xg_1, XG_FLOOR, 5.00))
     _xg2_norm = float(np.clip(XG_NORM_A_AWAY + XG_NORM_B_AWAY * xg_2, XG_FLOOR, 5.00))
+    # ── SINJALI I TREGUT: ri-syno totalin e skorit drejt asaj qe pret TREGU (odds O/U). ──
+    # Kjo fut VARIACIONIN: kur tregu pret shume gola -> skori behet 3-0/2-1 ne vend te 2-0.
+    # Rishkallezon te dyja xG me te njejtin faktor -> DREJTIMI (raporti) s'ndryshon.
+    if MKT_TOTAL_W > 0.0 and _ou_o and _ou_u:
+        try:
+            _p_ov_sk = (1.0 / float(_ou_o)) / (1.0 / float(_ou_o) + 1.0 / float(_ou_u))
+            _tot_mkt = _lambda_nga_p_over(_p_ov_sk)          # totali qe pret tregu
+            _tot_mod = _xg1_norm + _xg2_norm                 # totali i modelit (i normalizuar)
+            if _tot_mod > 0.10:
+                _tot_tgt = (1.0 - MKT_TOTAL_W) * _tot_mod + MKT_TOTAL_W * _tot_mkt
+                _shk_mkt = float(np.clip(_tot_tgt / _tot_mod, 0.50, 2.00))   # fre sigurie
+                _xg1_norm = float(np.clip(_xg1_norm * _shk_mkt, XG_FLOOR, 5.00))
+                _xg2_norm = float(np.clip(_xg2_norm * _shk_mkt, XG_FLOOR, 5.00))
+        except Exception:
+            pass
     # affinity DINAMIK: mbrojtje e fortë (pesuar<THRESH) -> AFF_LOW; ndryshe AFF_HIGH
     _def_str_aff = (float(forma_1.get("avg_gola_prane", 1.3)) + float(forma_2.get("avg_gola_prane", 1.3))) / 2.0
     _aff_dyn = AFF_LOW if _def_str_aff < AFF_THRESH else AFF_HIGH
