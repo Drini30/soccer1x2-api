@@ -228,6 +228,91 @@ SUPABASE_URL_DNA   = f"{SUPABASE_BASE}/rest/v1/team_dna_cache"
 SUPABASE_URL_AKTIVITETI = f"{SUPABASE_BASE}/rest/v1/aktiviteti"
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# FILTRI I VLERËS (value betting) — Correct Score
+# edge = prob_max(modeli) − 1/kuota_CS(bukmejkeri).  edge > prag => bast-vlerë.
+# Lexon VETËM fusha të ruajtura (dist_gola + odds_reale["CS"]). Pa rillogaritje.
+# NUK fshin/pengon asgjë nga ruajtja — vetëm shënon flag-un is_value për shfaqjen.
+# ══════════════════════════════════════════════════════════════════════════
+import re as _re_vlere
+try:
+    VALUE_EDGE_MIN = float(os.environ.get("VALUE_EDGE_MIN", "0.0").strip())
+except Exception:
+    VALUE_EDGE_MIN = 0.0
+try:
+    VALUE_FILTER_ON = os.environ.get("VALUE_FILTER_ON", "1").strip() == "1"
+except Exception:
+    VALUE_FILTER_ON = True
+try:
+    VALUE_KERKO_KUOTE = os.environ.get("VALUE_KERKO_KUOTE", "1").strip() == "1"
+except Exception:
+    VALUE_KERKO_KUOTE = True
+try:
+    MIN_VLERE_COMBO = int(os.environ.get("MIN_VLERE_COMBO", "2").strip())
+except Exception:
+    MIN_VLERE_COMBO = 2
+
+
+def _prob_skori(dist_gola, skori):
+    """Probabiliteti i modelit për një skor, nga dist_gola (frekuenca/total)."""
+    if not isinstance(dist_gola, dict) or not dist_gola:
+        return 0.0
+    tot = 0.0
+    for v in dist_gola.values():
+        try:
+            tot += float(v or 0)
+        except Exception:
+            pass
+    if tot <= 0:
+        return 0.0
+    m = _re_vlere.findall(r'\d+', str(skori))
+    if len(m) < 2:
+        return 0.0
+    key = f"{int(m[0])}-{int(m[1])}"
+    try:
+        return float(dist_gola.get(key, 0) or 0) / tot
+    except Exception:
+        return 0.0
+
+
+def _kuota_cs(odds_reale, skori):
+    """Kuota CS e bukmejkerit për skorin e parashikuar (ose None nëse mungon)."""
+    if not isinstance(odds_reale, dict):
+        return None
+    cs = odds_reale.get("CS")
+    if not isinstance(cs, dict):
+        return None
+    m = _re_vlere.findall(r'\d+', str(skori))
+    if len(m) < 2:
+        return None
+    key = f"{int(m[0])}-{int(m[1])}"
+    val = cs.get(key)
+    try:
+        o = float(val)
+        return o if o > 1.0 else None
+    except Exception:
+        return None
+
+
+def edge_vlere(rezultati_sakt, dist_gola, odds_reale):
+    """Kthen (edge, prob_max, kuota). edge=None nëse s'ka kuotë CS për skorin."""
+    p = _prob_skori(dist_gola, rezultati_sakt)
+    o = _kuota_cs(odds_reale, rezultati_sakt)
+    if o is None:
+        return None, p, None
+    return (p - 1.0 / o), p, o
+
+
+def ka_vlere(rezultati_sakt, dist_gola, odds_reale, prag=None):
+    """True nëse modeli ka edge > prag mbi kuotën CS. Pa kuotë => sipas VALUE_KERKO_KUOTE."""
+    if prag is None:
+        prag = VALUE_EDGE_MIN
+    e, _p, _o = edge_vlere(rezultati_sakt, dist_gola, odds_reale)
+    if e is None:
+        return (not VALUE_KERKO_KUOTE)
+    return e > prag
+
+
 def _log_aktivitet(email: str, veprimi: str, detaje: dict = None):
     """Logon nje veprim te perdoruesit (fire-and-forget: kurre s'e bllokon kerkesen).
     Veprimet: register | login | gjenero_skedine | vip_combo | pagese_nis | pagese_sukses"""
@@ -2674,8 +2759,9 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     if not grupet:
         grupet = ["1x2", "ou", "gg"]
 
-    gen_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt,besueshmeria"
-               f"&best_bet=not.is.null&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300")
+    _vfilt = "&is_value=eq.true" if VALUE_FILTER_ON else ""   # baste-vlerë: vetëm ndeshjet me edge
+    gen_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,best_bet,tregjet,odds_reale,dist_gola,rezultati_sakt,besueshmeria,is_value"
+               f"&best_bet=not.is.null&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=id.desc&limit=300")
     if liga and liga.strip():
         gen_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     res = requests.get(gen_url, headers=SUPABASE_SERVICE_HEADERS)
@@ -2684,6 +2770,11 @@ def gjenero_skedine_vip(email: str = "", nr: int = 4, nr_max: int = 0, koef: flo
     _perj_em = {(x or "").strip().lower() for x in (perjashto_emra or "").split("|") if x.strip()}
     _vet_em = {(x or "").strip().lower() for x in (vetem_emra or "").split("|") if x.strip()}
     _manual = bool(_vet or _vet_em)
+    # S'KA BASTE-VLERË SOT: filtri i vlerës e la pool-in bosh (vetëm gjenerim automatik, jo zgjedhje manuale)
+    if VALUE_FILTER_ON and not _manual and not pool_plot:
+        return {"sukses": False, "kod": "NUK_KA_VLERE",
+                "portofoli": _drejta["portofoli"], "is_vip": _drejta["is_vip"],
+                "arsye": "Sot s'ka baste-vlerë (asnjë ndeshje ku modeli ka edge mbi kuotën). Provo më vonë."}
     if _manual:
         _kane = {_nm_key(p) for p in pool_plot}
         _mung = [x for x in _vet_em if x not in _kane]
@@ -2825,24 +2916,76 @@ def live_stats(fixture: str = ""):
 
 @app.get("/api/training/accuracy")
 def training_accuracy():
-    """Saktësia kumulative nga training_results (rritet me kohën)."""
+    """Saktësia kumulative — VETËM mbi baste-vlerë (is_value), rillogaritur nga arkivi.
+    Ndeshjet pa vlerë ruhen/arkivohen normalisht, por s'hyjnë në % e performances.
+    (Kthehet te training_results nëse VALUE_FILTER_ON=0.)"""
     try:
+        if not VALUE_FILTER_ON:
+            # Sjellja e vjetër: nga tabela e para-agreguar
+            r = requests.get(
+                f"{SUPABASE_URL_TRAINING}?select=hit_rezultat,hit_1x2,hit_ou25",
+                headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+            rows = r.json() if r.status_code == 200 else []
+            ntot = len(rows)
+            if ntot == 0:
+                return {"sukses": True, "total": 0, "mesazh": "Ende pa të dhëna të mbledhura."}
+            def pct(k):
+                c = sum(1 for x in rows if x.get(k))
+                return {"sakte": c, "perqindja": round(c / ntot * 100, 1)}
+            return {"sukses": True, "total": ntot, "vetem_vlere": False,
+                    "rezultat_sakte": pct("hit_rezultat"),
+                    "fituesi_1x2": pct("hit_1x2"),
+                    "over_under_25": pct("hit_ou25")}
+
+        # BASTE-VLERË: rillogarit nga arkivi (ka parashikimin, dist_gola, odds_reale, rezultatin real)
         r = requests.get(
-            f"{SUPABASE_URL_TRAINING}?select=hit_rezultat,hit_1x2,hit_ou25",
-            headers=SUPABASE_SERVICE_HEADERS, timeout=10)
+            f"{ARKIV_URL}?select=parashikimi,rezultati_ft,dist_gola,odds_reale,goditi_skor,goditi_1x2,tregjet_full"
+            f"&rezultati_ft=not.is.null&limit=100000",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=15)
         rows = r.json() if r.status_code == 200 else []
-        ntot = len(rows)
-        if ntot == 0:
-            return {"sukses": True, "total": 0, "mesazh": "Ende pa të dhëna të mbledhura."}
 
-        def pct(k):
-            c = sum(1 for x in rows if x.get(k))
-            return {"sakte": c, "perqindja": round(c / ntot * 100, 1)}
+        def _gol(s):
+            m = _re_vlere.findall(r'\d+', str(s or ""))
+            return (int(m[0]), int(m[1])) if len(m) >= 2 else (None, None)
 
-        return {"sukses": True, "total": ntot,
-                "rezultat_sakte": pct("hit_rezultat"),
-                "fituesi_1x2": pct("hit_1x2"),
-                "over_under_25": pct("hit_ou25")}
+        n = hs = h1 = hou = nou = 0
+        for p in rows:
+            # FILTRI I VLERËS: vetëm ndeshjet ku modeli pati edge mbi kuotën CS
+            if not ka_vlere(p.get("parashikimi"), p.get("dist_gola"), p.get("odds_reale")):
+                continue
+            ph, pa = _gol(p.get("parashikimi"))
+            rh, ra = _gol(p.get("rezultati_ft"))
+            if ph is None or rh is None:
+                continue
+            n += 1
+            gs = p.get("goditi_skor")
+            hs += 1 if (gs if gs is not None else (ph == rh and pa == ra)) else 0
+            g1 = p.get("goditi_1x2")
+            if g1 is not None:
+                h1 += 1 if g1 else 0
+            else:
+                pr1 = "1" if ph > pa else ("X" if ph == pa else "2")
+                re1 = "1" if rh > ra else ("X" if rh == ra else "2")
+                h1 += 1 if pr1 == re1 else 0
+            tg = p.get("tregjet_full") or {}
+            if isinstance(tg, dict) and ("Over 2.5" in tg or "Under 2.5" in tg):
+                try:
+                    pou = "Over" if float(tg.get("Over 2.5", 0) or 0) >= float(tg.get("Under 2.5", 0) or 0) else "Under"
+                    rou = "Over" if (rh + ra) >= 3 else "Under"
+                    nou += 1
+                    hou += 1 if pou == rou else 0
+                except Exception:
+                    pass
+
+        if n == 0:
+            return {"sukses": True, "total": 0, "vetem_vlere": True,
+                    "mesazh": "Ende pa baste-vlerë të përfunduara."}
+        out = {"sukses": True, "total": n, "vetem_vlere": True,
+               "rezultat_sakte": {"sakte": hs, "perqindja": round(hs / n * 100, 1)},
+               "fituesi_1x2":    {"sakte": h1, "perqindja": round(h1 / n * 100, 1)}}
+        if nou > 0:
+            out["over_under_25"] = {"sakte": hou, "perqindja": round(hou / nou * 100, 1)}
+        return out
     except Exception as e:
         return {"sukses": False, "arsye": str(e)}
 
@@ -3674,8 +3817,9 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     nr = 3 if int(nr) == 3 else 2
     rez = 3 if int(rez) == 3 else 4
     dt = _data_lokale(0); dt_neser = _data_lokale(1)
-    vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria"
-              f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null"
+    _vfilt = "&is_value=eq.true" if VALUE_FILTER_ON else ""   # baste-vlerë: vetëm ndeshjet me edge
+    vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria,is_value"
+              f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}"
               f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=besueshmeria.desc.nullslast,koef_rez_sakt.asc&limit=30")
     if liga and liga.strip():
         vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
@@ -3685,6 +3829,11 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     _perj_em = {(x or "").strip().lower() for x in (perjashto_emra or "").split("|") if x.strip()}
     _vet_em = {(x or "").strip().lower() for x in (vetem_emra or "").split("|") if x.strip()}
     _manual = bool(_vet or _vet_em)
+    # S'KA BASTE-VLERË SOT: filtri i vlerës la shumë pak ndeshje për një kombinim (vetëm automatik, jo manual)
+    if VALUE_FILTER_ON and not _manual and len(rows_plot) < max(MIN_VLERE_COMBO, nr):
+        return {"sukses": False, "kod": "NUK_KA_VLERE",
+                "portofoli": _drejta["portofoli"], "is_vip": _drejta["is_vip"],
+                "arsye": "Sot s'ka mjaft baste-vlerë për një VIP Combo. Provo më vonë."}
     if _manual:
         _kane = {_nm_key(p) for p in rows_plot}
         _mung = [x for x in _vet_em if x not in _kane]
@@ -5326,6 +5475,7 @@ def task_ruaj_skedinen_ne_db(ndeshjet_premium):
         "koha_utc", "statusi", "minuta", "rezultati", "koef_1", "koef_x",
         "koef_2", "analiza_custom", "besueshmeria", "rezultati_sakt",
         "koef_rez_sakt", "is_premium", "is_bllof", "koef_plote", "tregjet", "best_bet", "odds_reale", "dist_gola",
+        "is_value",
         "liga_emri", "parashikimi_origjinal_ai", "training_data"
     }
 
@@ -6035,28 +6185,46 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
                             "best_bet":       _best_bet_value(extradb["tregjet"], bet365_odds.get(id_ndeshja, {})) or extradb["best_bet"],
                             "training_data":  extradb.get("training_data"),
                         })
+                        # FLAG i vlerës — llogaritet NJË herë; rrjedh te feed-i (PPM) DHE te kolona is_value në DB.
+                        # (vetëm shënon a ka edge; ndeshja ruhet/arkivohet E PLOTË pavarësisht flag-ut)
+                        try:
+                            base_match["is_value"] = ka_vlere(rez_sakt, extradb.get("dist_gola"), bet365_odds.get(id_ndeshja, {}))
+                        except Exception:
+                            base_match["is_value"] = None
                         vip_kandidatet.append(base_match)
                     except Exception as eval_err:
                         lista_e_te_gjithave.append(base_match)
                 else:
                     lista_e_te_gjithave.append(base_match)
 
-        # Rendit VIP dhe zgjidh 3 PPM
+        # Rendit VIP; përcakto premium/MOTD.
+        # FILTËR VLERE AKTIV → premium/i-kyçur = bast-vlerë (paywall+PPM+MOTD+hash ndjekin vlerën, pa ndryshim frontend-i).
+        # FILTËR JOAKTIV (VALUE_FILTER_ON=0) → sjellja e vjetër: top-3 sipas besueshmërisë.
+        # PA DALLIM: TË GJITHA ndeshjet VIP ruhen/arkivohen të plota (flag-u vetëm shënon; s'fshin asgjë).
         vip_kandidatet.sort(key=lambda x: x["besueshmeria"], reverse=True)
         premium_count = 0
         ndeshjet_premium_per_historik = []
 
         for ndeshja in vip_kandidatet:
-            if premium_count < 3:
-                ndeshja["is_premium"] = True
-                ndeshja["is_motd"]    = (premium_count == 0)
-                if ndeshja["besueshmeria"] > 0:
-                    ndeshjet_premium_per_historik.append(ndeshja)
-                premium_count += 1
+            if VALUE_FILTER_ON:
+                _isv = bool(ndeshja.get("is_value"))
+                ndeshja["is_premium"] = _isv
+                ndeshja["is_motd"]    = (_isv and premium_count == 0)   # MOTD = ndeshja e parë me vlerë (më e besueshmja)
+                if _isv:
+                    if ndeshja["besueshmeria"] > 0:
+                        ndeshjet_premium_per_historik.append(ndeshja)
+                    premium_count += 1
             else:
-                ndeshja["is_premium"] = False
-                ndeshja["is_motd"]    = False
-                # analiza_custom MBAHET për të gjitha ndeshjet e analizuara (jo vetëm top-3)
+                if premium_count < 3:
+                    ndeshja["is_premium"] = True
+                    ndeshja["is_motd"]    = (premium_count == 0)
+                    if ndeshja["besueshmeria"] > 0:
+                        ndeshjet_premium_per_historik.append(ndeshja)
+                    premium_count += 1
+                else:
+                    ndeshja["is_premium"] = False
+                    ndeshja["is_motd"]    = False
+                    # analiza_custom MBAHET për të gjitha ndeshjet e analizuara (jo vetëm top-3)
             lista_e_te_gjithave.append(ndeshja)
 
         # Ruaj TË GJITHA ndeshjet VIP të analizuara (për daily products + historik PPM)
