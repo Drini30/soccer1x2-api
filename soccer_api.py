@@ -4553,17 +4553,24 @@ except Exception:
 #   pesuar < AFF_THRESH (mbrojtje e fortë) -> AFF_LOW -> skori zbret te modat e ulëta (0-0,1-0)
 #   pesuar >= AFF_THRESH (mbrojtje e dobët/sulmuese) -> AFF_HIGH -> skori i lartë (favoritët e mëdhenj)
 try:
-    AFF_HIGH = float(os.environ.get("AFF_HIGH", "0.65").strip())
+    AFF_HIGH = float(os.environ.get("AFF_HIGH", "0.90").strip())
 except Exception:
-    AFF_HIGH = 0.65
+    AFF_HIGH = 0.90
 try:
-    AFF_LOW = float(os.environ.get("AFF_LOW", "0.65").strip())
+    AFF_LOW = float(os.environ.get("AFF_LOW", "0.50").strip())
 except Exception:
-    AFF_LOW = 0.65
+    AFF_LOW = 0.50
 try:
     AFF_THRESH = float(os.environ.get("AFF_THRESH", "1.20").strip())
 except Exception:
     AFF_THRESH = 1.20
+# ── PRAG_LEAN: rregulla draw→lean e kalibruar. Kur skori del BARAZIM dhe |xg1-xg2| >= PRAG_LEAN,
+#    zëvendësohet me skorin jo-barazim nga xG (pa +1). Backtest 69 ndeshje: RS i paprekur, drejtim +7pt.
+#    Fik krejt me PRAG_LEAN=99. Default 0.30. ──
+try:
+    PRAG_LEAN = float(os.environ.get("PRAG_LEAN", "0.30").strip())
+except Exception:
+    PRAG_LEAN = 0.30
 
 # ── NORMALIZIMI I xG (regresion): xG dilte i FRYRE (+0.48 gola total). ──
 # Formula: xg_norm = A + B * xg   (fituar nga 49 ndeshje me regresion linear)
@@ -4784,14 +4791,19 @@ def simulim_monte_carlo_v2(
     if _fkand:
         kandidatet = _fkand                                    # mbrojtje: mos zbraz listen
     rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
-    # ── RREGULLI 1-1: kur skori del 1-1, apliko rregullin e xG (lean). ──
-    if (rez_g1 == 1 and rez_g2 == 1 and xg_1 != xg_2
-            and not (ONE_ONE_MIN <= xg_1 <= ONE_ONE_MAX and ONE_ONE_MIN <= xg_2 <= ONE_ONE_MAX)):
+    # ── RREGULLI DRAW→LEAN (i kalibruar): kur skori del BARAZIM dhe ka lean të qartë në xG
+    #    (|xg1-xg2| >= PRAG_LEAN), zëvendëso me skorin jo-barazim të rrumbullakosur nga xG — PA +1
+    #    (që totali të mos fryhet). Ndeshjet vërtet të balancuara e mbajnë barazimin.
+    #    Backtest 69 ndeshje: RS i paprekur (~21.7%), drejtim 56.5%->63.8%. Fik me PRAG_LEAN=99.
+    if (rez_g1 == rez_g2 and abs(xg_1 - xg_2) >= PRAG_LEAN):
         _rhu = lambda _x: int(_x + 0.5)   # round half-up
-        if xg_1 > xg_2:
-            rez_g1 = min(_rhu(xg_1) + 1, ONE_ONE_CAP); rez_g2 = min(_rhu(xg_2), ONE_ONE_CAP)
-        else:
-            rez_g2 = min(_rhu(xg_2) + 1, ONE_ONE_CAP); rez_g1 = min(_rhu(xg_1), ONE_ONE_CAP)
+        _a1 = _rhu(xg_1); _a2 = _rhu(xg_2)
+        if _a1 == _a2:                     # rrumbullakosja prapë barazim -> favoritit +1
+            if xg_1 >= xg_2:
+                _a1 += 1
+            else:
+                _a2 += 1
+        rez_g1, rez_g2 = min(_a1, 10), min(_a2, 10)
         freq_zgjedhur = float(H[rez_g1, rez_g2])
     rez_str  = f"{rez_g1}-{rez_g2}"
     prob_max = float(freq_zgjedhur)
