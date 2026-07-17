@@ -3395,9 +3395,10 @@ def _gjenero_pf():
     dt_sot = _data_lokale(0); dt_neser = _data_lokale(1)
     fund = "FT,AET,PEN,AWD,WO,CANC,PST,ABD"
     try:
+        _vfilt = "&is_value=eq.true" if VALUE_FILTER_ON else ""   # Opsioni A: hash/premium vetëm mbi baste-vlerë
         r = requests.get(
-            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,ora,data,rezultati_sakt,ekipi_1_id,ekipi_2_id,is_premium"
-            f"&data=in.({dt_sot},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null&statusi=not.in.({fund})"
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,ora,data,rezultati_sakt,ekipi_1_id,ekipi_2_id,is_premium,is_value"
+            f"&data=in.({dt_sot},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}&statusi=not.in.({fund})"
             f"&order=koef_rez_sakt.asc&limit=8",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         rows = r.json() if r.status_code == 200 else []
