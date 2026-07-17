@@ -4572,6 +4572,13 @@ try:
     PRAG_LEAN = float(os.environ.get("PRAG_LEAN", "0.30").strip())
 except Exception:
     PRAG_LEAN = 0.30
+# ── BOOST_MYSAFIR: kur mysafiri ka formë më të mirë se vendasi, i shtohet kjo vlerë xG-së së tij
+#    (VETËM për përzgjedhjen e skorit; xG-ja e logimit/tregjeve mbetet e paprekur). Modeli nën-angazhon
+#    sinjalin e mysafirit; backtest 69 ndeshje: away-recall 50%->73%, RS+drejtim ngrihen. Fik me 0. ──
+try:
+    BOOST_MYSAFIR = float(os.environ.get("BOOST_MYSAFIR", "0.30").strip())
+except Exception:
+    BOOST_MYSAFIR = 0.30
 
 # ── NORMALIZIMI I xG (regresion): xG dilte i FRYRE (+0.48 gola total). ──
 # Formula: xg_norm = A + B * xg   (fituar nga 49 ndeshje me regresion linear)
@@ -5146,6 +5153,13 @@ def analizo_ndeshjen_premium_master(
     # affinity DINAMIK: mbrojtje e fortë (pesuar<THRESH) -> AFF_LOW; ndryshe AFF_HIGH
     _def_str_aff = (float(forma_1.get("avg_gola_prane", 1.3)) + float(forma_2.get("avg_gola_prane", 1.3))) / 2.0
     _aff_dyn = AFF_LOW if _def_str_aff < AFF_THRESH else AFF_HIGH
+    # ── BOOST MYSAFIRI (formë): mysafiri me formë më të mirë se vendasi -> ngri xG-në e tij për skorin.
+    #    Modeli nën-angazhon sinjalin e mysafirit (P≥35% -> fiton ~77% realisht). Prek VETËM _xg2_norm. ──
+    try:
+        if BOOST_MYSAFIR > 0.0 and float(forma_2.get("piket_forma", 7.0)) > float(forma_1.get("piket_forma", 7.0)):
+            _xg2_norm = float(np.clip(_xg2_norm + BOOST_MYSAFIR, XG_FLOOR, 5.00))
+    except Exception:
+        pass
     rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
         _xg1_norm, _xg2_norm, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja, aff=_aff_dyn
     )
