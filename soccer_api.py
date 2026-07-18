@@ -3321,6 +3321,10 @@ def _arkivo_ndeshje(pred, ht_str=None):
         "besueshmeria": _num_opt(pred.get("besueshmeria")),
         "goditi_1x2":   (_shenja_1x2(par) == _shenja_1x2(ft)) if (par and _shenja_1x2(par) and _shenja_1x2(ft)) else None,
         "goditi_skor":  (_parse_score(par) == _parse_score(ft)) if (par and _parse_score(par) and _parse_score(ft)) else None,
+        # ── FLAG-U ORIGJINAL I VLERËS (i llogaritur në momentin e publikimit) ──
+        # Ruhet ashtu siç ishte; PA rillogaritje. Kuotat lëvizin me kohën, ndaj rillogaritja
+        # mbi arkiv mund ta kthente një bast të publikuar si vlerë në "jo-vlerë".
+        "is_value":      pred.get("is_value"),
         # ── FOTOGRAFIA E PLOTE E TRAJNIMIT (inputet+llogaritja+shperndarja, lidhur me rezultatin real) ──
         "training_data": pred.get("training_data") or {},
         "dist_gola":     pred.get("dist_gola") or {},
@@ -3344,7 +3348,7 @@ def _arkivo_sweep():
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,rezultati"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,rezultati"
             f"&statusi=in.({fund})&rezultati=not.is.null"
             f"&order=data.desc&limit=150",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -5566,7 +5570,7 @@ def task_perditeso_ppm_te_perfunduara():
         # select i plotë → mundëson arkivim automatik në të njëjtin hap
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,statusi,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS, timeout=8
         )
@@ -6376,28 +6380,20 @@ def keep_alive_ping():
 # kontrollon te API-Sports dhe i përditëson me rezultatin final.
 
 @app.get("/api/arkiv")
-def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gjitha: int = 0):
-    """Lexon arkivin e rezultateve (historik + eksport për kalibrim/trajnim).
-    Kur VALUE_FILTER_ON, kthen VETËM baste-vlerë (historiku publik = imazhi i produktit).
-    Për eksport/kalibrim/backtest përdor ?te_gjitha=1 -> kthen çdo ndeshje të arkivuar."""
-    _lim = max(1, min(limit, 2000))
-    _filtro = bool(VALUE_FILTER_ON) and not te_gjitha
-    # kur filtrojmë, marrim më shumë rreshta nga DB që historiku të mos dalë tepër i shkurtër
-    _fetch = min(_lim * 5, 2000) if _filtro else _lim
-    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.desc&limit={_fetch}"
+def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0):
+    """Lexon arkivin e rezultateve (historik PPM + eksport për kalibrim/trajnim).
+    PA filtër vlere te shfaqja: filtri vepron PARA publikimit (vetëm baste-vlerë
+    publikohen), ndaj historiku tregon gjithçka të publikuar — humbjet dhe fitoret."""
+    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.desc&limit={max(1, min(limit, 2000))}"
     if liga.strip():
         q += f"&liga=eq.{requests.utils.quote(liga.strip(), safe='')}"
     if vetem_goditje:
         q += "&goditi_1x2=is.true"
     try:
         r = requests.get(q, headers=SUPABASE_SERVICE_HEADERS, timeout=12)
-        rows = r.json() if r.status_code == 200 else []
+        return r.json() if r.status_code == 200 else []
     except Exception:
         return []
-    if _filtro and isinstance(rows, list):
-        rows = [x for x in rows
-                if ka_vlere(x.get("parashikimi"), x.get("dist_gola"), x.get("odds_reale"))][:_lim]
-    return rows
 
 
 @app.get("/api/performanca")
@@ -6522,7 +6518,7 @@ def rindertimi_arkivit():
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,rezultati"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,rezultati"
             f"&statusi=in.(FT,AET,PEN,AWD,WO)&rezultati=not.is.null&order=data.desc&limit=2000",
             headers=SUPABASE_SERVICE_HEADERS, timeout=15)
         rows = r.json() if r.status_code == 200 else []
@@ -6561,7 +6557,7 @@ def perditeso_rezultatet_perfunduara():
         # Merr të gjitha ndeshjet që nuk kanë mbaruar (me fushat për arkivim)
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS,
             timeout=10
