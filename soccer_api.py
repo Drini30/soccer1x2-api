@@ -6380,20 +6380,30 @@ def keep_alive_ping():
 # kontrollon te API-Sports dhe i përditëson me rezultatin final.
 
 @app.get("/api/arkiv")
-def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0):
-    """Lexon arkivin e rezultateve (historik PPM + eksport për kalibrim/trajnim).
-    PA filtër vlere te shfaqja: filtri vepron PARA publikimit (vetëm baste-vlerë
-    publikohen), ndaj historiku tregon gjithçka të publikuar — humbjet dhe fitoret."""
-    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.desc&limit={max(1, min(limit, 2000))}"
+def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gjitha: int = 0):
+    """Historiku PPM + eksport për kalibrim/trajnim.
+    Arkivi ruan ÇDO ndeshje të mbaruar, por historiku PPM duhet të tregojë vetëm ato
+    që u PUBLIKUAN si PPM (baste-vlerë). Filtrohet me flag-un ORIGJINAL is_value:
+      • is_value = True  -> u publikua si bast-vlerë  -> shfaqet (humbje ose fitore)
+      • is_value = False -> s'doli kurrë te PPM       -> nuk shfaqet
+      • is_value = NULL  -> arkiv para flag-ut        -> shfaqet (historiku i vjetër)
+    Për eksport/backtest: ?te_gjitha=1 -> kthen çdo rresht të arkivuar."""
+    _lim = max(1, min(limit, 2000))
+    _filtro = bool(VALUE_FILTER_ON) and not te_gjitha
+    _fetch = min(_lim * 5, 2000) if _filtro else _lim
+    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.desc&limit={_fetch}"
     if liga.strip():
         q += f"&liga=eq.{requests.utils.quote(liga.strip(), safe='')}"
     if vetem_goditje:
         q += "&goditi_1x2=is.true"
     try:
         r = requests.get(q, headers=SUPABASE_SERVICE_HEADERS, timeout=12)
-        return r.json() if r.status_code == 200 else []
+        rows = r.json() if r.status_code == 200 else []
     except Exception:
         return []
+    if _filtro and isinstance(rows, list):
+        rows = [x for x in rows if x.get("is_value") is not False][:_lim]
+    return rows
 
 
 @app.get("/api/performanca")
