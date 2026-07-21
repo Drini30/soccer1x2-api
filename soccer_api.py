@@ -866,10 +866,10 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
 # ==========================================
 CMIMI_VIP = 69.99
 VIP_DITE  = 30
-PPM_TIER1 = 3.0    # çmim FIKS $3 për ndeshje (blihet VETËM me kredite — nën minimumin ~$11 të NOWPayments)
+PPM_TIER1 = 2.0    # çmim FIKS $2 për ndeshje (blihet VETËM me kredite — nën minimumin ~$11 të NOWPayments)
 MIN_TOPUP = 15.0   # mbushja min e portofolit ($) — mbi minimumin ~$11 të NOWPayments
-PPM_TIER2 = 3.0
-PPM_TIER3 = 3.0
+PPM_TIER2 = 2.0
+PPM_TIER3 = 2.0
 CMIMI_DITORE = 10.0   # zhbllokon Skedinën + Kombinimin e Ditës
 CMIMI_TRIAL  = 4.90   # provë 1-javore me pagesë (jo falas — bllokon llogari fallso)
 TRIAL_DITE   = 7
@@ -5583,6 +5583,61 @@ SKEDINA_LAST_UPDATE = {}
 # BACKGROUND TASK: Auto-update PPM finished matches
 # ==========================================
 
+def _rimburso_ppm_humbur(match_id, rezultati_real, parashikimi):
+    """100% RIMBURSIM: kur një ndeshje PPM mbaron dhe skori i saktë NUK goditi,
+    kthen kreditet te çdo blerës jo-VIP që e kishte blerë atë ndeshje.
+    Idempotent: shënon secilën blerje me 'rimbursuar':True që të mos kreditohet dy herë.
+    Blerjet nga VIP (që s'kanë shpenzuar kredite) nuk preken."""
+    try:
+        if not rezultati_real or not parashikimi:
+            return
+        # goditi skorin e saktë? nëse PO → s'ka rimbursim
+        if _parse_score(parashikimi) and _parse_score(rezultati_real) \
+           and _parse_score(parashikimi) == _parse_score(rezultati_real):
+            return
+        mid = str(match_id)
+        # gjej përdoruesit që e kanë këtë match_id te blerjet (dhe s'janë rimbursuar ende)
+        r = requests.get(
+            f"{SUPABASE_URL_USERS}?select=email,portofoli,blerjet&blerjet=cs."
+            f"{requests.utils.quote(json.dumps([{'id': match_id}]), safe='')}",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        users = r.json() if r.status_code == 200 else []
+        # fallback: disa skema ruajnë id si string — provo edhe atë variant
+        if not users:
+            r2 = requests.get(
+                f"{SUPABASE_URL_USERS}?select=email,portofoli,blerjet&blerjet=cs."
+                f"{requests.utils.quote(json.dumps([{'id': mid}]), safe='')}",
+                headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+            users = r2.json() if r2.status_code == 200 else []
+        for u in users:
+            blerjet = u.get("blerjet") or []
+            ndryshuar = False
+            kthim = 0.0
+            for b in blerjet:
+                if str(b.get("id")) == mid and not b.get("rimbursuar"):
+                    try:
+                        kthim += float(b.get("cmimi", 0) or 0)
+                    except Exception:
+                        pass
+                    b["rimbursuar"] = True
+                    b["rimbursuar_me"] = rezultati_real
+                    ndryshuar = True
+            if ndryshuar and kthim > 0:
+                port_ri = round(float(u.get("portofoli", 0) or 0) + kthim, 2)
+                requests.patch(
+                    f"{SUPABASE_URL_USERS}?email=eq.{requests.utils.quote(str(u.get('email')), safe='')}",
+                    headers=SUPABASE_SERVICE_HEADERS,
+                    json={"portofoli": port_ri, "blerjet": blerjet}, timeout=6)
+                try:
+                    _log_aktivitet(u.get("email"), "ppm_rimbursim",
+                                   {"match_id": mid, "kthim": round(kthim, 2),
+                                    "parashikimi": parashikimi, "reale": rezultati_real})
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 def task_perditeso_ppm_te_perfunduara():
     """
     Kontrollon në Supabase për ndeshje PPM të paplotësuara dhe i përditëson.
@@ -5649,6 +5704,8 @@ def task_perditeso_ppm_te_perfunduara():
                         if _pred is not None:
                             _pred["rezultati"] = rezultati_str
                             _arkivo_ndeshje(_pred, _ht_str)
+                            # 100% RIMBURSIM: nese skori i sakte s'goditi, kthe kreditet te bleresit jo-VIP
+                            _rimburso_ppm_humbur(fix_id, rezultati_str, _pred.get("rezultati_sakt"))
                     except Exception:
                         pass
     except:
@@ -6660,6 +6717,8 @@ def perditeso_rezultatet_perfunduara():
                         if _pred is not None:
                             _pred["rezultati"] = rezultati_str
                             _arkivo_ndeshje(_pred, _ht_str)
+                            # 100% RIMBURSIM: nese skori i sakte s'goditi, kthe kreditet te bleresit jo-VIP
+                            _rimburso_ppm_humbur(fix_id, rezultati_str, _pred.get("rezultati_sakt"))
                     except Exception:
                         pass
                 else:
