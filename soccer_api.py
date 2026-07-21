@@ -4026,11 +4026,23 @@ def merr_formen_reale(team_id: int, liga_emri: str = None, numri_ndeshjeve: int 
     if not ndeshjet:
         return _forma_boshe()
 
-    # ── FILTRI I LIGES: vetem ndeshjet nga e njejta lige (fallback nese < 5) ──
+    # ── FILTRI I LIGES (fallback me shkallë): e njëjta ligë → garat europiane → të gjitha ──
+    #    Zgjidh problemin e ekipeve nga ligat e vogla (Gibraltar/San Marino etj.) që në garat
+    #    europiane kanë <5 ndeshje aty → më parë binin te forma vendëse e fryrë. Tani, kur gara
+    #    aktuale është europiane (UEFA), fallback-u i parë janë TË GJITHA ndeshjet europiane.
+    def _emri_lige(n):
+        lg = n.get('league') or {}
+        return f"{lg.get('country', '')} - {lg.get('name', '')}"
     if liga_emri:
-        _same = [n for n in ndeshjet
-                 if f"{(n.get('league') or {}).get('country', '')} - {(n.get('league') or {}).get('name', '')}" == liga_emri]
-        ndeshjet = _same[:numri_ndeshjeve] if len(_same) >= 5 else ndeshjet[:numri_ndeshjeve]
+        _same = [n for n in ndeshjet if _emri_lige(n) == liga_emri]
+        if len(_same) >= 5:
+            ndeshjet = _same[:numri_ndeshjeve]
+        elif "UEFA" in liga_emri:
+            # gara europiane me <5 ndeshje aty → mblidh çdo ndeshje europiane (Champions/Europa/Conference)
+            _euro = [n for n in ndeshjet if "UEFA" in ((n.get('league') or {}).get('name', ''))]
+            ndeshjet = _euro[:numri_ndeshjeve] if len(_euro) >= 3 else ndeshjet[:numri_ndeshjeve]
+        else:
+            ndeshjet = ndeshjet[:numri_ndeshjeve]
     else:
         ndeshjet = ndeshjet[:numri_ndeshjeve]
 
