@@ -3348,6 +3348,8 @@ def _arkivo_ndeshje(pred, ht_str=None):
         # Ruhet ashtu siç ishte; PA rillogaritje. Kuotat lëvizin me kohën, ndaj rillogaritja
         # mbi arkiv mund ta kthente një bast të publikuar si vlerë në "jo-vlerë".
         "is_value":      pred.get("is_value"),
+        # ── A U PUBLIKUA si premium/PPM (kriteri i historikut PPM; kap edhe 1-1 që s'është 'value bet') ──
+        "is_premium":    pred.get("is_premium"),
         # ── FOTOGRAFIA E PLOTE E TRAJNIMIT (inputet+llogaritja+shperndarja, lidhur me rezultatin real) ──
         "training_data": pred.get("training_data") or {},
         "dist_gola":     pred.get("dist_gola") or {},
@@ -3371,7 +3373,7 @@ def _arkivo_sweep():
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,rezultati"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,is_premium,rezultati"
             f"&statusi=in.({fund})&rezultati=not.is.null"
             f"&order=data.desc&limit=150",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -5648,7 +5650,7 @@ def task_perditeso_ppm_te_perfunduara():
         # select i plotë → mundëson arkivim automatik në të njëjtin hap
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,statusi,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,is_premium"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS, timeout=8
         )
@@ -6461,11 +6463,11 @@ def keep_alive_ping():
 @app.get("/api/arkiv")
 def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gjitha: int = 0):
     """Historiku PPM + eksport për kalibrim/trajnim.
-    Arkivi ruan ÇDO ndeshje të mbaruar, por historiku PPM duhet të tregojë vetëm ato
-    që u PUBLIKUAN si PPM (baste-vlerë). Filtrohet me flag-un ORIGJINAL is_value:
-      • is_value = True  -> u publikua si bast-vlerë  -> shfaqet (humbje ose fitore)
-      • is_value = False -> s'doli kurrë te PPM       -> nuk shfaqet
-      • is_value = NULL  -> arkiv para flag-ut        -> shfaqet (historiku i vjetër)
+    Arkivi ruan ÇDO ndeshje të mbaruar, por historiku PPM tregon vetëm ato që u
+    PUBLIKUAN si premium/PPM. Filtrohet me flag-un ORIGJINAL is_premium:
+      • is_premium = True  -> u publikua (edhe 1-1 që s'është 'value bet') -> shfaqet
+      • is_premium = False -> s'doli kurrë premium                          -> nuk shfaqet
+      • is_premium = NULL  -> arkiv i vjetër pa flag -> rrëzohet te is_value (sjellja e vjetër)
     Për eksport/backtest: ?te_gjitha=1 -> kthen çdo rresht të arkivuar."""
     _lim = max(1, min(limit, 2000))
     _filtro = bool(VALUE_FILTER_ON) and not te_gjitha
@@ -6481,7 +6483,15 @@ def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gj
     except Exception:
         return []
     if _filtro and isinstance(rows, list):
-        rows = [x for x in rows if x.get("is_value") is not False][:_lim]
+        def _shfaq(x):
+            ip = x.get("is_premium")
+            if ip is True:
+                return True
+            if ip is False:
+                return False
+            # is_premium NULL (arkiv i vjetër) -> rrëzim te is_value (sjellja para këtij ndryshimi)
+            return x.get("is_value") is not False
+        rows = [x for x in rows if _shfaq(x)][:_lim]
     return rows
 
 
@@ -6607,7 +6617,7 @@ def rindertimi_arkivit():
     try:
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,rezultati"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,is_premium,rezultati"
             f"&statusi=in.(FT,AET,PEN,AWD,WO)&rezultati=not.is.null&order=data.desc&limit=2000",
             headers=SUPABASE_SERVICE_HEADERS, timeout=15)
         rows = r.json() if r.status_code == 200 else []
@@ -6646,7 +6656,7 @@ def perditeso_rezultatet_perfunduara():
         # Merr të gjitha ndeshjet që nuk kanë mbaruar (me fushat për arkivim)
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
-            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value"
+            f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,is_premium"
             f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
             headers=SUPABASE_SERVICE_HEADERS,
             timeout=10
