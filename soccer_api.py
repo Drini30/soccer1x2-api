@@ -866,9 +866,10 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
 # ==========================================
 CMIMI_VIP = 69.99
 VIP_DITE  = 30
-PPM_TIER1 = 20.0    # çmim FIKS $20 për ndeshje
-PPM_TIER2 = 20.0
-PPM_TIER3 = 20.0
+PPM_TIER1 = 3.0    # çmim FIKS $3 për ndeshje (blihet VETËM me kredite — nën minimumin ~$11 të NOWPayments)
+MIN_TOPUP = 15.0   # mbushja min e portofolit ($) — mbi minimumin ~$11 të NOWPayments
+PPM_TIER2 = 3.0
+PPM_TIER3 = 3.0
 CMIMI_DITORE = 10.0   # zhbllokon Skedinën + Kombinimin e Ditës
 CMIMI_TRIAL  = 4.90   # provë 1-javore me pagesë (jo falas — bllokon llogari fallso)
 TRIAL_DITE   = 7
@@ -1045,7 +1046,7 @@ def _np_info(order_id):
 def crypto_krijo_fature(payload: dict):
     email = payload.get("email", "").lower().strip()
     tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm"
-    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial"):
+    if not email or tipi not in ("vip", "topup", "donate"):   # ppm+ditore blihen VETËM me kredite (nën min ~$11)
         return {"sukses": False, "kod": "DATA_INVALID", "mesazhi": "Të dhëna të pavlefshme"}
 
     match_id = payload.get("match_id")
@@ -1053,8 +1054,6 @@ def crypto_krijo_fature(payload: dict):
 
     if tipi == "vip":
         shuma = CMIMI_VIP
-    elif tipi == "trial":
-        shuma = CMIMI_TRIAL
     elif tipi == "ditore":
         shuma = CMIMI_DITORE
     elif tipi in ("topup", "donate"):
@@ -1064,6 +1063,9 @@ def crypto_krijo_fature(payload: dict):
             shuma = 0.0
         if shuma <= 0:
             return {"sukses": False, "kod": "AMOUNT_INVALID", "mesazhi": "Shuma e pavlefshme"}
+        if tipi == "topup" and shuma < MIN_TOPUP:
+            return {"sukses": False, "kod": "TOPUP_MIN",
+                    "mesazhi": f"Mbushja minimale është ${MIN_TOPUP:.0f}", "min": MIN_TOPUP}
     else:  # ppm — çmimi nga serveri
         pres = requests.get(
             f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=ndeshja,rezultati_sakt,koef_rez_sakt",
@@ -1232,8 +1234,8 @@ def crypto_order_status(order_id: str):
 @app.post("/api/nowpayments/create-invoice")
 def np_krijo_fature(payload: dict):
     email = payload.get("email", "").lower().strip()
-    tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm" | "donate" | "ditore" | "trial"
-    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial"):
+    tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm" | "donate" | "ditore"
+    if not email or tipi not in ("vip", "topup", "donate"):   # ppm+ditore blihen VETËM me kredite (nën min ~$11)
         return {"sukses": False, "kod": "DATA_INVALID", "mesazhi": "Të dhëna të pavlefshme"}
     if not NOWPAYMENTS_API_KEY:
         return {"sukses": False, "kod": "NP_OFF", "mesazhi": "Pagesa e çaktivizuar"}
@@ -1243,8 +1245,6 @@ def np_krijo_fature(payload: dict):
 
     if tipi == "vip":
         shuma = CMIMI_VIP
-    elif tipi == "trial":
-        shuma = CMIMI_TRIAL
     elif tipi == "ditore":
         shuma = CMIMI_DITORE
     elif tipi in ("topup", "donate"):
@@ -1254,6 +1254,9 @@ def np_krijo_fature(payload: dict):
             shuma = 0.0
         if shuma <= 0:
             return {"sukses": False, "kod": "AMOUNT_INVALID", "mesazhi": "Shuma e pavlefshme"}
+        if tipi == "topup" and shuma < MIN_TOPUP:
+            return {"sukses": False, "kod": "TOPUP_MIN",
+                    "mesazhi": f"Mbushja minimale është ${MIN_TOPUP:.0f}", "min": MIN_TOPUP}
     else:  # ppm — çmimi nga serveri (kurrë nga klienti)
         pres = requests.get(
             f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=ndeshja,rezultati_sakt,koef_rez_sakt",
