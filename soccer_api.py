@@ -129,7 +129,7 @@ WATERMARK_ON = os.environ.get("WATERMARK_ON", "true").strip().lower() not in ("0
 
 # Rruget e perjashtuara: RapidAPI (ka limitet e veta + IP e perbashket proxy),
 # cron (frekuence e ulet), webhook (pagesa - kurre mos blloko), admin (i mbrojtur me sekret).
-_RL_EXEMPT = ("/v1/", "/api/cron/", "/api/cryptomus/", "/api/admin/", "/api/social/")
+_RL_EXEMPT = ("/v1/", "/api/cron/", "/api/cryptomus/", "/api/nowpayments/", "/api/admin/", "/api/social/")
 
 def _rl_ip(request):
     xff = request.headers.get("x-forwarded-for")
@@ -879,14 +879,17 @@ GEMINI_MODEL   = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "").strip()
 CRYPTOMUS_PAYMENT_KEY = os.environ.get("CRYPTOMUS_PAYMENT_KEY", "").strip()
+
+# ── NOWPAYMENTS (paralel me Cryptomus; ripËrdor _kredito_porosine + tabela porosite, prefiks np_) ──
+NOWPAYMENTS_API_KEY   = os.environ.get("NOWPAYMENTS_API_KEY", "").strip()
+NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "").strip()
+NOWPAYMENTS_BASE      = "https://api.nowpayments.io/v1"
 PUBLIC_API_URL  = os.environ.get("PUBLIC_API_URL", "https://soccer1x2-api.onrender.com").rstrip("/")
 PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://soccer1x2pro.com").rstrip("/")
 SUPABASE_URL_POROSITE = f"{SUPABASE_BASE}/rest/v1/porosite"
 
-# ── PAYPAL (paralel me Cryptomus; ripERdor _kredito_porosine, tabela e njEjtE me prefiks pp_) ──
-PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
-PAYPAL_SECRET    = os.environ.get("PAYPAL_SECRET", "").strip()
-PAYPAL_BASE      = os.environ.get("PAYPAL_BASE", "https://api-m.paypal.com").rstrip("/")  # sandbox: https://api-m.sandbox.paypal.com
+# ── PAYPAL: HEQUR PLOTESISHT (metode pagese e mbyllur). Mbetet vetem Cryptomus.
+#    Porosite e vjetra me prefiks "pp_" NUK kreditohen me — s'ka si te verifikohen. ──
 
 
 def _data_lokale(offset_ditesh=0):
@@ -999,29 +1002,44 @@ def _crypto_info(order_id):
         return {}
 
 
-def _paypal_token():
-    """Merr access token nga PayPal (client_credentials)."""
-    try:
-        r = requests.post(f"{PAYPAL_BASE}/v1/oauth2/token",
-                          auth=(PAYPAL_CLIENT_ID, PAYPAL_SECRET),
-                          data={"grant_type": "client_credentials"},
-                          headers={"Accept": "application/json"}, timeout=20)
-        return r.json().get("access_token") if r.status_code == 200 else None
-    except Exception:
-        return None
-
-
-def _paypal_paid(pp_id):
-    """GATE AUTORITATIV: verifiko VETE te PayPal qe porosia eshte COMPLETED."""
-    tok = _paypal_token()
-    if not tok:
+# ── NOWPAYMENTS (server-autoritar; IPN → tabela users, njësoj si Cryptomus) ──
+def _np_ipn_valid(raw_body, sig_header):
+    """Verifikon nënshkrimin e IPN-së: HMAC-SHA512 mbi JSON-in me çelësa të renditur."""
+    if not NOWPAYMENTS_IPN_SECRET or not sig_header:
         return False
     try:
-        r = requests.get(f"{PAYPAL_BASE}/v2/checkout/orders/{pp_id}",
-                         headers={"Authorization": f"Bearer {tok}"}, timeout=20)
-        return r.status_code == 200 and (r.json().get("status") == "COMPLETED")
+        data = json.loads(raw_body)
+        ordered = json.dumps(data, sort_keys=True, separators=(",", ":"))
+        digest = hmac.new(NOWPAYMENTS_IPN_SECRET.encode("utf-8"),
+                          ordered.encode("utf-8"), hashlib.sha512).hexdigest()
+        return hmac.compare_digest(digest, sig_header.strip())
     except Exception:
         return False
+
+
+def _np_info(order_id):
+    """GATE AUTORITATIV: gjen pagesën te NOWPayments sipas order_id dhe kthen statusin.
+    Kthen {} nëse s'gjendet. payment_status: waiting/confirming/confirmed/sending/
+    partially_paid/finished/failed/refunded/expired."""
+    try:
+        r = requests.get(f"{NOWPAYMENTS_BASE}/payment/?invoiceid={order_id}&limit=20",
+                         headers={"x-api-key": NOWPAYMENTS_API_KEY}, timeout=15)
+        if r.status_code != 200:
+            return {}
+        data = r.json() or {}
+        lista = data.get("data") or data.get("result") or []
+        # merr statusin "më të mirë" ndër pagesat e kësaj fature
+        renditja = {"finished": 6, "confirmed": 5, "sending": 4, "confirming": 3,
+                    "partially_paid": 2, "waiting": 1}
+        best = {}
+        for p in lista if isinstance(lista, list) else []:
+            st = (p.get("payment_status") or "").lower()
+            if renditja.get(st, 0) >= renditja.get((best.get("payment_status") or "").lower(), 0):
+                best = p
+        return best
+    except Exception:
+        return {}
+
 
 @app.post("/api/cryptomus/create-invoice")
 def crypto_krijo_fature(payload: dict):
@@ -1111,10 +1129,13 @@ def _kredito_porosine(order_id):
         return False   # s'ekziston ose tashmë e kredituar (idempotent)
     po = pros[0]
 
-    # GATE AUTORITATIV: pyet VETË Cryptomus (webhook/thirrje e falsifikuar s'kalon dot)
+    # GATE AUTORITATIV: pyet VETË ofruesin (webhook/IPN e falsifikuar s'kalon dot)
     if str(order_id).startswith("pp_"):
-        if not _paypal_paid(order_id[3:]):
-            return False
+        return False   # PayPal u hoq — porosite e vjetra s'verifikohen dot, ndaj s'kreditohen
+    elif str(order_id).startswith("np_"):
+        st = (_np_info(order_id).get("payment_status") or "").lower()
+        if st not in ("finished", "confirmed", "partially_paid"):
+            return False   # NOWPayments: vetëm pagesa e konfirmuar krediton
     else:
         info = _crypto_info(order_id)
         if (info.get("payment_status") or "") not in ("paid", "paid_over"):
@@ -1205,27 +1226,27 @@ def crypto_order_status(order_id: str):
     return {"status": pros[0].get("status")}
 
 
-@app.post("/api/paypal/create-order")
-def paypal_krijo_porosi(payload: dict):
+# ==========================================================
+# NOWPAYMENTS — i njëjti flow me Cryptomus (order_id prefiks np_, tabela porosite)
+# ==========================================================
+@app.post("/api/nowpayments/create-invoice")
+def np_krijo_fature(payload: dict):
     email = payload.get("email", "").lower().strip()
-    tipi  = payload.get("tipi")
-    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial", "combo", "gjenero"):
-        return {"sukses": False, "kod": "DATA_INVALID", "mesazhi": "Te dhena te pavlefshme"}
-    if not PAYPAL_CLIENT_ID:
-        return {"sukses": False, "kod": "PAYPAL_OFF", "mesazhi": "PayPal s'eshte konfiguruar"}
+    tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm" | "donate" | "ditore" | "trial"
+    if not email or tipi not in ("vip", "topup", "ppm", "donate", "ditore", "trial"):
+        return {"sukses": False, "kod": "DATA_INVALID", "mesazhi": "Të dhëna të pavlefshme"}
+    if not NOWPAYMENTS_API_KEY:
+        return {"sukses": False, "kod": "NP_OFF", "mesazhi": "Pagesa e çaktivizuar"}
 
     match_id = payload.get("match_id")
     ndeshja = rezultati = koef = None
+
     if tipi == "vip":
         shuma = CMIMI_VIP
     elif tipi == "trial":
         shuma = CMIMI_TRIAL
     elif tipi == "ditore":
         shuma = CMIMI_DITORE
-    elif tipi == "combo":
-        shuma = CMIM_VIPCOMBO
-    elif tipi == "gjenero":
-        shuma = CMIM_GENERATE
     elif tipi in ("topup", "donate"):
         try:
             shuma = float(payload.get("shuma", 0))
@@ -1233,7 +1254,7 @@ def paypal_krijo_porosi(payload: dict):
             shuma = 0.0
         if shuma <= 0:
             return {"sukses": False, "kod": "AMOUNT_INVALID", "mesazhi": "Shuma e pavlefshme"}
-    else:  # ppm
+    else:  # ppm — çmimi nga serveri (kurrë nga klienti)
         pres = requests.get(
             f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=ndeshja,rezultati_sakt,koef_rez_sakt",
             headers=SUPABASE_SERVICE_HEADERS)
@@ -1244,31 +1265,25 @@ def paypal_krijo_porosi(payload: dict):
         koef = preds[0].get("koef_rez_sakt")
         shuma = _cmimi_ppm(koef)
 
-    tok = _paypal_token()
-    if not tok:
-        return {"sukses": False, "kod": "PAYPAL_AUTH", "mesazhi": "PayPal auth deshtoi"}
+    order_id = f"np_{secrets.token_hex(8)}"
     trupi = {
-        "intent": "CAPTURE",
-        "purchase_units": [{"amount": {"currency_code": "USD", "value": f"{shuma:.2f}"}}],
-        "application_context": {
-            "brand_name": "SOCCER1X2 PRO", "user_action": "PAY_NOW", "landing_page": "BILLING",
-            "return_url": f"{PUBLIC_SITE_URL}/?paypal=return",
-            "cancel_url": f"{PUBLIC_SITE_URL}/?paypal=anulluar",
-        },
+        "price_amount": f"{shuma:.2f}", "price_currency": "usd",
+        "order_id": order_id, "order_description": f"SOCCER1X2PRO {tipi}",
+        "ipn_callback_url": f"{PUBLIC_API_URL}/api/nowpayments/webhook",
+        "success_url": f"{PUBLIC_SITE_URL}/?pagesa=sukses",
+        "cancel_url": f"{PUBLIC_SITE_URL}/?pagesa=anuluar",
     }
     try:
-        r = requests.post(f"{PAYPAL_BASE}/v2/checkout/orders",
-                          headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
-                          json=trupi, timeout=20)
+        r = requests.post(f"{NOWPAYMENTS_BASE}/invoice", json=trupi,
+                          headers={"x-api-key": NOWPAYMENTS_API_KEY,
+                                   "Content-Type": "application/json"}, timeout=20)
         res = r.json()
     except Exception as e:
-        return {"sukses": False, "mesazhi": f"Gabim PayPal: {e}"}
-    pp_id = res.get("id")
-    approve = next((l["href"] for l in res.get("links", []) if l.get("rel") == "approve"), None)
-    if not pp_id or not approve:
-        return {"sukses": False, "kod": "PAYPAL_ERR", "mesazhi": "Pergjigje e papritur nga PayPal"}
+        return {"sukses": False, "mesazhi": f"Gabim NOWPayments: {e}"}
+    url = res.get("invoice_url")
+    if not url:
+        return {"sukses": False, "kod": "NP_ERR", "mesazhi": "Përgjigje e papritur nga NOWPayments"}
 
-    order_id = "pp_" + pp_id
     requests.post(SUPABASE_URL_POROSITE,
                   headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=merge-duplicates"},
                   json={"order_id": order_id, "email": email, "tipi": tipi, "amount": f"{shuma:.2f}",
@@ -1276,32 +1291,37 @@ def paypal_krijo_porosi(payload: dict):
                         "ndeshja": ndeshja, "rezultati": rezultati,
                         "koef": str(koef) if koef is not None else None,
                         "status": "wait", "krijuar": datetime.utcnow().isoformat()})
-    return {"sukses": True, "url": approve, "order_id": order_id}
+    _log_aktivitet(email, "pagese_nis", {"tipi": tipi, "shuma": round(float(shuma), 2),
+                                         "order_id": order_id, "ofruesi": "nowpayments"})
+    return {"sukses": True, "url": url, "order_id": order_id}
 
 
-@app.get("/api/paypal/capture")
-def paypal_kap(order_id: str = None, token: str = None):
-    """Kap pagesen te PayPal, pastaj krediton (idempotent). Pranon order_id ('pp_'+id) ose token (id nga PayPal)."""
-    if not order_id and token:
-        order_id = "pp_" + token
-    if not order_id:
-        return {"status": "panjohur"}
-    pp_id = order_id[3:] if str(order_id).startswith("pp_") else order_id
-    tok = _paypal_token()
-    if tok:
-        try:
-            requests.post(f"{PAYPAL_BASE}/v2/checkout/orders/{pp_id}/capture",
-                          headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
-                          timeout=20)
-        except Exception:
-            pass
-    _kredito_porosine(order_id)   # porta verifikon COMPLETED te PayPal (idempotent)
+@app.post("/api/nowpayments/webhook")
+async def np_webhook(request: Request):
+    raw = await request.body()
+    sig = request.headers.get("x-nowpayments-sig")
+    # IPN i pavërtetuar NUK krediton — porta rikonfirmon te NOWPayments gjithsesi
+    if not _np_ipn_valid(raw, sig):
+        return {"state": 0}
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {"state": 0}
+    _kredito_porosine(data.get("order_id"))
+    return {"state": 0}
+
+
+@app.get("/api/nowpayments/order-status")
+def np_order_status(order_id: str):
+    _kredito_porosine(order_id)   # MBUROJË: krediton nëse është paguar por IPN-ja humbi
     pres = requests.get(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}&select=status",
                         headers=SUPABASE_SERVICE_HEADERS)
     pros = pres.json() if pres.status_code == 200 else []
     if not pros:
         return {"status": "panjohur"}
     return {"status": pros[0].get("status")}
+
+
 
 
 
@@ -6343,8 +6363,7 @@ def api_status():
         "sherbimet": {
             "supabase":     bool(SUPABASE_URL_PREDS),
             "api_football": bool(API_KEY),
-            "paypal":       bool(PAYPAL_CLIENT_ID),
-            "paypal_mode":  ("sandbox" if "sandbox" in PAYPAL_BASE else "live"),
+            "paypal":       False,   # HEQUR — s'eshte me metode pagese
         },
         "vecorite": {
             "modulator_totali":      True,
