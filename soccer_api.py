@@ -360,14 +360,28 @@ LIGAT_VIP_MAP = {
 
 LIGAT_VIP = list(LIGAT_VIP_MAP.values())
 
+# Variantet e ZHURMSHME që NUK parashikohen kurrë — edhe nëse përmbajnë emrin e një lige VIP
+# (p.sh. "UEFA Champions League Women" përmban "Champions League"). Këto kanë pak të dhëna,
+# tregje kuotash të holla dhe variancë të lartë → ulin saktësinë (RS).
+_LIGA_PERJASHTO = (
+    "women", "frauen", "feminin", "féminin", "femenin", "femenina", "femminile",
+    "u16", "u17", "u18", "u19", "u20", "u21", "u23",
+    "youth", "junior", "juvenil", "primavera", "reserve", "reserves",
+)
+
 def is_vip_league(emri_liges):
+    el = emri_liges.lower()
+    # PËRJASHTIM i parë: variantet e zhurmshme (femra / të rinj / rezerva)
+    for _p in _LIGA_PERJASHTO:
+        if _p in el:
+            return False
     for vip in LIGAT_VIP:
         parts = vip.split(" - ")
         if len(parts) == 2:
-            if parts[0].lower() in emri_liges.lower() and parts[1].lower() in emri_liges.lower():
+            if parts[0].lower() in el and parts[1].lower() in el:
                 return True
         else:
-            if vip.lower() in emri_liges.lower():
+            if vip.lower() in el:
                 return True
     return False
 
@@ -3428,7 +3442,7 @@ def _gjenero_pf():
         r = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,ora,data,rezultati_sakt,ekipi_1_id,ekipi_2_id,is_premium,is_value"
             f"&data=in.({dt_sot},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}&statusi=not.in.({fund})"
-            f"&order=koef_rez_sakt.asc&limit=8",
+            f"&order=data.asc,koef_rez_sakt.asc&limit=60",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         rows = r.json() if r.status_code == 200 else []
     except Exception:
@@ -3641,7 +3655,7 @@ def pf_list(email: str = "", authorization: str = Header(None)):
     _gjenero_pf(); _zbulo_pf()
     vip = _eshte_vip(email) if (email and email.strip()) else False
     try:
-        r = requests.get(f"{PF_URL}?select=*&order=krijuar.desc&limit=20",
+        r = requests.get(f"{PF_URL}?select=*&order=krijuar.desc&limit=60",
                          headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         rows = r.json() if r.status_code == 200 else []
     except Exception:
