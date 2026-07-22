@@ -6203,6 +6203,17 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
 
         # Grupo ndeshjet sipas ligës
         ligat_raw = {}
+        # LOCK i vlerës: një ndeshje e shpallur is_value=True NJË herë, MBETET value edhe nëse
+        # kuotat lëvizin më vonë — që PPM, VIP Combo dhe Gjenero të luajnë ME TË NJËJTAT ndeshje.
+        # (vetëm True ngrihet; False rillogaritet, se mund të bëhet value kur dalin kuotat CS)
+        _locked_value = set()
+        try:
+            _lv = requests.get(
+                f"{SUPABASE_URL_PREDS}?data=eq.{data_target}&is_value=is.true&select=id",
+                headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+            _locked_value = {str(x.get("id")) for x in (_lv.json() if _lv.status_code == 200 else [])}
+        except Exception:
+            _locked_value = set()
         if "response" in te_dhenat:
             for n in te_dhenat["response"]:
                 emri_liges = f"{n['league']['country']} - {n['league']['name']}"
@@ -6327,7 +6338,11 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
                         # FLAG i vlerës — llogaritet NJË herë; rrjedh te feed-i (PPM) DHE te kolona is_value në DB.
                         # (vetëm shënon a ka edge; ndeshja ruhet/arkivohet E PLOTË pavarësisht flag-ut)
                         try:
-                            base_match["is_value"] = ka_vlere(rez_sakt, extradb.get("dist_gola"), bet365_odds.get(id_ndeshja, {}))
+                            _iv = ka_vlere(rez_sakt, extradb.get("dist_gola"), bet365_odds.get(id_ndeshja, {}))
+                            # LOCK: nëse ishte shpallur value më parë, MBETET value (vendimi i publikimit ngrihet)
+                            if str(id_ndeshja) in _locked_value:
+                                _iv = True
+                            base_match["is_value"] = _iv
                         except Exception:
                             base_match["is_value"] = None
                         vip_kandidatet.append(base_match)
