@@ -4677,6 +4677,40 @@ def _maintenance_on() -> bool:
 def _maintenance_msg() -> str:
     return os.environ.get("MAINTENANCE_MSG", "").strip()
 
+# ── KALIMI I MIREMBAJTJES: lejo VETEM ty te shohesh faqen kur MAINTENANCE=1 ──
+# Dy menyra (mjafton njera):
+#   MAINTENANCE_ALLOW_IP  -> lista e IP-ve te lejuara, ndare me presje (p.sh. "1.2.3.4,5.6.7.8")
+#   MAINTENANCE_KEY       -> fjalekalim; hapet me soccer1x2pro.com/?admin=FJALEKALIMI
+def _ip_klienti(request) -> str:
+    """IP reale e klientit. Render eshte pas proxy-t, keshtu qe X-Forwarded-For mban origjinalin."""
+    try:
+        xff = (request.headers.get("x-forwarded-for") or "").strip()
+        if xff:
+            return xff.split(",")[0].strip()
+        xri = (request.headers.get("x-real-ip") or "").strip()
+        if xri:
+            return xri
+        return (request.client.host if request.client else "") or ""
+    except Exception:
+        return ""
+
+def _maintenance_kalim(request, kalim: str = None) -> bool:
+    """True nese ky vizitor duhet ta ANASHKALOJE ekranin e mirembajtjes."""
+    try:
+        # 1) Fjalekalimi (funksionon nga cdo pajisje/rrjet)
+        _key = os.environ.get("MAINTENANCE_KEY", "").strip()
+        if _key and kalim and kalim.strip() == _key:
+            return True
+        # 2) IP-ja e lejuar
+        _lista = os.environ.get("MAINTENANCE_ALLOW_IP", "").strip()
+        if _lista:
+            ip = _ip_klienti(request)
+            if ip and ip in {x.strip() for x in _lista.split(",") if x.strip()}:
+                return True
+    except Exception:
+        pass
+    return False
+
 # ── RREGULLI I FITUESIT: pragu i "favoritit te qarte" (diferenca p_fitues - p_barazim).
 # Nen kete prag -> ndeshje e ngushte -> lejo barazim. Mbi -> skori DETYROHET te respektoje favoritin.
 try:
@@ -6438,17 +6472,21 @@ def root():
 
 
 @app.get("/api/status")
-def api_status():
+def api_status(request: Request, kalim: str = None):
     """Statusi i backend-it: version, konfigurimi aktiv (env-var), sherbimet e konfiguruara.
-    Perdore per te konfirmuar cka eshte LIVE ne Render pas nje deploy-i."""
+    Perdore per te konfirmuar cka eshte LIVE ne Render pas nje deploy-i.
+    `kalim` ose IP e lejuar -> maintenance kthehet False (vetem per ty)."""
     try:
         _koha = _data_lokale().isoformat()
     except Exception:
         _koha = datetime.utcnow().isoformat()
+    _kalo = _maintenance_kalim(request, kalim)
     return {
         "status":  "ok",
-        "maintenance": _maintenance_on(),
+        "maintenance": (_maintenance_on() and not _kalo),
         "maintenance_msg": _maintenance_msg(),
+        "ip_jote": _ip_klienti(request),
+        "kalim_aktiv": _kalo,
         "version": VERSION,
         "koha":    _koha,
         "konfigurimi": {
