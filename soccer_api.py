@@ -3654,8 +3654,15 @@ def pf_list(email: str = "", authorization: str = Header(None)):
     VIP-unlock: abonentët VIP e shohin parashikimin edhe te të kyçurat (pa server_seed)."""
     _gjenero_pf(); _zbulo_pf()
     vip = _eshte_vip(email) if (email and email.strip()) else False
+    # DRITARJA 24-ORËSHE: kutia e Hash-it tregon vetëm ndeshjet aktuale + ato të mbaruara sot.
+    # Ndeshjet më të vjetra HIQEN NGA LISTA (jo nga baza — rreshtat mbeten për verifikim).
+    # Historiku i plotë shihet te "Historiku PPM".
     try:
-        r = requests.get(f"{PF_URL}?select=*&order=krijuar.desc&limit=60",
+        _dje = (_data_lokale() - timedelta(days=1)).strftime("%Y-%m-%d")
+    except Exception:
+        _dje = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    try:
+        r = requests.get(f"{PF_URL}?select=*&data=gte.{_dje}&order=krijuar.desc&limit=60",
                          headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         rows = r.json() if r.status_code == 200 else []
     except Exception:
