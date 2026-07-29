@@ -95,7 +95,7 @@ _ngarko_modelet_xgb()
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
-VERSION = "2026-07-28-A · PESHAT E REJA: W_MARKET 0.25->0.40, W_FORMA 0.40->0.25 (saktesia e matur e drejtimit: tregu 72%, forma 55%, Elo 53%) + peshat env-var me normalizim automatik + CS_LEAN_XG (i fikur, 99) + /api/status raporton konfigurimin live + Hash 24h + kalimi i mirembajtjes"
+VERSION = "2026-07-29-B · CRYPTOMUS U HOQ (mbetet vetem NOWPayments; PayPal e LemonSqueezy ishin hequr me pare) + PESHAT E REJA: W_MARKET 0.25->0.40, W_FORMA 0.40->0.25 (saktesia e matur e drejtimit: tregu 72%, forma 55%, Elo 53%) + peshat env-var me normalizim automatik + CS_LEAN_XG (i fikur, 99) + /api/status raporton konfigurimin live + Hash 24h + kalimi i mirembajtjes"
 
 app.add_middleware(
     CORSMiddleware,
@@ -129,7 +129,7 @@ WATERMARK_ON = os.environ.get("WATERMARK_ON", "true").strip().lower() not in ("0
 
 # Rruget e perjashtuara: RapidAPI (ka limitet e veta + IP e perbashket proxy),
 # cron (frekuence e ulet), webhook (pagesa - kurre mos blloko), admin (i mbrojtur me sekret).
-_RL_EXEMPT = ("/v1/", "/api/cron/", "/api/cryptomus/", "/api/nowpayments/", "/api/admin/", "/api/social/")
+_RL_EXEMPT = ("/v1/", "/api/cron/", "/api/nowpayments/", "/api/admin/", "/api/social/")
 
 def _rl_ip(request):
     xff = request.headers.get("x-forwarded-for")
@@ -218,7 +218,7 @@ SUPABASE_BASE = os.environ.get(
 ).strip().rstrip("/")
 
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
-# Service key për shkrime të privilegjuara (auth/admin/Cryptomus/Modulator):
+# Service key për shkrime të privilegjuara (auth/admin/pagesa/Modulator):
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
 
 SUPABASE_URL_PREDS = f"{SUPABASE_BASE}/rest/v1/predictions"
@@ -752,7 +752,7 @@ def reset_password(data: ResetInput):
 @app.post("/api/update_user")
 def perditeso_perdorues(user_data: dict):
     # I MBYLLUR: fushat monetare (isVip/portofoli/blerjet/vip_skadon_me) ndryshohen
-    # VETËM nga endpoint-et server-autoritare (ppm/vip/cryptomus webhook).
+    # VETËM nga endpoint-et server-autoritare (ppm/vip/nowpayments webhook).
     # Klienti lejohet të ndryshojë vetëm profilin jo-monetar.
     email = user_data.get("email", "").lower().strip()
     if not email:
@@ -875,7 +875,7 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
 
 
 # ==========================================
-# MODULI I PAGESAVE — PPM (kredite) + CRYPTOMUS (server-autoritar)
+# MODULI I PAGESAVE — PPM (kredite) + NOWPAYMENTS (server-autoritar)
 # Çmimet në USD (TEST — ndryshohen lehtë këtu).
 # ==========================================
 CMIMI_VIP = 69.99
@@ -892,10 +892,7 @@ TRIAL_DITE   = 7
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL   = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
-CRYPTOMUS_MERCHANT_ID = os.environ.get("CRYPTOMUS_MERCHANT_ID", "").strip()
-CRYPTOMUS_PAYMENT_KEY = os.environ.get("CRYPTOMUS_PAYMENT_KEY", "").strip()
-
-# ── NOWPAYMENTS (paralel me Cryptomus; ripËrdor _kredito_porosine + tabela porosite, prefiks np_) ──
+# ── NOWPAYMENTS (i vetmi ofrues; perdor _kredito_porosine + tabela porosite, prefiks np_) ──
 NOWPAYMENTS_API_KEY   = os.environ.get("NOWPAYMENTS_API_KEY", "").strip()
 NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "").strip()
 NOWPAYMENTS_BASE      = "https://api.nowpayments.io/v1"
@@ -903,7 +900,7 @@ PUBLIC_API_URL  = os.environ.get("PUBLIC_API_URL", "https://soccer1x2-api.onrend
 PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://soccer1x2pro.com").rstrip("/")
 SUPABASE_URL_POROSITE = f"{SUPABASE_BASE}/rest/v1/porosite"
 
-# ── PAYPAL: HEQUR PLOTESISHT (metode pagese e mbyllur). Mbetet vetem Cryptomus.
+# ── PAYPAL dhe CRYPTOMUS: HEQUR PLOTESISHT. Mbetet vetem NOWPayments.
 #    Porosite e vjetra me prefiks "pp_" NUK kreditohen me — s'ka si te verifikohen. ──
 
 
@@ -1001,23 +998,7 @@ def vip_blej_me_kredite(payload: dict, authorization: str = Header(None)):
     return {"sukses": True, "portofoli": portofoli_ri, "vip_skadon_me": skadon}
 
 
-# ── CRYPTOMUS (server-autoritar; webhook → tabela users) ──
-def _crypto_sign(body_str):
-    enc = base64.b64encode(body_str.encode("utf-8")).decode("utf-8")
-    return hashlib.md5((enc + CRYPTOMUS_PAYMENT_KEY).encode("utf-8")).hexdigest()
-
-def _crypto_info(order_id):
-    body_str = json.dumps({"order_id": order_id}, separators=(",", ":"))
-    try:
-        r = requests.post("https://api.cryptomus.com/v1/payment/info", data=body_str,
-                          headers={"merchant": CRYPTOMUS_MERCHANT_ID, "sign": _crypto_sign(body_str),
-                                   "Content-Type": "application/json"}, timeout=15)
-        return r.json().get("result", {}) or {}
-    except Exception:
-        return {}
-
-
-# ── NOWPAYMENTS (server-autoritar; IPN → tabela users, njësoj si Cryptomus) ──
+# ── NOWPAYMENTS (server-autoritar; IPN → tabela users) ──
 def _np_ipn_valid(raw_body, sig_header):
     """Verifikon nënshkrimin e IPN-së: HMAC-SHA512 mbi JSON-in me çelësa të renditur."""
     if not NOWPAYMENTS_IPN_SECRET or not sig_header:
@@ -1056,84 +1037,8 @@ def _np_info(order_id):
         return {}
 
 
-@app.post("/api/cryptomus/create-invoice")
-def crypto_krijo_fature(payload: dict):
-    email = payload.get("email", "").lower().strip()
-    tipi  = payload.get("tipi")   # "vip" | "topup" | "ppm"
-    if not email or tipi not in ("vip", "topup", "donate"):   # ppm+ditore blihen VETËM me kredite (nën min ~$11)
-        return {"sukses": False, "kod": "DATA_INVALID", "mesazhi": "Të dhëna të pavlefshme"}
-
-    match_id = payload.get("match_id")
-    ndeshja = rezultati = koef = None
-
-    if tipi == "vip":
-        shuma = CMIMI_VIP
-    elif tipi == "ditore":
-        shuma = CMIMI_DITORE
-    elif tipi in ("topup", "donate"):
-        try:
-            shuma = float(payload.get("shuma", 0))
-        except Exception:
-            shuma = 0.0
-        if shuma <= 0:
-            return {"sukses": False, "kod": "AMOUNT_INVALID", "mesazhi": "Shuma e pavlefshme"}
-        if tipi == "topup" and shuma < MIN_TOPUP:
-            return {"sukses": False, "kod": "TOPUP_MIN",
-                    "mesazhi": f"Mbushja minimale është ${MIN_TOPUP:.0f}", "min": MIN_TOPUP}
-    else:  # ppm — çmimi nga serveri
-        pres = requests.get(
-            f"{SUPABASE_URL_PREDS}?id=eq.{match_id}&select=ndeshja,rezultati_sakt,koef_rez_sakt",
-            headers=SUPABASE_SERVICE_HEADERS)
-        preds = pres.json() if pres.status_code == 200 else []
-        if not preds:
-            return {"sukses": False, "kod": "MATCH_NOT_FOUND", "mesazhi": "Ndeshja s'u gjet"}
-        ndeshja = preds[0].get("ndeshja"); rezultati = preds[0].get("rezultati_sakt")
-        koef = preds[0].get("koef_rez_sakt")
-        shuma = _cmimi_ppm(koef)
-
-    order_id = f"s1x2_{secrets.token_hex(8)}"
-    cd = {
-        "amount": f"{shuma:.2f}", "currency": "USD", "order_id": order_id,
-        "url_callback": f"{PUBLIC_API_URL}/api/cryptomus/webhook",
-        "url_return": f"{PUBLIC_SITE_URL}/?pagesa=sukses",
-        "lifetime": 3600,
-    }
-    body_str = json.dumps(cd, separators=(",", ":"))
-    try:
-        r = requests.post("https://api.cryptomus.com/v1/payment", data=body_str,
-                          headers={"merchant": CRYPTOMUS_MERCHANT_ID, "sign": _crypto_sign(body_str),
-                                   "Content-Type": "application/json"}, timeout=20)
-        res = r.json()
-    except Exception as e:
-        return {"sukses": False, "mesazhi": f"Gabim Cryptomus: {e}"}
-    result = res.get("result")
-    if not result or "url" not in result:
-        return {"sukses": False, "kod": "CRYPTOMUS_ERR", "mesazhi": "Përgjigje e papritur nga Cryptomus"}
-
-    requests.post(SUPABASE_URL_POROSITE,
-                  headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=merge-duplicates"},
-                  json={"order_id": order_id, "email": email, "tipi": tipi, "amount": f"{shuma:.2f}",
-                        "match_id": str(match_id) if match_id else None,
-                        "ndeshja": ndeshja, "rezultati": rezultati,
-                        "koef": str(koef) if koef is not None else None,
-                        "status": "wait", "krijuar": datetime.utcnow().isoformat()})
-    _log_aktivitet(email, "pagese_nis", {"tipi": tipi, "shuma": round(float(shuma), 2), "order_id": order_id})
-    return {"sukses": True, "url": result["url"], "order_id": order_id}
-
-
-@app.post("/api/cryptomus/webhook")
-async def crypto_webhook(request: Request):
-    raw = await request.body()
-    try:
-        data = json.loads(raw)
-    except Exception:
-        return {"state": 0}
-    _kredito_porosine(data.get("order_id"))
-    return {"state": 0}
-
-
 def _kredito_porosine(order_id):
-    """Krediton porosinë NËSE është paguar (verifikim autoritar me Cryptomus). IDEMPOTENT.
+    """Krediton porosinë NËSE është paguar (verifikim autoritar te ofruesi). IDEMPOTENT.
     Përdoret nga webhook DHE nga order-status DHE nga rakordimi — kështu pagesa kompletohet
     edhe kur webhook-u humbet (Render në gjumë). Kthen True nëse krediton tani."""
     if not order_id:
@@ -1153,9 +1058,7 @@ def _kredito_porosine(order_id):
         if st not in ("finished", "confirmed", "partially_paid"):
             return False   # NOWPayments: vetëm pagesa e konfirmuar krediton
     else:
-        info = _crypto_info(order_id)
-        if (info.get("payment_status") or "") not in ("paid", "paid_over"):
-            return False
+        return False   # Cryptomus u hoq — porosite e vjetra s'verifikohen dot, ndaj s'kreditohen
 
     email = po.get("email"); tipi = po.get("tipi")
     ures = requests.get(
@@ -1231,19 +1134,8 @@ def task_rakordo_porosite():
         pass
 
 
-@app.get("/api/cryptomus/order-status")
-def crypto_order_status(order_id: str):
-    _kredito_porosine(order_id)   # MBUROJË: krediton nëse është paguar por webhook-u humbi
-    pres = requests.get(f"{SUPABASE_URL_POROSITE}?order_id=eq.{order_id}&select=status",
-                        headers=SUPABASE_SERVICE_HEADERS)
-    pros = pres.json() if pres.status_code == 200 else []
-    if not pros:
-        return {"status": "panjohur"}
-    return {"status": pros[0].get("status")}
-
-
 # ==========================================================
-# NOWPAYMENTS — i njëjti flow me Cryptomus (order_id prefiks np_, tabela porosite)
+# NOWPAYMENTS — ofruesi i vetem i pagesave (order_id prefiks np_, tabela porosite)
 # ==========================================================
 @app.post("/api/nowpayments/create-invoice")
 def np_krijo_fature(payload: dict):
@@ -6216,7 +6108,7 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     background_tasks.add_task(_snapshot_skedina_ditore)
     background_tasks.add_task(_vlereso_skedina_historik)
     background_tasks.add_task(_regjistro_rezultatet_training)
-    # 5) Rakordim pagesash Cryptomus: krediton porositë 'wait' të paguara (webhook i humbur)
+    # 5) Rakordim pagesash: krediton porositë 'wait' të paguara (IPN i humbur)
     background_tasks.add_task(task_rakordo_porosite)
 
     # ── E RËNDË (me throttle): rigjenerim Monte Carlo + odds për 3 ditë ──
@@ -7724,7 +7616,7 @@ def merr_koeficientet_shtese(match_id: str):
     except:
         return {"mesazhi": "Gabim", "koeficientet": []}
 
-# (Webhook-u LemonSqueezy u HOQ — vrimë sigurie; pagesat tani me Cryptomus.)
+# (Webhook-u LemonSqueezy u HOQ — vrimë sigurie; pagesat tani me NOWPayments.)
 
 
 # ==========================================
