@@ -257,10 +257,19 @@ try:
     VALUE_EDGE_MIN = float(os.environ.get("VALUE_EDGE_MIN", "0.0").strip())
 except Exception:
     VALUE_EDGE_MIN = 0.0
+# ÇKYÇUR (ishte "1"). Filtri kufizonte gjenerimin te is_value=True — dhe matja mbi
+# 209 parashikime tregoi se pikërisht ato pika goditën 42.0% kundrejt 52.9% të të
+# tjerave. Pra filtri po ZGJIDHTE bastet më të këqija.
+# Shkaku është strukturor: "vlerë" = p_model > 1/kuotë, domethënë aty ku modeli NUK
+# pajtohet me tregun; testi i çiftuar tregon se aty gabon modeli, jo tregu
+# (log-loss 1.0095 kundrejt 0.9760, p=0.020). Derisa modeli të mundë tregun në 1X2,
+# çdo filtër i ndërtuar mbi mospajtimin me të do të jetë anti-parashikues.
+# `is_value` VAZHDON të llogaritet dhe të ruhet — vetëm nuk filtron më. Kështu mbetet
+# i matshëm në arkiv dhe rikyçet me VALUE_FILTER_ON=1 nëse dikur del i vlefshëm.
 try:
-    VALUE_FILTER_ON = os.environ.get("VALUE_FILTER_ON", "1").strip() == "1"
+    VALUE_FILTER_ON = os.environ.get("VALUE_FILTER_ON", "0").strip() == "1"
 except Exception:
-    VALUE_FILTER_ON = True
+    VALUE_FILTER_ON = False
 try:
     VALUE_KERKO_KUOTE = os.environ.get("VALUE_KERKO_KUOTE", "1").strip() == "1"
 except Exception:
@@ -6795,6 +6804,175 @@ def api_cron_kalibro(secret: str = None, limit: int = 3000):
     print(f"🎛️ Kalibrimi: {len(rez['propozime'])} parametra, mostra={rez.get('mostra')}, "
           f"shkruar={rez['shkruar']}")
     return rez
+
+
+SUPABASE_URL_KUOTA_HIST = f"{SUPABASE_BASE}/rest/v1/kuota_historik"
+
+# Vetëm NJË bukmejker. Për lëvizjen ka rëndësi seria e njëjtë në kohë, jo mbulimi:
+# përzierja e librave prodhon "lëvizje" fantazmë kur njëri zëvendëson tjetrin.
+# 8 = Bet365, i pari te BOOKMAKERS_PRIORITY dhe ai që përdor pjesa tjetër e kodit.
+KUOTA_HIST_BOOKMAKER = 8
+
+
+@app.get("/api/cron/kuotat")
+def api_cron_kuotat(secret: str = None, ore_para: int = 24):
+    """FAZA 1 — ruan një fotografi të kuotave për ndeshjet që nisin brenda `ore_para`.
+
+    Vetëm mbledhje: nuk njofton, nuk filtron, nuk prek asnjë parashikim.
+
+    KOSTOJA: kuotat merren në masë sipas DATËS (jo për ndeshje), ndaj një fotografi
+    për të gjitha ndeshjet kushton ~3-5 thirrje. Me ekzekutim çdo 30 min për 12 orë
+    kjo bie në ~100-150 thirrje/ditë — kundrejt ~1,200 që do të kërkonte poll-imi
+    ndeshje-për-ndeshje.
+
+    Planifikoje çdo 15-30 min. Sa më dendur, aq më e imët lëvizja e kapur; nën 15
+    min fitimi bëhet i papërfillshëm sepse linjat s'lëvizin aq shpesh.
+    """
+    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="I ndaluar")
+
+    tani = datetime.now(timezone.utc)
+    kufi = tani + timedelta(hours=max(1, min(72, ore_para)))
+
+    # Ndeshjet e sotme dhe të nesërme (dritarja s'i kalon kurrë 48h në praktikë)
+    datat = sorted({tani.strftime("%Y-%m-%d"), kufi.strftime("%Y-%m-%d")})
+
+    fixtures = {}
+    for dt in datat:
+        d = _api_sports_get("fixtures", {"date": dt, "timezone": "Europe/Tirane"})
+        for n in ((d or {}).get("response") or []):
+            fx = n.get("fixture") or {}
+            statusi = ((fx.get("status") or {}).get("short") or "")
+            if statusi not in ("NS", "TBD"):
+                continue                      # vetëm ndeshje që s'kanë nisur
+            try:
+                koha = datetime.fromisoformat(str(fx.get("date")).replace("Z", "+00:00"))
+            except Exception:
+                continue
+            if not (tani <= koha <= kufi):
+                continue
+            lg = n.get("league") or {}
+            tm = n.get("teams") or {}
+            fixtures[str(fx.get("id"))] = {
+                "koha": koha,
+                "liga": f"{lg.get('country', '')} - {lg.get('name', '')}",
+                "ndeshja": f"{(tm.get('home') or {}).get('name')} vs {(tm.get('away') or {}).get('name')}",
+            }
+
+    if not fixtures:
+        return {"ok": True, "ruajtur": 0, "arsyeja": "asnje ndeshje ne dritare"}
+
+    # Kuotat në masë sipas datës, me paginim
+    kuotat = {}
+    for dt in datat:
+        page = 1
+        while page <= 5:
+            d = _api_sports_get("odds", {
+                "date": dt, "timezone": "Europe/Tirane",
+                "bookmaker": KUOTA_HIST_BOOKMAKER, "page": page,
+            })
+            resp = (d or {}).get("response") or []
+            if not resp:
+                break
+            for item in resp:
+                fid = str(((item.get("fixture") or {}).get("id")))
+                if fid not in fixtures or fid in kuotat:
+                    continue
+                try:
+                    kuotat[fid] = _nxirr_odds_reale(item["bookmakers"][0]["bets"])
+                except Exception:
+                    pass
+            paging = (d or {}).get("paging") or {}
+            if page >= int(paging.get("total", 1) or 1):
+                break
+            page += 1
+
+    def _f(v):
+        try:
+            x = float(v)
+            return x if x > 1.0 else None
+        except Exception:
+            return None
+
+    def _ah_kryesor(ahd):
+        """_nxirr_odds_reale e kthen AH-në si fjalor të sheshtë:
+        {"Home -1.5": "1.90", "Away +1.5": "1.95"}. Kthen (linja, home, away).
+
+        Zgjedh linjën KRYESORE — atë ku kuotat e dy anëve janë më afër njëra-tjetrës.
+        Zgjedhja duhet të jetë determinist, përndryshe seria kohore do të kërcente
+        mes linjash të ndryshme dhe do të prodhonte 'lëvizje' që s'ka ndodhur."""
+        if not isinstance(ahd, dict) or not ahd:
+            return None, None, None
+        home, away = {}, {}
+        for k, v in ahd.items():
+            pjeset = str(k).split()
+            if len(pjeset) != 2:
+                continue
+            try:
+                ln = float(pjeset[1])
+            except Exception:
+                continue
+            if pjeset[0].lower() == "home":
+                home[ln] = v
+            elif pjeset[0].lower() == "away":
+                away[ln] = v
+        me_mire = None
+        for ln, oh in home.items():
+            oa = away.get(-ln)          # ana e mysafirit është linja e kundërt
+            h, a = _f(oh), _f(oa)
+            if h and a:
+                dif = abs(h - a)
+                if me_mire is None or dif < me_mire[0]:
+                    me_mire = (dif, ln, h, a)
+        return (me_mire[1], me_mire[2], me_mire[3]) if me_mire else (None, None, None)
+
+    rreshtat = []
+    for fid, info in fixtures.items():
+        o = kuotat.get(fid)
+        if not o:
+            continue
+        ah_line, ah_h, ah_a = _ah_kryesor(o.get("AH"))
+        rreshtat.append({
+            "fixture_id":    int(fid),
+            "marre_ne":      tani.isoformat(),
+            "koha_ndeshjes": info["koha"].isoformat(),
+            "minuta_para":   int((info["koha"] - tani).total_seconds() // 60),
+            "bookmaker":     KUOTA_HIST_BOOKMAKER,
+            "liga_emri":     info["liga"],
+            "ndeshja":       info["ndeshja"],
+            "k1": _f(o.get("1")), "kx": _f(o.get("X")), "k2": _f(o.get("2")),
+            "ou25_over":  _f(o.get("Over 2.5")),
+            "ou25_under": _f(o.get("Under 2.5")),
+            "gg": _f(o.get("GG")), "ng": _f(o.get("NG")),
+            "ah_line": ah_line, "ah_home": ah_h, "ah_away": ah_a,
+        })
+
+    # Vetëm fotografitë me 1X2 të plotë — pa to rreshti s'ka vlerë analitike
+    rreshtat = [r for r in rreshtat if r["k1"] and r["kx"] and r["k2"]]
+    if not rreshtat:
+        return {"ok": True, "ruajtur": 0, "ndeshje_ne_dritare": len(fixtures),
+                "arsyeja": "asnje kuote 1X2"}
+
+    ruajtur = 0
+    try:
+        hdr = dict(SUPABASE_SERVICE_HEADERS)
+        hdr["Content-Type"] = "application/json"
+        # ignore-duplicates: indeksi unik (fixture, bookmaker, minutë) e mbron nga
+        # ekzekutimi i dyfishtë brenda të njëjtit minutë pa e rrëzuar thirrjen.
+        hdr["Prefer"] = "resolution=ignore-duplicates"
+        for i in range(0, len(rreshtat), 200):
+            r = requests.post(SUPABASE_URL_KUOTA_HIST, headers=hdr,
+                              json=rreshtat[i:i + 200], timeout=20)
+            if r.status_code in (200, 201, 204):
+                ruajtur += len(rreshtat[i:i + 200])
+            else:
+                print(f"⚠️ kuota_historik: {r.status_code} {r.text[:120]}")
+    except Exception as e:
+        return {"ok": False, "ruajtur": ruajtur, "gabim": str(e)}
+
+    print(f"📈 Kuotat: {ruajtur} fotografi nga {len(fixtures)} ndeshje ne dritare")
+    return {"ok": True, "ruajtur": ruajtur, "ndeshje_ne_dritare": len(fixtures),
+            "me_kuota": len(rreshtat), "bookmaker": KUOTA_HIST_BOOKMAKER}
 
 
 def _kompjuto_dhe_ruaj_skedina(data_target):
