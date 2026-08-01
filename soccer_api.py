@@ -88,14 +88,29 @@ def _ngarko_modelet_xgb():
             print("⚠️ Modelet HT nuk u gjetën — HT/FT joaktiv.")
     except Exception as e:
         print(f"⚠️ XGBoost nuk u ngarkua ({e}) — fallback te formula.")
+        # Te dyja flamujt duhen rivendosur: nese FT ngarkohej, HT ngarkohej, dhe pastaj
+        # dicka deshtonte me pas, mbeteshim me XGB_GATI=False dhe XGB_HT_GATI=True.
         XGB_GATI = False
+        XGB_HT_GATI = False
 
 _ngarko_modelet_xgb()
 
 app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
-VERSION = "2026-07-29-B · CRYPTOMUS U HOQ (mbetet vetem NOWPayments; PayPal e LemonSqueezy ishin hequr me pare) + PESHAT E REJA: W_MARKET 0.25->0.40, W_FORMA 0.40->0.25 (saktesia e matur e drejtimit: tregu 72%, forma 55%, Elo 53%) + peshat env-var me normalizim automatik + CS_LEAN_XG (i fikur, 99) + /api/status raporton konfigurimin live + Hash 24h + kalimi i mirembajtjes"
+VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
+           "xG: XG_NORM_* rifituar mbi 278 ndeshje (A_HOME -0.42->0.08, B 1.06->0.87; "
+           "A_AWAY -0.29->-0.02, B 1.11->0.97), TOTAL_CALIB 0.20->0 dhe BOOST_MYSAFIR "
+           "0.30->0 (aditiv, frynte totalin) -> lambda e tregjeve O/U 2.115->2.613 "
+           "(reale 2.612). SKORI: AFF_FIKS 0.15 + FALLBACK_HAPUR 3.20 (fallback-u i "
+           "skoreve te uleta krahasohej me xG te panormalizuar dhe gelltiste cdo skor te "
+           "ulet). PROBABILITETET: kalibrim Platt (premtoheshin 59.0%, realizoheshin "
+           "48.6%). BEST_BET: kerkohet aftesi mbi normen baze (282/329 zgjedhje ishin "
+           "tregje totali me zero aftesi). 1X2: blend final me tregun W_MKT_FINAL 0.35 "
+           "(p=0.020) + W_ELO 0.25->0.10. AUTO-KALIBRIM: /api/cron/kalibro rifiton nga "
+           "arkivi me guard-rails. MATJE: /api/performanca jep Brier/log-loss/kurbe "
+           "besueshmerie/aftesi per treg; /api/status raporton vlerat aktive + XGB_GATI. "
+           "HEQUR: SKOR_TAU, ONE_ONE_*; rregulluar kaosi i Europa League dhe FORMA_CACHE.")
 
 app.add_middleware(
     CORSMiddleware,
@@ -226,6 +241,9 @@ SUPABASE_URL_TRAINING = f"{SUPABASE_BASE}/rest/v1/training_results"
 SUPABASE_URL_USERS = f"{SUPABASE_BASE}/rest/v1/users"
 SUPABASE_URL_DNA   = f"{SUPABASE_BASE}/rest/v1/team_dna_cache"
 SUPABASE_URL_AKTIVITETI = f"{SUPABASE_BASE}/rest/v1/aktiviteti"
+# Parametrat e modelit qe kalibrohen VETE nga arkivi (shih /api/cron/kalibro).
+# Skema: celes text primary key, vlera float8, perditesuar timestamptz, mostra int
+SUPABASE_URL_MODEL_CONFIG = f"{SUPABASE_BASE}/rest/v1/model_config"
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -295,8 +313,17 @@ def _kuota_cs(odds_reale, skori):
 
 
 def edge_vlere(rezultati_sakt, dist_gola, odds_reale):
-    """Kthen (edge, prob_max, kuota). edge=None nëse s'ka kuotë CS për skorin."""
-    p = _prob_skori(dist_gola, rezultati_sakt)
+    """Kthen (edge, prob_max, kuota). edge=None nëse s'ka kuotë CS për skorin.
+
+    ⚠️ PROVË (209 parashikime me flamurin e vlerës, korrik 2026): pikat me is_value=True
+    goditën 42.0% kundrejt 52.9% të atyre me is_value=False — pra flamuri ishte
+    ANTI-parashikues. Shkaku: "vlerë" përkufizohej si p_model > 1/kuotë, domethënë
+    pikërisht aty ku modeli NUK pajtohet me tregun — dhe testi i çiftuar tregon se aty
+    modeli e ka gabim, jo tregu (log-loss 1.0095 kundrejt 0.9760, p=0.020).
+    Prandaj p-ja tani kalibrohet përpara krahasimit: mbivlerësimi sistematik i modelit
+    (-10.4 pikë) nuk numërohet më si "vlerë".
+    """
+    p = _platt(_prob_skori(dist_gola, rezultati_sakt))
     o = _kuota_cs(odds_reale, rezultati_sakt)
     if o is None:
         return None, p, None
@@ -442,6 +469,83 @@ SUPABASE_SERVICE_HEADERS = {
 def _eshte_hash(s):
     # Formati ynë: pbkdf2$<iterations>$<salt_hex>$<hash_hex>
     return isinstance(s, str) and s.startswith("pbkdf2$")
+
+# ══════════════════════════════════════════════════════════════════════════
+# KONFIGURIMI I MODELIT NË RUNTIME (model_config) — akordim PA deploy/restart
+# ══════════════════════════════════════════════════════════════════════════
+# Përpara: çdo knob lexohej NJË herë në import (os.environ.get) → ndryshimi kërkonte
+# restart të procesit. Tani: Supabase `model_config` → env-var → default i koduar.
+# Cache 1h (si FORMA_CACHE). Nëse Supabase s'përgjigjet, biem te env/default — kurrë
+# nuk hedhim përjashtim dhe kurrë nuk bllokojmë një parashikim.
+_KONF_CACHE = {"ts": 0.0, "vlerat": {}, "ts_deshtim": 0.0}
+_KONF_TTL = 3600.0
+# KRITIKE: pa këtë prapavijë, një Supabase i palidhur do të shkaktonte një kërkesë rrjeti
+# (deri në 5s timeout) për ÇDO thirrje të _konf() — dhe _best_bet_value e thërret 9 herë
+# për ndeshje. Pas një dështimi presim 60s përpara se të riprovojmë.
+_KONF_PRAPAVIJE = 60.0
+
+def _konf_rifresko(detyro: bool = False) -> dict:
+    """Lexon të gjithë tabelën model_config (është e vogël). Kthen {celes: float}."""
+    tani = time.time()
+    if not detyro and (tani - _KONF_CACHE["ts"] < _KONF_TTL):
+        return _KONF_CACHE["vlerat"]
+    if not detyro and (tani - _KONF_CACHE["ts_deshtim"] < _KONF_PRAPAVIJE):
+        return _KONF_CACHE["vlerat"]
+    if not SUPABASE_SERVICE_KEY:
+        _KONF_CACHE["ts_deshtim"] = tani
+        return _KONF_CACHE["vlerat"]
+    try:
+        r = requests.get(f"{SUPABASE_URL_MODEL_CONFIG}?select=celes,vlera",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+        if r.status_code == 200:
+            out = {}
+            for row in (r.json() or []):
+                try:
+                    out[str(row["celes"])] = float(row["vlera"])
+                except Exception:
+                    continue
+            _KONF_CACHE["vlerat"] = out
+            _KONF_CACHE["ts"] = tani
+        else:
+            # Tabela s'ekziston ende (migracioni s'eshte ekzekutuar) -> prapavije.
+            _KONF_CACHE["ts_deshtim"] = tani
+    except Exception:
+        _KONF_CACHE["ts_deshtim"] = tani
+    return _KONF_CACHE["vlerat"]
+
+def _konf(emri: str, parazgjedhje: float) -> float:
+    """Vlera aktive e një parametri: model_config → env-var → parazgjedhje."""
+    try:
+        v = _konf_rifresko().get(emri)
+        if v is not None:
+            return float(v)
+    except Exception:
+        pass
+    try:
+        raw = os.environ.get(emri)
+        if raw is not None and str(raw).strip() != "":
+            return float(str(raw).strip())
+    except Exception:
+        pass
+    return float(parazgjedhje)
+
+def _konf_shkruaj(vlerat: dict, mostra: int) -> bool:
+    """Shkruan/përditëson një grup parametrash në model_config. True nëse OK."""
+    rreshtat = [{"celes": k, "vlera": float(v), "mostra": int(mostra),
+                 "perditesuar": datetime.utcnow().isoformat()} for k, v in vlerat.items()]
+    if not rreshtat:
+        return False
+    try:
+        r = requests.post(SUPABASE_URL_MODEL_CONFIG,
+                          headers={**SUPABASE_SERVICE_HEADERS,
+                                   "Prefer": "resolution=merge-duplicates"},
+                          json=rreshtat, timeout=10)
+        ok = r.status_code in (200, 201, 204)
+        if ok:
+            _KONF_CACHE["ts"] = 0.0   # detyro rileximin në thirrjen e parë pasuese
+        return ok
+    except Exception:
+        return False
 
 # ================== AUTENTIKIM ME TOKEN (JWT vetjak, HMAC-SHA256) ==================
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
@@ -2213,6 +2317,12 @@ CMIM_GENERATE = 10.0   # jo-VIP paguan kaq për 1 Generate Ticket
 # >= këtë vlerë (pretendimi "75–92%" te veçoritë VIP). Një ndeshje me 65% nuk i
 # gjenerohet VIP-it. Jo-VIP-i (që paguan) merr të gjitha ndeshjet pa këtë filtër.
 # Drini: ule në 70.0 nëse del shumë restriktive (pak ndeshje kualifikohen).
+# ✅ PROVË (289 parashikime me besueshmëri, korrik 2026) — ky filtër PUNON vërtet,
+#    ndryshe nga probabiliteti i papërpunuar (korrelacioni i tij me goditjen: 0.086):
+#      besu >= 73 -> 50.2% goditje | >= 75 -> 54.8% | >= 77 -> 57.6% (drejtimi 63.0%)
+#    Prandaj u ruajt 75.0. I akordueshëm nga model_config nëse shpërndarja zhvendoset —
+#    dhe ajo DO të zhvendoset pak, sepse blend-i final i 1X2 ndryshon konsensusin që
+#    ushqen llogarit_besueshmeria_v2. Rimate me /api/performanca → kalibrimi.kurba.
 BESU_PRAG_VIP = 75.0
 BESU_PRAG_VIPCOMBO = 70.0   # kufi më i ulët vetëm për VIP Combo
 
@@ -2230,8 +2340,11 @@ def _id_set(s):
     return out
 
 
-def _filtro_besu(pool, prag=BESU_PRAG_VIP):
-    """Mban vetëm ndeshjet me besueshmëri >= prag. Përdoret për skedinat VIP."""
+def _filtro_besu(pool, prag=None):
+    """Mban vetëm ndeshjet me besueshmëri >= prag. Përdoret për skedinat VIP.
+    prag=None -> vlera aktive e BESU_PRAG_VIP (model_config -> env -> 75.0)."""
+    if prag is None:
+        prag = _konf("BESU_PRAG_VIP", BESU_PRAG_VIP)
     out = []
     for p in pool:
         b = p.get("besueshmeria")
@@ -3036,7 +3149,7 @@ def _zgjidh_skedine_ditore(data_str, nr=3, prob_max=0.90, koef_min=3.0):
         if len(kand) < 2:
             return None
         # PREFERENCA E BESUESHMËRISË: ndeshjet ≥75 kanë përparësi; nëse s'mjaftojnë, kalon tek të tjerat (soft)
-        prag = BESU_PRAG_VIP
+        prag = _konf("BESU_PRAG_VIP", BESU_PRAG_VIP)
         def _hi(c):
             return c.get("besu") is not None and c["besu"] >= prag
         nr = min(nr, len(kand))
@@ -3203,6 +3316,52 @@ def _num_opt(x):
         return None
 
 
+# ── VERIFIKIMI I NJË TREGU KUNDREJT REZULTATIT REAL ──
+# Një vend i vetëm ku përkufizohet se çfarë do të thotë "goditi" për çdo treg.
+# Përdoret nga /api/performanca, /api/cron/kalibro dhe nga normat bazë.
+# Kthen True/False, ose None kur tregu s'njihet / skori s'lexohet.
+def _verifiko_treg(tregu, skor):
+    p = _parse_score(skor or "")
+    if not p or not tregu:
+        return None
+    h, a = p[0], p[1]
+    t = h + a
+    tg = str(tregu).strip()
+    if tg == "1":  return h > a
+    if tg == "X":  return h == a
+    if tg == "2":  return a > h
+    if tg == "1X": return h >= a
+    if tg == "X2": return a >= h
+    if tg == "12": return h != a
+    if tg == "GG": return (h > 0 and a > 0)
+    if tg == "NG": return (h == 0 or a == 0)
+    if tg.startswith("Over ") or tg.startswith("Under "):
+        try:
+            linja = float(tg.split()[1])
+        except Exception:
+            return None
+        return t > linja if tg.startswith("Over ") else t < linja
+    return None
+
+
+# Normat BAZË për çdo treg (sa shpesh ndodh pavarësisht parashikimit).
+# Fillimisht nga 329 ndeshjet e arkivit; rikalibrohen nga /api/cron/kalibro.
+# Përdoren për të matur AFTËSINË e vërtetë: prob e modelit − normë bazë.
+NORMA_BAZE_DEFAULT = {
+    "1": 0.45, "X": 0.25, "2": 0.30,
+    "1X": 0.70, "X2": 0.55, "12": 0.75,
+    "GG": 0.50, "NG": 0.50,
+    "Over 1.5": 0.74, "Under 1.5": 0.26,
+    "Over 2.5": 0.49, "Under 2.5": 0.51,
+    "Over 3.5": 0.25, "Under 3.5": 0.75,
+}
+
+def _norma_baze(tregu: str) -> float:
+    """Norma bazë aktive e një tregu (model_config -> default i matur)."""
+    return _konf(f"BAZE_{tregu}".replace(" ", "_").replace(".", "_"),
+                 NORMA_BAZE_DEFAULT.get(str(tregu).strip(), 0.5))
+
+
 def _rezultati_ft(fx):
     """Rezultati i 90 minutave (FT) për 1X2/PPM — JO pas shtesave (AET) ose penallteve (PEN).
     API-Football: score.fulltime = fundi i 90-tES. Bie te goals nEse fulltime mungon (AWD/WO)."""
@@ -3250,6 +3409,10 @@ def _arkivo_ndeshje(pred, ht_str=None):
         "besueshmeria": _num_opt(pred.get("besueshmeria")),
         "goditi_1x2":   (_shenja_1x2(par) == _shenja_1x2(ft)) if (par and _shenja_1x2(par) and _shenja_1x2(ft)) else None,
         "goditi_skor":  (_parse_score(par) == _parse_score(ft)) if (par and _parse_score(par) and _parse_score(ft)) else None,
+        # HT: parashikimi_ht ruhej prej kohesh por asgje s'e notonte — pra s'kishim si ta
+        # dinim nese simulimi i gjysmes se pare vlen. Tani notohet si FT.
+        "goditi_ht":    ((_parse_score(str(treg.get("skor_ht")).replace("-", " - ")) == _parse_score(ht_str))
+                         if (treg.get("skor_ht") and _parse_score(ht_str or "")) else None),
         # ── FLAG-U ORIGJINAL I VLERËS (i llogaritur në momentin e publikimit) ──
         # Ruhet ashtu siç ishte; PA rillogaritje. Kuotat lëvizin me kohën, ndaj rillogaritja
         # mbi arkiv mund ta kthente një bast të publikuar si vlerë në "jo-vlerë".
@@ -3261,10 +3424,20 @@ def _arkivo_ndeshje(pred, ht_str=None):
         "dist_gola":     pred.get("dist_gola") or {},
         "tregjet_full":  treg,
     }
+    # MBROJTJE: PostgREST kthen 400 (jo perjashtim) kur nje kolone s'ekziston, ndaj nje
+    # fushe e re do te ndalte NE HESHTJE krejt arkivimin. Provojme, dhe nese ankohet per
+    # nje kolone te panjohur, e heqim ate fushe dhe riprovojme nje here.
+    _hdr = {**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=ignore-duplicates"}
     try:
-        requests.post(ARKIV_URL,
-                      headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=ignore-duplicates"},
-                      json=rec, timeout=8)
+        resp = requests.post(ARKIV_URL, headers=_hdr, json=rec, timeout=8)
+        if resp.status_code == 400:
+            _teksti = (resp.text or "")
+            _hoqem = [k for k in list(rec.keys()) if k != "match_id" and f"'{k}'" in _teksti]
+            if _hoqem:
+                for k in _hoqem:
+                    rec.pop(k, None)
+                print(f"⚠️ Arkivi: kolona(t) {_hoqem} s'ekzistojne — u arkivua pa to.")
+                requests.post(ARKIV_URL, headers=_hdr, json=rec, timeout=8)
     except Exception:
         pass
 
@@ -4020,6 +4193,32 @@ def merr_formen_reale(team_id: int, liga_emri: str = None, numri_ndeshjeve: int 
     except Exception:
         ndeshje_14d = 0
 
+    # ── VEÇORI TË MODELIT XGB: volatility + data e ndeshjes së fundit ──
+    # Përkufizimet DUHET të jenë identike me importues_csv_v3.py (që prodhoi të dhënat
+    # e trajnimit), përndryshe fusim train/serve skew:
+    #   volatility = devijim standard i mostrës (ddof=1) i totalit të golave, 6 ndeshjet
+    #                e fundit; 1.0 kur ka < 3 ndeshje  [importues_csv_v3.py:172-175]
+    # `data_fundit` ruhet këtu (varet vetëm nga e kaluara → i sigurt për cache); rest_days
+    # llogaritet te thirrësi, sepse varet nga data e ndeshjes që po parashikohet, ndërsa
+    # çelësi i FORMA_CACHE është vetëm (team_id, liga_emri).
+    volatility  = 1.0
+    data_fundit = None
+    try:
+        _me_date = [_n for _n in ndeshjet if (_n.get("fixture") or {}).get("date")]
+        _me_date.sort(key=lambda x: x["fixture"]["date"], reverse=True)
+        if _me_date:
+            data_fundit = _me_date[0]["fixture"]["date"]
+        _totale = []
+        for _n in _me_date[:6]:               # tail(6) — si te trajnimi
+            _gh = (_n.get("goals") or {}).get("home")
+            _ga = (_n.get("goals") or {}).get("away")
+            if _gh is not None and _ga is not None:
+                _totale.append(_gh + _ga)
+        if len(_totale) >= 3:
+            volatility = round(float(np.std(_totale, ddof=1)), 3)
+    except Exception:
+        volatility, data_fundit = 1.0, None
+
     # Mesataret home/away (me fallback te mesatarja e përgjithshme nëse s'ka mjaft)
     avg_shenuar_home = (h_gola_shenuar / h_ndeshje) if h_ndeshje >= 2 else avg_gola_shenuar
     avg_prane_home   = (h_gola_prane   / h_ndeshje) if h_ndeshje >= 2 else avg_gola_prane
@@ -4044,6 +4243,9 @@ def merr_formen_reale(team_id: int, liga_emri: str = None, numri_ndeshjeve: int 
         "avg_prane_away":   round(avg_prane_away, 2),
         "h_ndeshje":        h_ndeshje,
         "a_ndeshje":        a_ndeshje,
+        # Veçori XGB (shih komentin te llogaritja më sipër)
+        "volatility":       volatility,
+        "data_fundit":      data_fundit,
     }
     FORMA_CACHE[_cache_key] = (rezultati, koha_tani)
     return rezultati
@@ -4056,7 +4258,24 @@ def _forma_boshe() -> dict:
         "avg_shenuar_home": 1.2, "avg_prane_home": 1.2,
         "avg_shenuar_away": 1.2, "avg_prane_away": 1.2,
         "h_ndeshje": 0, "a_ndeshje": 0,
+        # 1.0 = vlera që trajnimi përdori kur s'kishte mjaft ndeshje (jo mesatarja 1.47)
+        "volatility": 1.0, "data_fundit": None,
     }
+
+
+def _rest_days_nga_forma(forma: dict, data_ndeshjes) -> float:
+    """rest_days si te importues_csv_v3.py:178-181 — ditë nga ndeshja e fundit, kufizuar
+    në [1, 30]. Fallback 7.0: e njëjta vlerë që trajnimi vendosi kur data mungonte."""
+    try:
+        _f = (forma or {}).get("data_fundit")
+        if not _f or not data_ndeshjes:
+            return 7.0
+        d_akt = datetime.fromisoformat(str(data_ndeshjes).replace("Z", "+00:00"))
+        d_fun = datetime.fromisoformat(str(_f).replace("Z", "+00:00"))
+        return float(min(max((d_akt - d_fun).days, 1), 30))
+    except Exception:
+        return 7.0
+
 
 def _llogarit_wins_rresht(ndeshjet: list, team_id: int) -> int:
     wins = 0
@@ -4092,10 +4311,20 @@ def _peshe_env(emri: str, parazgjedhje: float) -> float:
     except Exception:
         return parazgjedhje
 
+# ── RIPESHIM (korrik 2026, 278 ndeshje të arkivuara) ──
+# W_ELO 0.25 -> 0.10. Dy prova të pavarura:
+#   1) korrelacioni i diferencës së Elo-s me diferencën reale të golave është 0.074 —
+#      praktikisht zhurmë (tregu: 0.49, xG: 0.44). Në një regresion me tregun brenda,
+#      koeficienti i Elo-s ka t = -0.50: nuk shton asgjë.
+#   2) Elo-ja jonë NUK është Elo e mirëfilltë: historical_power = 600 + win_rate*400
+#      + diferenca_golave*80, pra FORMA e rikoduar — W_ELO dhe W_FORMA po numëronin
+#      në masë të madhe të NJËJTIN sinjal dy herë. Dhe merr_elo_baze kthen 600 fiks
+#      për çdo ekip jashtë listës me 21 emra (GIGANTET_ELO).
+# Pesha e liruar shkon te tregu (sinjali i vetëm me saktësi të matur 72%) dhe te baza.
 W_FORMA  = _peshe_env("W_FORMA",  0.25)
-W_ELO    = _peshe_env("W_ELO",    0.25)
-W_MARKET = _peshe_env("W_MARKET", 0.40)
-W_BASE   = _peshe_env("W_BASE",   0.10)
+W_ELO    = _peshe_env("W_ELO",    0.10)
+W_MARKET = _peshe_env("W_MARKET", 0.50)
+W_BASE   = _peshe_env("W_BASE",   0.15)
 _w_sum = W_FORMA + W_ELO + W_MARKET + W_BASE
 if _w_sum > 0:
     W_FORMA, W_ELO, W_MARKET, W_BASE = (W_FORMA/_w_sum, W_ELO/_w_sum, W_MARKET/_w_sum, W_BASE/_w_sum)
@@ -4218,6 +4447,7 @@ def llogarit_xg_hybrid(
     xg_math_1: float, xg_math_2: float,
     ah_line=None, ah_home=None, ah_away=None,
     ou_over=None, ou_under=None,
+    data_ndeshjes=None,
 ) -> tuple:
     """
     HYBRID: kombinon XGBoost (nëse gati) me xG matematikore.
@@ -4260,10 +4490,13 @@ def llogarit_xg_hybrid(
             "away_attack_strength": round(a_scored / MES, 3),
             "home_defense_strength": round(h_conceded / MES, 3),
             "away_defense_strength": round(a_conceded / MES, 3),
-            "home_volatility": XGB_DEFAULTS["home_volatility"],
-            "away_volatility": XGB_DEFAULTS["away_volatility"],
-            "home_rest_days": XGB_DEFAULTS["home_rest_days"],
-            "away_rest_days": XGB_DEFAULTS["away_rest_days"],
+            # Të llogaritura live (më parë ishin konstante → train/serve skew).
+            # Modeli mësoi varësi reale nga këto (126-536 ndarje secili); dërgimi i së
+            # njëjtës vlerë për çdo ndeshje i çonte të gjitha nëpër të njëjtën degë.
+            "home_volatility": forma_1.get("volatility", XGB_DEFAULTS["home_volatility"]),
+            "away_volatility": forma_2.get("volatility", XGB_DEFAULTS["away_volatility"]),
+            "home_rest_days": _rest_days_nga_forma(forma_1, data_ndeshjes),
+            "away_rest_days": _rest_days_nga_forma(forma_2, data_ndeshjes),
             "odd_home": k1, "odd_draw": kx, "odd_away": k2,
             "tipi_ndeshjes": tipi,
             "ah_line": _f_safe(ah_line, XGB_DEFAULTS["ah_line"]),
@@ -4289,9 +4522,9 @@ def llogarit_xg_hybrid(
                 frac_ht_1 = frac_ht_2 = None
 
         # Kombinim: 55% XGBoost + 45% math
-        W_XGB = 0.55
-        xg_1 = W_XGB * xgb_h + (1 - W_XGB) * xg_math_1
-        xg_2 = W_XGB * xgb_a + (1 - W_XGB) * xg_math_2
+        _w_xgb = _konf("W_XGB", W_XGB)   # ishte lokale 0.55, e vetmja peshe jo e akordueshme
+        xg_1 = _w_xgb * xgb_h + (1 - _w_xgb) * xg_math_1
+        xg_2 = _w_xgb * xgb_a + (1 - _w_xgb) * xg_math_2
 
         xg_1 = float(np.clip(xg_1, 0.30, 5.00))
         xg_2 = float(np.clip(xg_2, 0.30, 5.00))
@@ -4402,16 +4635,32 @@ def _merr_odds_per_fixture(fix_id):
 
 
 def _best_bet_value(tregjet, odds_reale):
-    """Best bet me VALUE: midis tregjeve të sigurta (prob>=0.5) zgjedh value-n më
-    të lartë (prob_model × koef_real). Përdor odds reale ku ka, përndryshe fair."""
+    """Best bet me VALUE: midis tregjeve të sigurta zgjedh value-n më të lartë
+    (prob_kalibruar × koef_real). Përdor odds reale ku ka, përndryshe fair.
+
+    DY RREGULLIME (analizë e korrikut 2026 mbi 329 parashikime):
+      1) prob-i tani KALIBROHET (Platt) përpara se të krahasohet dhe të publikohet.
+         Përpara shpalleshin probabilitete të papërpunuara që premtonin 59.0% dhe
+         realizonin 48.6%.
+      2) kërkohet AFTËSI reale: prob e kalibruar duhet të jetë të paktën EDGE_MIN mbi
+         normën bazë të atij tregu. Përpara, 282 nga 329 zgjedhje ishin tregje totali
+         që goditën 49.3% kundrejt normës bazë ~50% — zgjedhja nuk shtonte asnjë
+         informacion, thjesht zgjidhte maksimumin e zhurmës.
+    Kur asnjë kandidat s'e kalon pragun, biem te kandidati me AFTËSINË më të lartë
+    (jo te prob-i më i lartë) — që të mos kthehet kurrë sërish zgjedhja e zhurmës.
+    """
+    _edge_min = _konf("EDGE_MIN", EDGE_MIN)
     kand = []
     for t in TREGJET_KANDIDATE:
         if t not in (tregjet or {}):
             continue
         try:
-            p = float(tregjet.get(t, 0))
+            p_raw = float(tregjet.get(t, 0))
         except Exception:
-            p = 0.0
+            p_raw = 0.0
+        if p_raw <= 0:
+            continue
+        p = _platt(p_raw)                     # probabiliteti i kalibruar
         if p <= 0:
             continue
         od_real = None
@@ -4421,23 +4670,113 @@ def _best_bet_value(tregjet, odds_reale):
             except Exception:
                 od_real = None
         od = od_real if (od_real and od_real > 1) else round(1.0 / p, 2)
-        kand.append({"tregu": t, "prob": round(p, 4), "koef": round(od, 2),
-                     "value": round(p * od, 3), "real": bool(od_real)})
+        _baze = _norma_baze(t)
+        kand.append({"tregu": t, "prob": round(p, 4), "prob_raw": round(p_raw, 4),
+                     "koef": round(od, 2), "value": round(p * od, 3),
+                     "baze": round(_baze, 4), "aftesia": round(p - _baze, 4),
+                     "real": bool(od_real)})
     if not kand:
         return None
-    confident = [k for k in kand if k["prob"] >= 0.5]
-    if confident:
-        return max(confident, key=lambda k: k["value"])
-    return max(kand, key=lambda k: k["prob"])
+    # Kandidatë me aftësi reale mbi normën bazë DHE prob të kalibruar mbi 0.5
+    me_aftesi = [k for k in kand if k["aftesia"] >= _edge_min and k["prob"] >= 0.50]
+    if me_aftesi:
+        return max(me_aftesi, key=lambda k: k["value"])
+    # Rezervë: aftësia më e lartë (jo prob-i më i lartë — ai zgjedh zhurmën)
+    return max(kand, key=lambda k: k["aftesia"])
 
 
 RHO_DC = -0.12  # Dixon-Coles: korrelacioni i skoreve te uleta (0 = Poisson i paster)
-# Kufiri i rrumbullakimit te skorit nga xG (kalibruar me te dhena reale: 0.65 optimal).
-# xG 1.65+ -> 2 gola, 2.65+ -> 3 gola. Env-kalibrueshem pa prekur kod.
+# Numri i simulimeve Monte Carlo — NJE burim i vetem i se vertetes (me pare ishte i
+# koduar fort si 50_000 ne dy vende, dhe njeri prej tyre pjesetonte frekuencat me te).
+MC_ITERACIONE = 50_000
+# Pragu i "lojes se hapur" per fallback-un qe zevendeson skoret me total <= 1 gol.
+# Krahasohet me totalin e NORMALIZUAR (ate qe simulon vertet Monte Carlo).
+# 3.20 = vetem ndeshje qe modeli i pret vertet te hapura. Fike krejt me 99.
 try:
-    SKOR_TAU = float(os.environ.get("SKOR_TAU", "0.65").strip())
+    FALLBACK_HAPUR = float(os.environ.get("FALLBACK_HAPUR", "3.20").strip())
 except Exception:
-    SKOR_TAU = 0.65
+    FALLBACK_HAPUR = 3.20
+
+# ── KALIBRIMI PLATT I PROBABILITETEVE: logit(p') = A + B * logit(p) ──
+# Matja mbi 329 parashikime: probabilitetet e shpallura premtonin 59.0% dhe realizonin
+# 48.6% — mbivlerësim -10.4 pikë përqindjeje (-3.8 sigma). Përshtatja e maksimumit të
+# gjasës dha A = -0.283, B = 0.608. B < 1 do të thotë se probabilitetet janë sistematikisht
+# shumë EKSTREME (tepër larg 50%) — tipike kur zgjidhet maksimumi i ~9 vlerësimeve me zhurmë
+# (winner's curse): maksimumi është pothuajse gjithmonë ai me gabimin pozitiv më të madh.
+# Pas kalibrimit log-loss bie 0.7127 -> 0.6887 dhe filtri p' >= 0.52 jep 57.6% goditje.
+# A=0 dhe B=1 e fikin krejt kalibrimin. Rikalibrohen nga /api/cron/kalibro.
+try:
+    PLATT_A = float(os.environ.get("PLATT_A", "-0.283").strip())
+except Exception:
+    PLATT_A = -0.283
+try:
+    PLATT_B = float(os.environ.get("PLATT_B", "0.608").strip())
+except Exception:
+    PLATT_B = 0.608
+
+# ── EDGE_MIN: sa duhet të jetë prob e kalibruar MBI normën bazë të tregut që ai treg
+#    të pranohet si best_bet. Matja: 282 nga 329 best-bet ishin tregje totali dhe
+#    goditën 49.3% kundrejt normës bazë ~50% — pra ZERO aftësi, thjesht zhurmë e shpallur
+#    si 59% siguri. Me EDGE_MIN këto zgjedhje bien poshtë dhe best_bet kthehet te 1X2/DC.
+try:
+    EDGE_MIN = float(os.environ.get("EDGE_MIN", "0.04").strip())
+except Exception:
+    EDGE_MIN = 0.04
+
+# ── W_MKT_FINAL: pesha e TREGUT në përzierjen përfundimtare të 1X2. ──
+# Test i çiftuar mbi 258 ndeshje me kuota të plota: log-loss i modelit 1.0095 kundrejt
+# 0.9760 të tregut (t = 2.33, p = 0.020) — tregu fiton në mënyrë statistikisht domethënëse.
+# Fshirja e pjerrësisë tregoi përmirësim monoton drejt tregut, por 0.35 është zgjedhje
+# konservatore: ruan identitetin e modelit (skori ekzakt mbetet TËRËSISHT i modelit —
+# matrica H nuk preket) duke marrë pjesën më të madhe të fitimit të kalibrimit.
+# 0 = vetëm modeli (sjellja e vjetër) | 1 = vetëm tregu.
+try:
+    W_MKT_FINAL = float(os.environ.get("W_MKT_FINAL", "0.35").strip())
+except Exception:
+    W_MKT_FINAL = 0.35
+
+# Pesha e XGBoost kundrejt formules matematikore (ishte lokale, jo e akordueshme).
+try:
+    W_XGB = float(os.environ.get("W_XGB", "0.55").strip())
+except Exception:
+    W_XGB = 0.55
+
+
+def _platt(p: float) -> float:
+    """Kalibron nje probabilitet me Platt scaling. I sigurt per p jashte (0,1)."""
+    try:
+        p = float(p)
+    except Exception:
+        return 0.0
+    if p <= 0.0:
+        return 0.0
+    if p >= 1.0:
+        return 1.0
+    a = _konf("PLATT_A", PLATT_A)
+    b = _konf("PLATT_B", PLATT_B)
+    if a == 0.0 and b == 1.0:
+        return p                      # kalibrimi i fikur
+    try:
+        z = a + b * math.log(p / (1.0 - p))
+        return 1.0 / (1.0 + math.exp(-z))
+    except Exception:
+        return p
+
+
+def _kalibrimi_i_fundit():
+    """Vula kohore + mostra e kalibrimit te fundit (per /api/status). None nese s'ka."""
+    try:
+        r = requests.get(f"{SUPABASE_URL_MODEL_CONFIG}?select=celes,perditesuar,mostra"
+                         f"&order=perditesuar.desc&limit=1",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=5)
+        if r.status_code == 200 and r.json():
+            row = r.json()[0]
+            return {"kur": row.get("perditesuar"), "mostra": row.get("mostra")}
+    except Exception:
+        pass
+    return None
+# (HEQUR) SKOR_TAU — ishte percaktuar dhe s'perdorej askund ne tubacion; mbetje nga
+# nje rregull i larguar. Po ashtu ONE_ONE_MIN/MAX/CAP me poshte.
 
 # Dysheme e vogel per golat e underdog-ut (tunable). 0 = origjinali 27/06 (p*3).
 try:
@@ -4448,7 +4787,13 @@ except Exception:
 # ── MODULATORI: de-kompresim per-ekip drejt tregut + ELO (sinjalet me spekter real) ──
 # xG baze ngjeshet nga forma+baza. Modulatori e shtyn drejt tregut/ELO-s, per-ekip.
 # Kufij ASIMETRIK: me shume liri per te ULUR underdog-un e fryre (-0.45) se per te ngritur (+0.35).
-# k_treg/k_elo tunable (env) -> me vone kalibrohen nga arkivi.
+# ⚠️ VËREJTJE (analiza korrik 2026): kjo asimetri është një anësi e heshtur POSHTË dhe
+#    kontribuon te tkurrja e përgjithshme e xG-së. NUK u ndryshua këtu me qëllim:
+#    parametrat XG_NORM_* u rifituan mbi shpërndarjen e xG-së që PRODHOHET me këta kufij,
+#    ndaj ndryshimi i tyre pa një refit të njëkohshëm do të mbivlerësonte totalin.
+#    Për ta provuar simetrinë: MOD_KUFI_POSHTE=-0.40 dhe MOD_KUFI_LART=0.40, pastaj
+#    /api/cron/kalibro që të rifitohen XG_NORM_* mbi shpërndarjen e re.
+# k_treg/k_elo tunable (env) -> kalibrohen nga arkivi.
 try:
     MOD_K_TREG = float(os.environ.get("MOD_K_TREG", "0.50").strip())
 except Exception:
@@ -4490,30 +4835,34 @@ try:
     TOTAL_MAX = float(os.environ.get("TOTAL_MAX", "4.50").strip())
 except Exception:
     TOTAL_MAX = 4.50
+# Sa peshe ka totali i TREGUT (odds O/U) brenda objektivit te modulatorit te totalit.
+# 0 = vetem forma | 0.5 = blend 50/50 (parazgjedhja historike) | 1.0 = vetem tregu.
+# ⚠️ Sinjali O/U hyn DY here ne tubacion: ketu (mbi xg_1/xg_2 te papërpunuara) dhe te
+#    MKT_TOTAL_W (mbi xG e normalizuar, rruga e skorit). Kjo NUK u hoq: matja s'tregoi
+#    dëm — tregu është sinjali më i mirë që kemi për totalin — dhe heqja e saj do ta
+#    ndryshonte shpërndarjen mbi të cilën u rifituan XG_NORM_*. Bëhet i akordueshëm
+#    që të provohet me refit të njëkohshëm nga /api/cron/kalibro.
+try:
+    TOTAL_FORM_MKT_W = float(os.environ.get("TOTAL_FORM_MKT_W", "0.50").strip())
+except Exception:
+    TOTAL_FORM_MKT_W = 0.50
 
-# ── KALIBRIMI I MESATARES: zbrit nga totali final (fix O/U mean-bias). ──
-# total_xg rrinte ~0.45 mbi realen -> parashikonte Over shume. Fillimisht konservativ 0.20.
+# ── KALIBRIMI I MESATARES: zbrit nga totali final (vetem tregjet O/U). ──
+# ÇAKTIVIZUAR (0.0). Ky knob u vendos 0.20 kur xG dukej i fryrë, por ai stivohej MBI
+# tkurrjen e XG_NORM: tregjet O/U dilnin me λ = 2.115 ndërsa realiteti ishte 2.612 —
+# gabim -0.50 gola. Pasoja e matur (329 parashikime): "Under 2.5" zgjidhej si best_bet
+# 37% e rasteve, premtonte 59.3% dhe goditte 50.4% (norma bazë e Under 2.5: 51.1%) —
+# domethënë ZERO aftësi, thjesht një anësi sistematike drejt Under.
+# Mbetet i akordueshëm që cron-i i kalibrimit ta rivendosë nëse të dhënat e kërkojnë.
 try:
-    TOTAL_CALIB = float(os.environ.get("TOTAL_CALIB", "0.20").strip())
+    TOTAL_CALIB = float(os.environ.get("TOTAL_CALIB", "0.0").strip())
 except Exception:
-    TOTAL_CALIB = 0.20
+    TOTAL_CALIB = 0.0
 
-# ── RREGULLI 1-1 (FIKUR si default: MIN=0, MAX=99 -> s'aktivizohet kurre). ──
-# Testi mbi 49 ndeshje: rregulli ULTE rez-saktEn 23%->18%. Per ta ringjallur: MIN=1.20, MAX=1.46.
-# Te dyja xG ne [ONE_ONE_MIN, ONE_ONE_MAX] -> mbetet 1-1 (vertet i balancuar).
-# Ndryshe: fituesi = round(xG)+1, humbesi = round(xG), me kufi ONE_ONE_CAP gola.
-try:
-    ONE_ONE_MIN = float(os.environ.get("ONE_ONE_MIN", "0").strip())
-except Exception:
-    ONE_ONE_MIN = 0.0
-try:
-    ONE_ONE_MAX = float(os.environ.get("ONE_ONE_MAX", "99").strip())
-except Exception:
-    ONE_ONE_MAX = 99.0
-try:
-    ONE_ONE_CAP = int(float(os.environ.get("ONE_ONE_CAP", "3").strip()))
-except Exception:
-    ONE_ONE_CAP = 3
+# (HEQUR) RREGULLI 1-1 (ONE_ONE_MIN/MAX/CAP) — rregulli vete ishte larguar nga Monte Carlo
+# me pare; mbeteshin vetem konstantet, dhe /api/status raportonte "rregulli_1_1": True,
+# domethene raportonte si aktive nje vecori qe s'ekzistonte. Testi i vjeter mbi 49 ndeshje
+# kishte treguar rez-sakte 23%->18%, pra s'ka arsye ta ringjallim.
 
 # ── SKORI NDJEK xG: (a) affinity 0 -> skori = moda e xG-se; (b) kalibrim force -> ul ──
 # xG-ne per ndeshjet mbrojtese (pesuar i ulet) qe moda te bjere te 0-0/1-0/0-1.
@@ -4525,7 +4874,22 @@ try:
     FORCA_PIVOT = float(os.environ.get("FORCA_PIVOT", "1.30").strip())
 except Exception:
     FORCA_PIVOT = 1.30
-# Affinity DINAMIK sipas forcës mbrojtëse (golat e pesuar):
+# ── AFFINITY: sa fort tërhiqet skori i zgjedhur drejt totalit të pritur (xg_1+xg_2). ──
+# Formula (te simulim_monte_carlo_v2): _score = _freq * 1/(1 + |gola_kand - total| * aff).
+# aff i lartë => skori detyrohet te totali i xG-së; aff i ulët => fiton frekuenca e pastër.
+#
+# AFF_FIKS (> 0) e mbivendos sjelljen dinamike me një vlerë të vetme, të kalibrueshme.
+# Default 0.15 — arsyeja NUK është saktësia (ndryshimi është brenda intervalit të besimit
+# mbi 278 ndeshje: skori ekzakt 11.5% -> 11.9%), por REALIZMI i shpërndarjes:
+#   me aff 0.50/0.90 modeli nxirrte 0 parashikime "0-0" (25 reale) dhe 1 × "1-0" (40 reale);
+#   parashikimet me total <= 1 gol ishin 0.3% ndërsa ndeshjet reale me total <= 1 janë 26.4%.
+# Me aff 0.15 pjesa e skoreve të ulëta kthehet në ~9%. Rimat pas ~150 ndeshjeve të reja.
+# AFF_FIKS=0 -> kthehet sjellja dinamike e vjetër (AFF_LOW/AFF_HIGH/AFF_THRESH).
+try:
+    AFF_FIKS = float(os.environ.get("AFF_FIKS", "0.15").strip())
+except Exception:
+    AFF_FIKS = 0.15
+# Sjellja DINAMIKE (aktive vetëm kur AFF_FIKS <= 0) sipas forcës mbrojtëse (golat e pesuar):
 #   pesuar < AFF_THRESH (mbrojtje e fortë) -> AFF_LOW -> skori zbret te modat e ulëta (0-0,1-0)
 #   pesuar >= AFF_THRESH (mbrojtje e dobët/sulmuese) -> AFF_HIGH -> skori i lartë (favoritët e mëdhenj)
 try:
@@ -4560,36 +4924,48 @@ try:
     PRAG_LEAN = float(os.environ.get("PRAG_LEAN", "0.30").strip())
 except Exception:
     PRAG_LEAN = 0.30
-# ── BOOST_MYSAFIR: kur mysafiri ka formë më të mirë se vendasi, i shtohet kjo vlerë xG-së së tij
-#    (VETËM për përzgjedhjen e skorit; xG-ja e logimit/tregjeve mbetet e paprekur). Modeli nën-angazhon
-#    sinjalin e mysafirit; backtest 69 ndeshje: away-recall 50%->73%, RS+drejtim ngrihen. Fik me 0. ──
+# ── BOOST_MYSAFIR: kur mysafiri ka formë më të mirë se vendasi, i jepet avantazh xG-je
+#    (VETËM për përzgjedhjen e skorit; xG-ja e logimit/tregjeve mbetet e paprekur).
+# ⚠️ ÇAKTIVIZUAR (0.0) me prova nga 278 ndeshje. Dy arsye:
+#    1) Ishte ADITIV (vetëm +xg_2) — pra fryn TOTALIN, jo vetëm drejtimin. Pasi u rregullua
+#       tkurrja e XG_NORM, ky boost e çonte λ-në nga 2.613 (= realiteti) në 2.753, duke
+#       prishur sërish çdo treg Over/Under (P(U2.5) 0.515 -> 0.481; reale 0.525).
+#    2) Premisa "modeli nën-angazhon mysafirin" nuk qëndron më: probabilitetet e modelit
+#       tashmë e MBIVLERËSOJNË mysafirin (p2 mesatare 0.330 kundrejt 0.287 fitore reale).
+#    Matja pa boost: skor ekzakt 0.115->0.126, drejtim 0.482->0.493, ±1 gol 0.619->0.633.
+#    Kur ndizet, tani është ZERO-SHUMË (+b/2 te mysafiri, -b/2 te vendasi) që të mos
+#    prekë kurrë më totalin e kalibruar — vepron vetëm mbi DREJTIMIN, siç ishte qëllimi.
 try:
-    BOOST_MYSAFIR = float(os.environ.get("BOOST_MYSAFIR", "0.30").strip())
+    BOOST_MYSAFIR = float(os.environ.get("BOOST_MYSAFIR", "0.0").strip())
 except Exception:
-    BOOST_MYSAFIR = 0.30
+    BOOST_MYSAFIR = 0.0
 
-# ── NORMALIZIMI I xG (regresion): xG dilte i FRYRE (+0.48 gola total). ──
-# Formula: xg_norm = A + B * xg   (fituar nga 49 ndeshje me regresion linear)
-#   Vendas:  gola_realë ≈ -0.42 + 1.06 × xg_1
-#   Mysafir: gola_realë ≈ -0.29 + 1.11 × xg_2
-# Rezultati: drejtimi (1X2) 59% -> 67%.
-# ⚠️ KETO jane parametrat qe do AUTO-KALIBROHEN nga arkivi (me tkurrje) kur te kete 200+ ndeshje.
+# ── NORMALIZIMI I xG (regresion): xg_norm = A + B * xg ──
+# HISTORIKU: parametrat e vjetër (A_HOME=-0.42/B=1.06, A_AWAY=-0.29/B=1.11) ishin fituar
+# nga vetëm 49 ndeshje dhe e TKURRNIN totalin e simuluar në 2.315 gola ndërsa realiteti
+# ishte 2.612 — një gabim prej -0.30 gola që rridhte në ÇDO treg.
+# RIFITUAR mbi 278 ndeshje të arkivuara (qershor-korrik 2026, t_B ≈ 6 për të dyja anët):
+#   Vendas:  gola_realë ≈ +0.08 + 0.87 × xg_1     (R² 0.118)
+#   Mysafir: gola_realë ≈ -0.02 + 0.97 × xg_2     (R² 0.126)
+# Ndërprerjet janë tani ~0 dhe pjerrësitë <1 — pra tkurrje e butë drejt mesatares,
+# jo zhvendosje e madhe aditive. Totali i rikthyer: 2.612 = realiteti.
+# ⚠️ KËTO AUTO-KALIBROHEN nga /api/cron/kalibro (me tkurrje 50/50 nën 500 mostra).
 try:
-    XG_NORM_A_HOME = float(os.environ.get("XG_NORM_A_HOME", "-0.42").strip())
+    XG_NORM_A_HOME = float(os.environ.get("XG_NORM_A_HOME", "0.08").strip())
 except Exception:
-    XG_NORM_A_HOME = -0.42
+    XG_NORM_A_HOME = 0.08
 try:
-    XG_NORM_B_HOME = float(os.environ.get("XG_NORM_B_HOME", "1.06").strip())
+    XG_NORM_B_HOME = float(os.environ.get("XG_NORM_B_HOME", "0.87").strip())
 except Exception:
-    XG_NORM_B_HOME = 1.06
+    XG_NORM_B_HOME = 0.87
 try:
-    XG_NORM_A_AWAY = float(os.environ.get("XG_NORM_A_AWAY", "-0.29").strip())
+    XG_NORM_A_AWAY = float(os.environ.get("XG_NORM_A_AWAY", "-0.02").strip())
 except Exception:
-    XG_NORM_A_AWAY = -0.29
+    XG_NORM_A_AWAY = -0.02
 try:
-    XG_NORM_B_AWAY = float(os.environ.get("XG_NORM_B_AWAY", "1.11").strip())
+    XG_NORM_B_AWAY = float(os.environ.get("XG_NORM_B_AWAY", "0.97").strip())
 except Exception:
-    XG_NORM_B_AWAY = 1.11
+    XG_NORM_B_AWAY = 0.97
 
 # ── SINJALI I TREGUT te totali i SKORIT (variacion: dalin 3-0, 2-1, 3-1). ──
 # Pas normalizimit, totali i skorit ri-synohet drejt totalit qe pret TREGU (nga odds O/U).
@@ -4742,7 +5118,7 @@ def simulim_monte_carlo_v2(
     xg_1: float, xg_2: float,
     kaos_factor: float = 1.0,
     is_derbi: bool = False,
-    iteracione: int = 50_000,
+    iteracione: int = MC_ITERACIONE,
     rho: float = RHO_DC,
     seed: int = None,
     aff: float = 0.5
@@ -4981,11 +5357,18 @@ def _info_renditje(ekipi_id, standings):
 
 def apliko_kaosin_e_liges(emri_liges: str, vol_1: float = 15.0, vol_2: float = 15.0) -> float:
     liga = emri_liges.lower()
-    if any(x in liga for x in ["world cup", "euro", "copa america", "nations league"]):
+    # RREGULLIM: kupat e klubeve kontrollohen TË PARAT. Më parë testi "euro" in liga
+    # kapte "Europa League" dhe "Europa Conference League" dhe u jepte kaosin 1.25 të
+    # kombëtareve — dhe këto dy gara janë pikërisht ato me më shumë parashikime te ne
+    # (152 nga 329 në arkiv). Njësoj "championship" kapte "Euro Championship".
+    if any(x in liga for x in ["champions league", "europa league", "conference league"]):
+        base = 1.05
+    elif any(x in liga for x in ["world cup", "copa america", "nations league"]) \
+            or "euro championship" in liga or liga.strip().endswith("euro"):
         base = 1.25
     elif any(x in liga for x in ["championship", "segunda", "ligue 2", "serie b", "superliga"]):
         base = 1.20
-    elif any(x in liga for x in ["premier", "champions league", "la liga", "bundesliga"]):
+    elif any(x in liga for x in ["premier", "la liga", "bundesliga"]):
         base = 1.05
     else:
         base = 1.10
@@ -5030,7 +5413,7 @@ def analizo_ndeshjen_premium_master(
     ekipi_1_id, ekipi_2_id,
     k1_str, kx_str, k2_str,
     emri_liges, standings,
-    dna_1=None, dna_2=None, odds_full=None
+    dna_1=None, dna_2=None, odds_full=None, data_ndeshjes=None
 ):
     """
     Versioni V2 i plotë — zëvendëson funksionin origjinal.
@@ -5092,7 +5475,8 @@ def analizo_ndeshjen_premium_master(
         k1, kx, k2, emri_liges,
         xg_1, xg_2,
         ah_line=_ah_l, ah_home=_ah_h, ah_away=_ah_a,
-        ou_over=_ou_o, ou_under=_ou_u
+        ou_over=_ou_o, ou_under=_ou_u,
+        data_ndeshjes=data_ndeshjes
     )
 
     # ── MODULATORI (treg/ELO) — PAS hibridit, mbi xG-nE FINALE (jo te holluar nga XGBoost) ──
@@ -5148,7 +5532,8 @@ def analizo_ndeshjen_premium_master(
         try:
             _p_over = (1.0 / float(_ou_o)) / (1.0 / float(_ou_o) + 1.0 / float(_ou_u))
             _lam_treg = _lambda_nga_p_over(_p_over)
-            _total_target = 0.5 * _total_form + 0.5 * _lam_treg   # blend forma + treg (kur ka odds O/U)
+            _w_mkt_tot = _konf("TOTAL_FORM_MKT_W", TOTAL_FORM_MKT_W)
+            _total_target = (1.0 - _w_mkt_tot) * _total_form + _w_mkt_tot * _lam_treg   # blend forma + treg
         except Exception:
             pass
     _total_i_ri = _total_aktual + TOTAL_K * (_total_target - _total_aktual)
@@ -5167,8 +5552,10 @@ def analizo_ndeshjen_premium_master(
     _seed_ndeshja = int(hashlib.sha256(str(id_ndeshja).encode()).hexdigest()[:8], 16)
     # ── NORMALIZIMI I xG (regresion A + B*xG): hiq bias-in sistematik. ──
     # Perdoret VETEM per perzgjedhjen e skorit; xg_1/xg_2 origjinale ruhen per logim/tregje.
-    _xg1_norm = float(np.clip(XG_NORM_A_HOME + XG_NORM_B_HOME * xg_1, XG_FLOOR, 5.00))
-    _xg2_norm = float(np.clip(XG_NORM_A_AWAY + XG_NORM_B_AWAY * xg_2, XG_FLOOR, 5.00))
+    _xg1_norm = float(np.clip(_konf("XG_NORM_A_HOME", XG_NORM_A_HOME)
+                              + _konf("XG_NORM_B_HOME", XG_NORM_B_HOME) * xg_1, XG_FLOOR, 5.00))
+    _xg2_norm = float(np.clip(_konf("XG_NORM_A_AWAY", XG_NORM_A_AWAY)
+                              + _konf("XG_NORM_B_AWAY", XG_NORM_B_AWAY) * xg_2, XG_FLOOR, 5.00))
     # ── SINJALI I TREGUT: ri-syno totalin e skorit drejt asaj qe pret TREGU (odds O/U). ──
     # Kjo fut VARIACIONIN: kur tregu pret shume gola -> skori behet 3-0/2-1 ne vend te 2-0.
     # Rishkallezon te dyja xG me te njejtin faktor -> DREJTIMI (raporti) s'ndryshon.
@@ -5184,27 +5571,66 @@ def analizo_ndeshjen_premium_master(
                 _xg2_norm = float(np.clip(_xg2_norm * _shk_mkt, XG_FLOOR, 5.00))
         except Exception:
             pass
-    # affinity DINAMIK: mbrojtje e fortë (pesuar<THRESH) -> AFF_LOW; ndryshe AFF_HIGH
-    _def_str_aff = (float(forma_1.get("avg_gola_prane", 1.3)) + float(forma_2.get("avg_gola_prane", 1.3))) / 2.0
-    _aff_dyn = AFF_LOW if _def_str_aff < AFF_THRESH else AFF_HIGH
-    # ── BOOST MYSAFIRI (formë): mysafiri me formë më të mirë se vendasi -> ngri xG-në e tij për skorin.
-    #    Modeli nën-angazhon sinjalin e mysafirit (P≥35% -> fiton ~77% realisht). Prek VETËM _xg2_norm. ──
+    # affinity: AFF_FIKS (nje vlere e vetme, e kalibrueshme) ose sjellja dinamike e vjeter
+    _aff_fiks = _konf("AFF_FIKS", AFF_FIKS)
+    if _aff_fiks > 0.0:
+        _aff_dyn = _aff_fiks
+    else:
+        _def_str_aff = (float(forma_1.get("avg_gola_prane", 1.3)) + float(forma_2.get("avg_gola_prane", 1.3))) / 2.0
+        _aff_dyn = _konf("AFF_LOW", AFF_LOW) if _def_str_aff < _konf("AFF_THRESH", AFF_THRESH) else _konf("AFF_HIGH", AFF_HIGH)
+    # ── BOOST MYSAFIRI (formë): mysafiri me formë më të mirë se vendasi -> zhvendos xG-në
+    #    drejt tij PËR SKORIN. ZERO-SHUMË: +b/2 te mysafiri, -b/2 te vendasi, që totali i
+    #    kalibruar (dhe bashkë me të çdo treg O/U) të mbetet i paprekur. Fikur si default. ──
     try:
-        if BOOST_MYSAFIR > 0.0 and float(forma_2.get("piket_forma", 7.0)) > float(forma_1.get("piket_forma", 7.0)):
-            _xg2_norm = float(np.clip(_xg2_norm + BOOST_MYSAFIR, XG_FLOOR, 5.00))
+        _boost = _konf("BOOST_MYSAFIR", BOOST_MYSAFIR)
+        if _boost > 0.0 and float(forma_2.get("piket_forma", 7.0)) > float(forma_1.get("piket_forma", 7.0)):
+            _xg2_norm = float(np.clip(_xg2_norm + _boost / 2.0, XG_FLOOR, 5.00))
+            _xg1_norm = float(np.clip(_xg1_norm - _boost / 2.0, XG_FLOOR, 5.00))
     except Exception:
         pass
     rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
-        _xg1_norm, _xg2_norm, kaosi_liges, is_derbi, iteracione=50_000, seed=_seed_ndeshja, aff=_aff_dyn
+        _xg1_norm, _xg2_norm, kaosi_liges, is_derbi, iteracione=MC_ITERACIONE,
+        seed=_seed_ndeshja, aff=_aff_dyn
     )
 
+    # ── BLEND FINAL I 1X2 ME TREGUN ──
+    # Test i çiftuar mbi 258 ndeshje: log-loss i modelit 1.0095 kundrejt 0.9760 të tregut
+    # (t = 2.33, p = 0.020) — tregu është më i saktë në mënyrë statistikisht domethënëse.
+    # Ndërhyrja është E KUFIZUAR me qëllim: preken VETËM probabilitetet 1X2 (dhe shanset e
+    # dyfishta që rrjedhin prej tyre). Matrica H, skori ekzakt, Over/Under dhe GG/NG mbeten
+    # TËRËSISHT të modelit — përndryshe do të shitnim thjesht kuotat e bukmejkerit.
+    _w_mkt_f = _konf("W_MKT_FINAL", W_MKT_FINAL)
+    if _w_mkt_f > 0.0 and None not in (p1_real, px_real, p2_real):
+        try:
+            _sm = float(p1_real) + float(px_real) + float(p2_real)
+            if _sm > 0:
+                _b1 = (1.0 - _w_mkt_f) * prob_1x2_mc["p1"] + _w_mkt_f * (float(p1_real) / _sm)
+                _bx = (1.0 - _w_mkt_f) * prob_1x2_mc["px"] + _w_mkt_f * (float(px_real) / _sm)
+                _b2 = (1.0 - _w_mkt_f) * prob_1x2_mc["p2"] + _w_mkt_f * (float(p2_real) / _sm)
+                _bs = _b1 + _bx + _b2
+                if _bs > 0:
+                    _b1, _bx, _b2 = _b1 / _bs, _bx / _bs, _b2 / _bs
+                    prob_1x2_mc = {"p1": round(_b1, 4), "px": round(_bx, 4), "p2": round(_b2, 4)}
+                    tregjet_mc["1"] = round(_b1, 4)
+                    tregjet_mc["X"] = round(_bx, 4)
+                    tregjet_mc["2"] = round(_b2, 4)
+                    tregjet_mc["1X"] = round(_b1 + _bx, 4)
+                    tregjet_mc["X2"] = round(_bx + _b2, 4)
+                    tregjet_mc["12"] = round(_b1 + _b2, 4)
+        except Exception:
+            pass
+
     # ── HT/FT — SIMULIM I PAVARUR (gjysma e parë simulohet veçmas, jo nga skori FT) ──
+    # RREGULLIM: më parë HT ndahej nga xg_1/xg_2 TË PANORMALIZUARA ndërsa tregjet FT
+    # vinin nga _xg1_norm/_xg2_norm — pra HT dhe FT rrinin mbi dy pritshmëri të ndryshme
+    # golash (HT dilte sistematikisht më i lartë se gjysma e FT-së). Tani të dyja nga
+    # e njëjta bazë e normalizuar, që "HT Over 0.5" të jetë koherent me "Over 1.5" FT.
     _frac_h1 = _frac_ht_1 if _frac_ht_1 is not None else 0.44
     _frac_h2 = _frac_ht_2 if _frac_ht_2 is not None else 0.44
-    _xg_ht_1 = max(0.05, _frac_h1 * xg_1)
-    _xg_ht_2 = max(0.05, _frac_h2 * xg_2)
-    _xg_2h_1 = max(0.05, xg_1 - _xg_ht_1)
-    _xg_2h_2 = max(0.05, xg_2 - _xg_ht_2)
+    _xg_ht_1 = max(0.05, _frac_h1 * _xg1_norm)
+    _xg_ht_2 = max(0.05, _frac_h2 * _xg2_norm)
+    _xg_2h_1 = max(0.05, _xg1_norm - _xg_ht_1)
+    _xg_2h_2 = max(0.05, _xg2_norm - _xg_ht_2)
     try:
         _htft_dist, _skor_ht, _prob_ht, _ht_mkt = simulim_ht_ft_mc(_xg_ht_1, _xg_ht_2, _xg_2h_1, _xg_2h_2, seed=_seed_ndeshja)
         tregjet_mc["ht_ft"] = _htft_dist
@@ -5253,7 +5679,16 @@ def analizo_ndeshjen_premium_master(
     # Fallback: nëse total gola shumë i ulët por xG tregon lojë të hapur.
     # ⚠️ VARIANTI C: fallback-u RESPEKTON rregullin e fituesit (perndryshe kthente 1-1
     #    edhe kur modeli tregonte favorit te qarte — bug i vjeter, ~15/41 ndeshje).
-    if (g1 + g2 <= 1) and (xg_1 + xg_2 > 2.5):
+    # ⚠️ RREGULLIM (korrik 2026): dy defekte këtu e bënin këtë degë të gëlltiste ÇDO skor
+    #    të ulët, duke anuluar krejt efektin e AFF-së:
+    #      1) krahasohej me xg_1+xg_2 TË PANORMALIZUARA (mesatare 2.80) ndërsa simulimi
+    #         punon me totalin e normalizuar — pragu 2.5 kapërcehej pothuajse gjithmonë;
+    #      2) pragu 2.5 është nën mesataren reale të golave (2.61), pra "lojë e hapur"
+    #         përkufizohej si "ndeshje mesatare".
+    #    Pasoja e matur mbi 329 parashikime: 0 × "0-0" (25 reale) dhe 1 × "1-0" (40 reale).
+    #    Tani: totali i normalizuar + prag i akordueshëm (default 3.20 = vërtet i hapur).
+    _prag_hapur = _konf("FALLBACK_HAPUR", FALLBACK_HAPUR)
+    if (g1 + g2 <= 1) and (_xg1_norm + _xg2_norm > _prag_hapur):
         _p1f = float(prob_1x2_mc.get("p1", 0.0))
         _pxf = float(prob_1x2_mc.get("px", 0.0))
         _p2f = float(prob_1x2_mc.get("p2", 0.0))
@@ -5270,7 +5705,7 @@ def analizo_ndeshjen_premium_master(
                     continue
                 rez_sakt       = r
                 g1, g2         = rg1, rg2
-                prob_rez_sakt  = freq / 50_000
+                prob_rez_sakt  = freq / float(MC_ITERACIONE)
                 break
             except:
                 continue
@@ -6110,6 +6545,10 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     background_tasks.add_task(_regjistro_rezultatet_training)
     # 5) Rakordim pagesash: krediton porositë 'wait' të paguara (IPN i humbur)
     background_tasks.add_task(task_rakordo_porosite)
+    # 6) AUTO-KALIBRIMI (një herë në ditë): rifiton XG_NORM/Platt/normat bazë nga arkivi.
+    #    I mbrojtur nga kontrollet e veta (mostra minimale, kufij, kufi hapi) dhe nga
+    #    throttle-i i vet — nuk varet nga throttle-i i pjesës së rëndë.
+    background_tasks.add_task(_kalibro_periodik)
 
     # ── E RËNDË (me throttle): rigjenerim Monte Carlo + odds për 3 ditë ──
     tani = time.time()
@@ -6120,6 +6559,242 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
             background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, dt)
 
     return {"ok": True, "mesazhi": "Cron nisi në sfond", "datat": datat, "heavy": heavy}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# AUTO-KALIBRIMI I PARAMETRAVE NGA ARKIVI
+# ══════════════════════════════════════════════════════════════════════════
+# Deri tani çdo parametër akordohej me dorë nga një backtest i njëhershëm mbi 49 ndeshje,
+# dhe komenti te XG_NORM_* premtonte auto-kalibrim "kur të ketë 200+ ndeshje". Ky është ai.
+#
+# PSE ËSHTË I SIGURT PËR T'U RIFITUAR: training_data.xg_1/xg_2 ruhen PARA normalizimit
+# (shih ku shkruhet training_data), ndërsa A/B aplikohen PAS tij. Pra regresioni
+# gola_realë ~ A + B·xG_i_papërpunuar nuk varet nga A/B aktuale — s'ka lak reagimi.
+KALIB_MIN_MOSTRA        = 250    # nën këtë s'shkruhet asgjë
+KALIB_MIN_MOSTRA_PLATT  = 150
+KALIB_MIN_MOSTRA_BAZE   = 200
+KALIB_SHRINK_DERI       = 500    # nën këtë mostër: 50/50 me vlerën aktuale
+KALIB_HAP_MAX           = 0.15   # asnjë parametër s'lëviz më shumë se kaq në një raund
+
+
+def _ols_2(x, y):
+    """Regresion linear i thjeshte y = a + b*x. Kthen (a, b, r2) ose None."""
+    try:
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        if len(x) < 10 or float(np.std(x)) < 1e-9:
+            return None
+        X = np.column_stack([np.ones(len(x)), x])
+        beta = np.linalg.lstsq(X, y, rcond=None)[0]
+        mbetja = y - X @ beta
+        _sst = float(((y - y.mean()) ** 2).sum())
+        r2 = 1.0 - float((mbetja ** 2).sum()) / _sst if _sst > 0 else 0.0
+        return float(beta[0]), float(beta[1]), r2
+    except Exception:
+        return None
+
+
+def _fit_platt(probs, rezultatet):
+    """Perputh logit(p') = a + b*logit(p) me Newton-Raphson. Kthen (a, b) ose None."""
+    try:
+        p = np.clip(np.asarray(probs, dtype=float), 1e-6, 1 - 1e-6)
+        y = np.asarray(rezultatet, dtype=float)
+        if len(p) < 30 or float(np.std(p)) < 1e-9:
+            return None
+        X = np.column_stack([np.ones(len(p)), np.log(p / (1.0 - p))])
+        beta = np.array([0.0, 1.0])
+        for _ in range(60):
+            q = 1.0 / (1.0 + np.exp(-np.clip(X @ beta, -30, 30)))
+            grad = X.T @ (q - y)
+            W = np.clip(q * (1.0 - q), 1e-9, None)
+            H = X.T @ (X * W[:, None]) + np.eye(2) * 1e-8
+            hap = np.linalg.solve(H, grad)
+            beta = beta - hap
+            if float(np.max(np.abs(hap))) < 1e-9:
+                break
+        if not np.all(np.isfinite(beta)):
+            return None
+        return float(beta[0]), float(beta[1])
+    except Exception:
+        return None
+
+
+def _kufizo(emri, i_ri, i_vjeter, poshte, lart, n):
+    """Tkurrje drejt vleres aktuale + kufij absolute + kufi hapi. Kthen (vlera, arsyeja)."""
+    # Tkurrje: me pak mostra => besojme me shume vleren aktuale
+    if n < KALIB_SHRINK_DERI:
+        i_ri = 0.5 * i_vjeter + 0.5 * i_ri
+    # Kufi hapi: asnje kercim i madh ne nje raund te vetem
+    if abs(i_ri - i_vjeter) > KALIB_HAP_MAX:
+        i_ri = i_vjeter + math.copysign(KALIB_HAP_MAX, i_ri - i_vjeter)
+    # Kufij absolute
+    i_kufizuar = max(poshte, min(lart, i_ri))
+    arsyeja = None
+    if i_kufizuar != i_ri:
+        arsyeja = f"{emri}: u pre te kufiri [{poshte}, {lart}]"
+    return round(i_kufizuar, 4), arsyeja
+
+
+def _kalibro_nga_arkivi(limit: int = 3000) -> dict:
+    """Llogarit parametrat e propozuar nga arkivi. NUK shkruan asgje."""
+    dal = {"ok": False, "propozime": {}, "diagnostika": {}, "paralajmerime": []}
+    try:
+        r = requests.get(
+            f"{ARKIV_URL}?select=training_data,rezultati_ft,best_bet"
+            f"&order=data.desc&limit={max(1, min(limit, 5000))}",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=25)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        dal["gabim"] = f"arkivi s'u lexua: {str(e)[:120]}"
+        return dal
+    if not isinstance(rows, list):
+        dal["gabim"] = "pergjigje e papritur nga arkivi"
+        return dal
+
+    xh, yh, xa, ya = [], [], [], []
+    pp, py = [], []
+    bazat = {t: [0, 0] for t in NORMA_BAZE_DEFAULT}   # treg -> [ndodhi, total]
+    for row in rows:
+        ft = _parse_score(row.get("rezultati_ft") or "")
+        if not ft:
+            continue
+        td = row.get("training_data") or {}
+        if isinstance(td, dict):
+            x1, x2 = _num_opt(td.get("xg_1")), _num_opt(td.get("xg_2"))
+            if x1 and x2 and x1 > 0 and x2 > 0:
+                xh.append(x1); yh.append(float(ft[0]))
+                xa.append(x2); ya.append(float(ft[1]))
+        bb = row.get("best_bet") or {}
+        if isinstance(bb, dict) and bb.get("tregu") is not None:
+            # prob_raw = prob i papërpunuar; bie te "prob" për rreshtat para kalibrimit
+            _pr = _num_opt(bb.get("prob_raw"))
+            if _pr is None:
+                _pr = _num_opt(bb.get("prob"))
+            _ok = _verifiko_treg(bb.get("tregu"), row.get("rezultati_ft"))
+            if _pr is not None and _ok is not None and 0.0 < _pr < 1.0:
+                pp.append(_pr); py.append(1.0 if _ok else 0.0)
+        for _t in bazat:
+            _v = _verifiko_treg(_t, row.get("rezultati_ft"))
+            if _v is not None:
+                bazat[_t][1] += 1
+                if _v:
+                    bazat[_t][0] += 1
+
+    n_xg = len(xh)
+    dal["diagnostika"] = {"rreshta_arkivi": len(rows), "mostra_xg": n_xg,
+                          "mostra_platt": len(pp), "mostra_baze": (bazat.get("1") or [0, 0])[1]}
+
+    # ── 1) XG_NORM: gola_realë ~ A + B·xG ──
+    if n_xg >= KALIB_MIN_MOSTRA:
+        fh, fa = _ols_2(xh, yh), _ols_2(xa, ya)
+        if fh and fa:
+            for emri, vlera, aktual, poshte, lart in [
+                ("XG_NORM_A_HOME", fh[0], _konf("XG_NORM_A_HOME", XG_NORM_A_HOME), -0.5, 0.5),
+                ("XG_NORM_B_HOME", fh[1], _konf("XG_NORM_B_HOME", XG_NORM_B_HOME),  0.6, 1.4),
+                ("XG_NORM_A_AWAY", fa[0], _konf("XG_NORM_A_AWAY", XG_NORM_A_AWAY), -0.5, 0.5),
+                ("XG_NORM_B_AWAY", fa[1], _konf("XG_NORM_B_AWAY", XG_NORM_B_AWAY),  0.6, 1.4),
+            ]:
+                v, paralajmerim = _kufizo(emri, vlera, aktual, poshte, lart, n_xg)
+                dal["propozime"][emri] = v
+                if paralajmerim:
+                    dal["paralajmerime"].append(paralajmerim)
+            dal["diagnostika"]["r2_home"] = round(fh[2], 4)
+            dal["diagnostika"]["r2_away"] = round(fa[2], 4)
+            dal["diagnostika"]["gola_mes_real"] = round((sum(yh) + sum(ya)) / max(1, n_xg), 3)
+            dal["diagnostika"]["lam_i_ri"] = round(
+                (dal["propozime"]["XG_NORM_A_HOME"] + dal["propozime"]["XG_NORM_B_HOME"] * float(np.mean(xh)))
+                + (dal["propozime"]["XG_NORM_A_AWAY"] + dal["propozime"]["XG_NORM_B_AWAY"] * float(np.mean(xa))), 3)
+        else:
+            dal["paralajmerime"].append("regresioni i xG deshtoi (varianca e pamjaftueshme)")
+    else:
+        dal["paralajmerime"].append(f"xG: {n_xg} mostra < {KALIB_MIN_MOSTRA} — s'kalibrohet")
+
+    # ── 2) PLATT: sa i mban modeli premtimet e veta ──
+    if len(pp) >= KALIB_MIN_MOSTRA_PLATT:
+        fp = _fit_platt(pp, py)
+        if fp:
+            va, paralajmerim_a = _kufizo("PLATT_A", fp[0], _konf("PLATT_A", PLATT_A), -1.5, 1.5, len(pp))
+            vb, paralajmerim_b = _kufizo("PLATT_B", fp[1], _konf("PLATT_B", PLATT_B), 0.2, 1.5, len(pp))
+            dal["propozime"]["PLATT_A"] = va
+            dal["propozime"]["PLATT_B"] = vb
+            for _w in (paralajmerim_a, paralajmerim_b):
+                if _w:
+                    dal["paralajmerime"].append(_w)
+            dal["diagnostika"]["premtuar"] = round(float(np.mean(pp)), 4)
+            dal["diagnostika"]["realizuar"] = round(float(np.mean(py)), 4)
+        else:
+            dal["paralajmerime"].append("perputhja Platt deshtoi")
+    else:
+        dal["paralajmerime"].append(f"Platt: {len(pp)} mostra < {KALIB_MIN_MOSTRA_PLATT} — s'kalibrohet")
+
+    # ── 3) NORMAT BAZË për treg ──
+    n_baze = (bazat.get("1") or [0, 0])[1]
+    if n_baze >= KALIB_MIN_MOSTRA_BAZE:
+        for _t, (_ndodhi, _tot) in bazat.items():
+            if _tot >= KALIB_MIN_MOSTRA_BAZE:
+                _celes = f"BAZE_{_t}".replace(" ", "_").replace(".", "_")
+                dal["propozime"][_celes] = round(_ndodhi / float(_tot), 4)
+    else:
+        dal["paralajmerime"].append(f"normat baze: {n_baze} mostra < {KALIB_MIN_MOSTRA_BAZE}")
+
+    dal["ok"] = bool(dal["propozime"])
+    dal["mostra"] = max(n_xg, len(pp), n_baze)
+    return dal
+
+
+_LAST_KALIB = 0.0
+KALIB_INTERVAL = 24 * 3600   # nje here ne dite mjafton; arkivi rritet ngadale
+
+
+def _kalibro_periodik():
+    """Thirret nga cron-i i pergjithshem; kalibron maksimumi nje here ne 24 ore."""
+    global _LAST_KALIB
+    tani = time.time()
+    if tani - _LAST_KALIB < KALIB_INTERVAL:
+        return
+    _LAST_KALIB = tani
+    try:
+        rez = _kalibro_nga_arkivi()
+        if rez.get("ok"):
+            shkruar = _konf_shkruaj(rez["propozime"], rez.get("mostra", 0))
+            print(f"🎛️ Kalibrimi automatik: {len(rez['propozime'])} parametra, "
+                  f"mostra={rez.get('mostra')}, shkruar={shkruar}")
+        else:
+            print(f"🎛️ Kalibrimi u anashkalua: {rez.get('paralajmerime') or rez.get('gabim')}")
+    except Exception as e:
+        print(f"⚠️ Kalibrimi automatik deshtoi: {str(e)[:150]}")
+
+
+@app.get("/api/admin/kalibro")
+def api_admin_kalibro(secret: str = None, dry: int = 1, limit: int = 3000):
+    """Rifiton parametrat nga arkivi. dry=1 (parazgjedhje) vetem RAPORTON, s'shkruan gje.
+    dry=0 i shkruan ne model_config (motori i merr brenda 1 ore, pa restart)."""
+    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="I ndaluar")
+    rez = _kalibro_nga_arkivi(limit=limit)
+    if int(dry) == 1 or not rez.get("ok"):
+        rez["shkruar"] = False
+        return rez
+    rez["shkruar"] = _konf_shkruaj(rez["propozime"], rez.get("mostra", 0))
+    return rez
+
+
+@app.get("/api/cron/kalibro")
+def api_cron_kalibro(secret: str = None, limit: int = 3000):
+    """Auto-kalibrim i planifikuar (nje here ne dite mjafton). Shkruan vetem kur kalojne
+    te gjitha kontrollet e sigurise (mostra minimale, kufij absolute, kufi hapi)."""
+    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="I ndaluar")
+    rez = _kalibro_nga_arkivi(limit=limit)
+    if not rez.get("ok"):
+        return {"ok": False, "shkruar": False,
+                "arsyeja": rez.get("gabim") or "asnje parameter s'i kaloi kontrollet",
+                "paralajmerime": rez.get("paralajmerime", []),
+                "diagnostika": rez.get("diagnostika", {})}
+    rez["shkruar"] = _konf_shkruaj(rez["propozime"], rez.get("mostra", 0))
+    print(f"🎛️ Kalibrimi: {len(rez['propozime'])} parametra, mostra={rez.get('mostra')}, "
+          f"shkruar={rez['shkruar']}")
+    return rez
 
 
 def _kompjuto_dhe_ruaj_skedina(data_target):
@@ -6300,7 +6975,8 @@ def _kompjuto_dhe_ruaj_skedina(data_target):
                             n["teams"]["home"]["id"], n["teams"]["away"]["id"],
                             k1, kx, k2, emri_liges, standings,
                             dna_1=dna_1, dna_2=dna_2,
-                            odds_full=bet365_odds.get(id_ndeshja, {})
+                            odds_full=bet365_odds.get(id_ndeshja, {}),
+                            data_ndeshjes=(n.get("fixture") or {}).get("date")
                         )
                         base_match.update({
                             "analiza_custom": analiza_custom,
@@ -6434,38 +7110,69 @@ def api_status(request: Request, kalim: str = None):
         "kalim_aktiv": _kalo,
         "version": VERSION,
         "koha":    _koha,
+        # Vlerat AKTIVE (model_config -> env-var -> default), jo ato te momentit te importit.
         "konfigurimi": {
             "W_FORMA":        round(W_FORMA, 4),
             "W_ELO":          round(W_ELO, 4),
             "W_MARKET":       round(W_MARKET, 4),
             "W_BASE":         round(W_BASE, 4),
-            "XG_NORM_A_HOME": XG_NORM_A_HOME,
-            "XG_NORM_B_HOME": XG_NORM_B_HOME,
-            "XG_NORM_A_AWAY": XG_NORM_A_AWAY,
-            "XG_NORM_B_AWAY": XG_NORM_B_AWAY,
-            "BOOST_MYSAFIR":  BOOST_MYSAFIR,
+            "W_XGB":          _konf("W_XGB", W_XGB),
+            "W_MKT_FINAL":    _konf("W_MKT_FINAL", W_MKT_FINAL),
+            "XG_NORM_A_HOME": _konf("XG_NORM_A_HOME", XG_NORM_A_HOME),
+            "XG_NORM_B_HOME": _konf("XG_NORM_B_HOME", XG_NORM_B_HOME),
+            "XG_NORM_A_AWAY": _konf("XG_NORM_A_AWAY", XG_NORM_A_AWAY),
+            "XG_NORM_B_AWAY": _konf("XG_NORM_B_AWAY", XG_NORM_B_AWAY),
+            "AFF_FIKS":       _konf("AFF_FIKS", AFF_FIKS),
+            "AFF_LOW":        AFF_LOW,
+            "AFF_HIGH":       AFF_HIGH,
+            "AFF_THRESH":     AFF_THRESH,
+            "BOOST_MYSAFIR":  _konf("BOOST_MYSAFIR", BOOST_MYSAFIR),
             "PRAG_LEAN":      PRAG_LEAN,
             "CS_LEAN_XG":     CS_LEAN_XG,
+            "FALLBACK_HAPUR": _konf("FALLBACK_HAPUR", FALLBACK_HAPUR),
             "TOTAL_K":        TOTAL_K,
             "TOTAL_CALIB":    TOTAL_CALIB,
             "TOTAL_MIN":      TOTAL_MIN,
             "TOTAL_MAX":      TOTAL_MAX,
+            "TOTAL_FORM_MKT_W": _konf("TOTAL_FORM_MKT_W", TOTAL_FORM_MKT_W),
+            "MKT_TOTAL_W":    MKT_TOTAL_W,
+            "MOD_K_TREG":     MOD_K_TREG,
+            "MOD_K_ELO":      MOD_K_ELO,
+            "MOD_KUFI_POSHTE": MOD_KUFI_POSHTE,
+            "MOD_KUFI_LART":  MOD_KUFI_LART,
+            "XG_FLOOR":       XG_FLOOR,
+            "RHO_DC":         RHO_DC,
+            "MC_ITERACIONE":  MC_ITERACIONE,
             "WINNER_PRAG":    WINNER_PRAG,
-            "ONE_ONE_MIN":    ONE_ONE_MIN,
-            "ONE_ONE_MAX":    ONE_ONE_MAX,
-            "ONE_ONE_CAP":    ONE_ONE_CAP,
             "INJURY_PEN_PER": INJURY_PEN_PER,
             "INJURY_PEN_CAP": INJURY_PEN_CAP,
+            "PLATT_A":        _konf("PLATT_A", PLATT_A),
+            "PLATT_B":        _konf("PLATT_B", PLATT_B),
+            "EDGE_MIN":       _konf("EDGE_MIN", EDGE_MIN),
+            "BESU_PRAG_VIP":  _konf("BESU_PRAG_VIP", BESU_PRAG_VIP),
+            "VALUE_EDGE_MIN": VALUE_EDGE_MIN,
+            "VALUE_FILTER_ON": VALUE_FILTER_ON,
         },
         "sherbimet": {
             "supabase":     bool(SUPABASE_URL_PREDS),
             "api_football": bool(API_KEY),
             "paypal":       False,   # HEQUR — s'eshte me metode pagese
+            # KRITIKE: nese keto jane False, xG vjen nga formula matematikore (burimi_xg="math"),
+            # jo nga XGBoost. Me pare kjo renie ndodhte NE HESHTJE dhe s'dukej askund.
+            "xgb_ft":       bool(XGB_GATI),
+            "xgb_ht":       bool(XGB_HT_GATI),
+        },
+        "kalibrimi": {
+            "burimi":          "model_config" if _konf_rifresko() else "env/default",
+            "celesa_aktive":   sorted(_konf_rifresko().keys()),
+            "e_fundit":        _kalibrimi_i_fundit(),
         },
         "vecorite": {
             "modulator_totali":      True,
-            "rregulli_1_1":          True,
-            "kalibrim_ou_shkeputur": (TOTAL_CALIB != 0.0),
+            "kalibrim_ou_shkeputur": (_konf("TOTAL_CALIB", TOTAL_CALIB) != 0.0),
+            "aff_i_fiksuar":         (_konf("AFF_FIKS", AFF_FIKS) > 0.0),
+            "platt_kalibrim":        (_konf("PLATT_B", PLATT_B) != 1.0 or _konf("PLATT_A", PLATT_A) != 0.0),
+            "blend_final_tregu":     (_konf("W_MKT_FINAL", W_MKT_FINAL) > 0.0),
             "lendimet":              True,
             "renditja":              True,
         },
@@ -6536,13 +7243,33 @@ def performanca_modelit(limit: int = 1000):
     SHENIM: KA_VLERE nuk aplikohet ketu (vendim i shtyre) — filtrohet vetem historiku /api/arkiv."""
     try:
         r = requests.get(
-            f"{ARKIV_URL}?select=ndeshja,liga,data,parashikimi,rezultati_ft,goditi_1x2,goditi_skor"
+            f"{ARKIV_URL}?select=ndeshja,liga,data,parashikimi,rezultati_ft,goditi_1x2,goditi_skor,"
+            f"best_bet,besueshmeria,prob_1,prob_x,prob_2"
             f"&order=data.desc,ora.desc&limit={max(1, min(limit, 2000))}",
             headers=SUPABASE_SERVICE_HEADERS, timeout=12)
         rows = r.json() if r.status_code == 200 else []
     except Exception:
         rows = []
     n1 = n1ok = ns = nsok = ng1 = ng1ok = ngg = nggok = nou = nouok = 0
+    # ── KALIBRIMI: a e mban modeli fjalën? (Brier, log-loss, kurbë besueshmërie) ──
+    # Pa këto metrika nuk ka si të kuptohet nëse një "60%" i shpallur është vërtet 60%.
+    # Matja e korrikut 2026: premtohej 59.0%, goditej 48.6% — mbivlerësim -10.4 pikë.
+    _kal = []          # (prob e shpallur, goditi 0/1, tregu)
+    _brier1x2 = []     # Brier shumë-klasësh për 1X2
+    for row in rows:
+        bb = row.get("best_bet") or {}
+        if isinstance(bb, dict) and bb.get("tregu") is not None:
+            _pb = _num_opt(bb.get("prob"))
+            _ok = _verifiko_treg(bb.get("tregu"), row.get("rezultati_ft"))
+            if _pb is not None and _ok is not None and 0.0 < _pb < 1.0:
+                _kal.append((_pb, 1.0 if _ok else 0.0, str(bb.get("tregu"))))
+        _s = _shenja_1x2(row.get("rezultati_ft") or "")
+        _p1, _px, _p2 = _num_opt(row.get("prob_1")), _num_opt(row.get("prob_x")), _num_opt(row.get("prob_2"))
+        if _s and None not in (_p1, _px, _p2):
+            _sum = _p1 + _px + _p2
+            if _sum > 0:
+                _v = {"1": _p1 / _sum, "X": _px / _sum, "2": _p2 / _sum}
+                _brier1x2.append(sum((_v[k] - (1.0 if k == _s else 0.0)) ** 2 for k in ("1", "X", "2")))
     for row in rows:
         par = _parse_score(row.get("parashikimi") or "")
         ft = _parse_score(row.get("rezultati_ft") or "")
@@ -6578,6 +7305,48 @@ def performanca_modelit(limit: int = 1000):
             })
         if len(recent) >= 6:
             break
+    # ── Përmbledhja e kalibrimit ──
+    kalibrimi = {"mostra": len(_kal)}
+    if _kal:
+        _ps = [k[0] for k in _kal]
+        _ys = [k[1] for k in _kal]
+        _n = float(len(_kal))
+        _prem = sum(_ps) / _n
+        _real = sum(_ys) / _n
+        kalibrimi.update({
+            "premtuar":     round(100 * _prem, 1),
+            "realizuar":    round(100 * _real, 1),
+            # < 0 => modeli mbivlerëson veten (premton më shumë se sa realizon)
+            "mbivleresim":  round(100 * (_real - _prem), 1),
+            "brier":        round(sum((p - y) ** 2 for p, y in zip(_ps, _ys)) / _n, 4),
+            "logloss":      round(-sum(
+                math.log(max(p if y > 0.5 else 1.0 - p, 1e-9)) for p, y in zip(_ps, _ys)) / _n, 4),
+        })
+        # Kurba e besueshmërisë: prob e shpallur kundrejt asaj të realizuar, në kosha.
+        kosha = []
+        for _lo, _hi in [(0.0, .50), (.50, .55), (.55, .60), (.60, .65), (.65, .70), (.70, .75), (.75, 1.01)]:
+            _grup = [(p, y) for p, y in zip(_ps, _ys) if _lo <= p < _hi]
+            if _grup:
+                kosha.append({
+                    "brezi":     f"{int(_lo*100)}-{int(min(_hi,1.0)*100)}%",
+                    "n":         len(_grup),
+                    "premtuar":  round(100 * sum(g[0] for g in _grup) / len(_grup), 1),
+                    "realizuar": round(100 * sum(g[1] for g in _grup) / len(_grup), 1),
+                })
+        kalibrimi["kurba"] = kosha
+        # AFTËSIA reale për treg: goditje − normë bazë. ~0 => zgjedhja s'shton informacion.
+        aftesia = {}
+        for _t in sorted({k[2] for k in _kal}):
+            _g = [k[1] for k in _kal if k[2] == _t]
+            if len(_g) >= 10:
+                _hit = sum(_g) / len(_g)
+                aftesia[_t] = {"n": len(_g), "goditje": round(100 * _hit, 1),
+                               "baze": round(100 * _norma_baze(_t), 1),
+                               "aftesia": round(100 * (_hit - _norma_baze(_t)), 1)}
+        kalibrimi["aftesia_per_treg"] = aftesia
+    if _brier1x2:
+        kalibrimi["brier_1x2"] = round(sum(_brier1x2) / len(_brier1x2), 4)
+        kalibrimi["mostra_1x2"] = len(_brier1x2)
     return {
         "metrikat": {
             "x1x2": pct(n1ok, n1),
@@ -6586,6 +7355,7 @@ def performanca_modelit(limit: int = 1000):
             "ou": pct(nouok, nou),
             "skor": pct(nsok, ns),
         },
+        "kalibrimi": kalibrimi,
         "mostra": n1,
         "recent": recent,
         "perditesuar": rows[0].get("data") if rows else None,
@@ -7185,9 +7955,12 @@ def update_elo_midnight():
             )
             ekipe_te_perditesuara += 1
 
-        # Pastro cache-in e formës për ekipet që luajtën
-        FORMA_CACHE.pop(int(home_id), None)
-        FORMA_CACHE.pop(int(away_id), None)
+        # Pastro cache-in e formës për ekipet që luajtën.
+        # RREGULLIM: çelësat e FORMA_CACHE janë TUPLE (team_id, liga_emri) — pop-i me
+        # int ishte no-op i përhershëm, pra forma pastrohej vetëm kur skadonte TTL-ja.
+        for _ck in [k for k in list(FORMA_CACHE.keys())
+                    if isinstance(k, tuple) and k and k[0] in (int(home_id), int(away_id))]:
+            FORMA_CACHE.pop(_ck, None)
 
     return {
         "sukses": True,
@@ -7311,7 +8084,8 @@ def merr_vip_weekend():
                     id_ndeshja, ekipi_1, ekipi_2,
                     n["teams"]["home"]["id"], n["teams"]["away"]["id"],
                     k1, kx, k2, emri_liges, [], dna_1=dna_1, dna_2=dna_2,
-                    odds_full=odds_dite.get(id_ndeshja, {})
+                    odds_full=odds_dite.get(id_ndeshja, {}),
+                    data_ndeshjes=(n.get("fixture") or {}).get("date")
                 )
 
                 try:
