@@ -6935,6 +6935,9 @@ def api_cron_kuotat(secret: str = None, ore_para: int = 24):
         rreshtat.append({
             "fixture_id":    int(fid),
             "marre_ne":      tani.isoformat(),
+            # Rrumbullakosur këtu, jo me date_trunc() në indeks: mbi timestamptz ajo
+            # është STABLE dhe Postgres kërkon IMMUTABLE në shprehje indeksi.
+            "marre_minute":  tani.replace(second=0, microsecond=0).isoformat(),
             "koha_ndeshjes": info["koha"].isoformat(),
             "minuta_para":   int((info["koha"] - tani).total_seconds() // 60),
             "bookmaker":     KUOTA_HIST_BOOKMAKER,
