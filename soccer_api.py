@@ -6852,25 +6852,44 @@ def api_cron_kuotat(secret: str = None, ore_para: int = 24):
             if not (tani <= koha <= kufi):
                 continue
             lg = n.get("league") or {}
+            _liga = f"{lg.get('country', '')} - {lg.get('name', '')}"
+            # VETËM ligat që shërbejmë. Pa këtë filtër, marrja sipas datës kthen çdo
+            # ndeshje të botës dhe pesë faqet e para zihen nga miqësore, Argentina
+            # Primera C dhe rezerva — pikërisht ç'ka ndodhi te ekzekutimi i parë:
+            # 45 fotografi, asnjë nga LIGAT_VIP_MAP.
+            if not is_vip_league(_liga):
+                continue
             tm = n.get("teams") or {}
             fixtures[str(fx.get("id"))] = {
                 "koha": koha,
-                "liga": f"{lg.get('country', '')} - {lg.get('name', '')}",
+                "liga": _liga,
+                "liga_id": lg.get("id"),
+                "sezoni": lg.get("season"),
                 "ndeshja": f"{(tm.get('home') or {}).get('name')} vs {(tm.get('away') or {}).get('name')}",
             }
 
     if not fixtures:
-        return {"ok": True, "ruajtur": 0, "arsyeja": "asnje ndeshje ne dritare"}
+        return {"ok": True, "ruajtur": 0, "arsyeja": "asnje ndeshje VIP ne dritare"}
 
-    # Kuotat në masë sipas datës, me paginim
+    # ── KUOTAT SIPAS LIGËS, jo sipas datës globale ──
+    # `/odds?date=` kthen mbarë botën dhe kërkon dhjetëra faqe. Grupimi sipas
+    # (liga, sezon) e ul koston te ~1 thirrje për ligë — zakonisht 3-8 në total —
+    # dhe siguron që marrim pikërisht ndeshjet që publikojmë.
     kuotat = {}
-    for dt in datat:
+    _grupet = {}
+    for _fid, _inf in fixtures.items():
+        if _inf.get("liga_id") and _inf.get("sezoni"):
+            _grupet.setdefault((_inf["liga_id"], _inf["sezoni"], _inf["koha"].strftime("%Y-%m-%d")), []).append(_fid)
+
+    _thirrje = 0
+    for (_lid, _sez, _dt), _fids in _grupet.items():
         page = 1
         while page <= 5:
             d = _api_sports_get("odds", {
-                "date": dt, "timezone": "Europe/Tirane",
+                "league": _lid, "season": _sez, "date": _dt,
                 "bookmaker": KUOTA_HIST_BOOKMAKER, "page": page,
             })
+            _thirrje += 1
             resp = (d or {}).get("response") or []
             if not resp:
                 break
@@ -6973,9 +6992,11 @@ def api_cron_kuotat(secret: str = None, ore_para: int = 24):
     except Exception as e:
         return {"ok": False, "ruajtur": ruajtur, "gabim": str(e)}
 
-    print(f"📈 Kuotat: {ruajtur} fotografi nga {len(fixtures)} ndeshje ne dritare")
+    print(f"📈 Kuotat: {ruajtur} fotografi nga {len(fixtures)} ndeshje VIP "
+          f"({len(_grupet)} liga, {_thirrje} thirrje API)")
     return {"ok": True, "ruajtur": ruajtur, "ndeshje_ne_dritare": len(fixtures),
-            "me_kuota": len(rreshtat), "bookmaker": KUOTA_HIST_BOOKMAKER}
+            "me_kuota": len(rreshtat), "liga": len(_grupet), "thirrje_api": _thirrje,
+            "bookmaker": KUOTA_HIST_BOOKMAKER}
 
 
 def _kompjuto_dhe_ruaj_skedina(data_target):
