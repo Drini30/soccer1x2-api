@@ -4094,6 +4094,21 @@ def merr_dna_nga_db(team_id):
 FORMA_CACHE = {}
 FORMA_CACHE_TTL = 3600  # 1 orë
 
+# ── ZBRITJA KOHORE E FORMËS (Dixon-Coles 1997): w = exp(-ξ · ditë) ──
+# 0.0 = e fikur (të gjitha ndeshjet peshojnë njësoj) — sjellja e deritanishme.
+# Vlera tipike në literaturë: ~0.0065/ditë (gjysmë-jetë ~107 ditë).
+#
+# ⚠️ NDRYSHOJE NË TË DY VENDET NJËKOHËSISHT: këtu dhe te importues_csv_v4.py
+# (FORMA_DECAY_XI). Këto mesatare bëhen veçori të XGB-së; nëse ndryshon vetëm
+# ana live, modeli merr inpute me përkufizim tjetër nga ai me të cilin u trajtua —
+# i njëjti train/serve skew që hoqëm te volatility dhe rest_days.
+#
+# Rendi i saktë: vendos ξ te të dyja → ri-importo → ritrajno → deploy bashkë.
+try:
+    FORMA_DECAY_XI = float(os.environ.get("FORMA_DECAY_XI", "0.0").strip())
+except Exception:
+    FORMA_DECAY_XI = 0.0
+
 def merr_formen_reale(team_id: int, liga_emri: str = None, numri_ndeshjeve: int = 8) -> dict:
     """
     Merr ndeshjet e fundit të ekipit dhe llogarit:
@@ -4142,12 +4157,43 @@ def merr_formen_reale(team_id: int, liga_emri: str = None, numri_ndeshjeve: int 
         ndeshjet = ndeshjet[:numri_ndeshjeve]
 
     fitore = barazime = humbje = 0
-    gola_shenuar = gola_prane = 0
+    gola_shenuar = gola_prane = 0.0
     piket_forma = 0.0
 
     # Statistika të ndara HOME / AWAY
-    h_gola_shenuar = h_gola_prane = h_ndeshje = 0
-    a_gola_shenuar = a_gola_prane = a_ndeshje = 0
+    h_gola_shenuar = h_gola_prane = 0.0
+    a_gola_shenuar = a_gola_prane = 0.0
+    h_ndeshje = a_ndeshje = 0.0
+    pesha_totale = 0.0
+
+    # ── ZBRITJA KOHORE (Dixon-Coles 1997) ──
+    # Pesha e një ndeshjeje bie eksponencialisht me moshën: w = exp(-ξ · ditë).
+    # Me ξ=0 të gjitha peshat janë 1 → sjellje IDENTIKE me më parë.
+    #
+    # ⚠️ MOS E AKTIVIZO VETËM KËTU. Këto vlera bëhen veçori të XGB-së, dhe modeli
+    # u trajnua mbi mesatare të thjeshta (importues_csv_v4.py). Ndryshimi vetëm i
+    # anës live rikthen train/serve skew-in — të njëjtin defekt që sapo hoqëm te
+    # volatility/rest_days. ξ ndryshohet në TË DY vendet, pastaj ri-import + ritrajnim.
+    #
+    # Referencë: ndeshja më e fundit (jo ajo që parashikohet), që çelësi i
+    # FORMA_CACHE (team_id, liga) të mbetet i vlefshëm.
+    _peshat = {}
+    try:
+        _dt = {}
+        for _n in ndeshjet:
+            _d = (_n.get("fixture") or {}).get("date")
+            if _d:
+                _dt[id(_n)] = datetime.fromisoformat(_d.replace("Z", "+00:00"))
+        if _dt and FORMA_DECAY_XI > 0:
+            _ref = max(_dt.values())
+            _raw = {k: math.exp(-FORMA_DECAY_XI * max(0.0, (_ref - v).days)) for k, v in _dt.items()}
+            _sum = sum(_raw.values())
+            # Normalizim që shuma e peshave të mbetet sa numri i ndeshjeve — kështu
+            # `piket_forma` ruan të njëjtën shkallë dhe s'ka nevojë të rikalibrohet.
+            if _sum > 0:
+                _peshat = {k: v * len(_raw) / _sum for k, v in _raw.items()}
+    except Exception:
+        _peshat = {}
 
     for n in ndeshjet:
         eshte_shtepie = n["teams"]["home"]["id"] == team_id
@@ -4155,35 +4201,40 @@ def merr_formen_reale(team_id: int, liga_emri: str = None, numri_ndeshjeve: int 
         g_kund = n["goals"]["away"] if eshte_shtepie else n["goals"]["home"]
         if g_ekip is None or g_kund is None:
             continue
-        gola_shenuar += g_ekip
-        gola_prane   += g_kund
+        w = _peshat.get(id(n), 1.0)          # 1.0 kur ξ=0 → sjellje e pandryshuar
+        gola_shenuar += w * g_ekip
+        gola_prane   += w * g_kund
 
         # Ndaje sipas vendndodhjes
         if eshte_shtepie:
-            h_gola_shenuar += g_ekip
-            h_gola_prane   += g_kund
-            h_ndeshje      += 1
+            h_gola_shenuar += w * g_ekip
+            h_gola_prane   += w * g_kund
+            h_ndeshje      += w
         else:
-            a_gola_shenuar += g_ekip
-            a_gola_prane   += g_kund
-            a_ndeshje      += 1
+            a_gola_shenuar += w * g_ekip
+            a_gola_prane   += w * g_kund
+            a_ndeshje      += w
 
         if g_ekip > g_kund:
             fitore += 1
-            piket_forma += 3.0
+            piket_forma += 3.0 * w
         elif g_ekip == g_kund:
             barazime += 1
-            piket_forma += 1.0
+            piket_forma += 1.0 * w
         else:
             humbje += 1
+        pesha_totale += w
 
     total = fitore + barazime + humbje
     if total == 0:
         return _forma_boshe()
 
+    # Emëruesi është shuma e peshave, jo numri i ndeshjeve — ndryshe mesatarja e
+    # ponderuar do të ishte e njëanshme. Me ξ=0 të dyja janë të njëjta.
+    _em = pesha_totale if pesha_totale > 0 else total
     win_rate          = fitore / total
-    avg_gola_shenuar  = gola_shenuar / total
-    avg_gola_prane    = gola_prane   / total
+    avg_gola_shenuar  = gola_shenuar / _em
+    avg_gola_prane    = gola_prane   / _em
     xg_shenuar        = avg_gola_shenuar * 0.85 + 0.25
     xg_prane          = avg_gola_prane   * 0.85 + 0.20
     k_wins_rresht     = _llogarit_wins_rresht(ndeshjet, team_id)
@@ -5938,6 +5989,16 @@ def analizo_ndeshjen_premium_master(
             "away_conceded_away": round(float(forma_2.get("avg_prane_away", forma_2.get("avg_gola_prane", 1.3))), 3),
             "home_forma_pts": float(forma_1.get("piket_forma", 7.0)),
             "away_forma_pts": float(forma_2.get("piket_forma", 7.0)),
+            # ── VEÇORI XGB QË MUNGONIN ──
+            # Pa këto, një parashikim i arkivuar s'kthehet dot në rresht trajnimi:
+            # `vol_1`/`vol_2` më lart janë volatility_index i DNA-së (shkallë ~15),
+            # një madhësi krejt tjetër nga `home_volatility` i modelit (devijim
+            # standard i golave, ~1.5). Ngatërrimi i tyre do të ishte train/serve skew.
+            "home_volatility": float(forma_1.get("volatility", 1.0)),
+            "away_volatility": float(forma_2.get("volatility", 1.0)),
+            "home_rest_days": _rest_days_nga_forma(forma_1, data_ndeshjes),
+            "away_rest_days": _rest_days_nga_forma(forma_2, data_ndeshjes),
+            "tipi_ndeshjes": _percakto_tipi_ndeshjes(emri_liges),
             "home_win_rate": round(float(forma_1.get("win_rate", 0.5)), 3),
             "away_win_rate": round(float(forma_2.get("win_rate", 0.5)), 3),
             # ── RENDITJA NE ATE MOMENT (nga tabela; bosh per knockout/kombetare) ──
@@ -6997,6 +7058,129 @@ def api_cron_kuotat(secret: str = None, ore_para: int = 24):
     return {"ok": True, "ruajtur": ruajtur, "ndeshje_ne_dritare": len(fixtures),
             "me_kuota": len(rreshtat), "liga": len(_grupet), "thirrje_api": _thirrje,
             "bookmaker": KUOTA_HIST_BOOKMAKER}
+
+
+SUPABASE_URL_HISTORIK = f"{SUPABASE_BASE}/rest/v1/historik_trajnimi"
+
+
+@app.get("/api/cron/mbush_trajnimin")
+def api_cron_mbush_trajnimin(secret: str = None, limit: int = 500):
+    """Kthen parashikimet E LUAJTURA në rreshta trajnimi te historik_trajnimi.
+
+    PSE: skripti i jashtëm që mbushte `burimi='api'` ndaloi më 19 qershor 2026 dhe
+    s'e kemi. Por s'ka nevojë të rindërtohet — `predictions` i mban tashmë të gjitha:
+    veçoritë e formës te `training_data`, kuotat te `koef_*`, dhe rezultatin te
+    `rezultati`. Ky endpoint thjesht i bashkon.
+
+    ÇFARË SHTON QË CSV-JA S'E KA: kupa dhe kombëtare. Eksperimenti tregoi se
+    `tipi_ndeshjes` kishte 0 ndarje te modelet — sepse ato ndeshje s'hynë kurrë në
+    trajnim, ndërsa aplikacioni i shet çdo ditë. Këta rreshta e mbyllin atë hendek,
+    dhe ndryshe nga rreshtat e vjetër `api`, KANË kuotat.
+
+    Kartonat, goditjet dhe h2h mbeten NULL — s'i kemi live. XGBoost i trajton
+    NULL-et vendas, ndaj rreshti mbetet i përdorshëm.
+    """
+    if not B2B_ADMIN_SECRET or secret != B2B_ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="I ndaluar")
+
+    fund = "FT,AET,PEN"
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,data,koef_1,koef_x,koef_2,"
+            f"rezultati,training_data,ekipi_1_id,ekipi_2_id"
+            f"&statusi=in.({fund})&training_data=not.is.null&rezultati=not.is.null"
+            f"&order=id.desc&limit={max(1, min(2000, limit))}",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=30)
+        preds = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        return {"ok": False, "gabim": str(e)}
+
+    def _f(v):
+        try:
+            x = float(v)
+            return x if x == x else None       # NaN → None
+        except Exception:
+            return None
+
+    rreshtat, kapercyer = [], 0
+    for p in preds:
+        td = p.get("training_data") or {}
+        if not isinstance(td, dict) or not td:
+            kapercyer += 1
+            continue
+        # "2 - 1" → (2, 1)
+        m = _re_vlere.match(r"^\s*(\d+)\s*-\s*(\d+)\s*$", str(p.get("rezultati") or ""))
+        if not m:
+            kapercyer += 1
+            continue
+        gh, ga = int(m.group(1)), int(m.group(2))
+        # "0 - 0" para ndeshjes është vlera fillestare, jo rezultat i luajtur.
+        # Statusi FT e mbron këtë, por mbetemi konservatorë.
+        hs = _f(td.get("home_avg_scored"))
+        as_ = _f(td.get("away_avg_scored"))
+        hc = _f(td.get("home_avg_conceded"))
+        ac = _f(td.get("away_avg_conceded"))
+        if hs is None or as_ is None:
+            kapercyer += 1
+            continue
+
+        MES = 1.35   # i njëjti emërues si te llogarit_xg_hybrid
+        rreshtat.append({
+            "match_id": f"pred_{p.get('id')}",
+            "burimi": "pred",
+            "data_ndeshjes": p.get("data"),
+            "liga": p.get("liga_emri"),
+            "tipi_ndeshjes": td.get("tipi_ndeshjes"),
+            "home_team": (str(p.get("ndeshja") or "").split(" vs ") + [None, None])[0],
+            "away_team": (str(p.get("ndeshja") or "").split(" vs ") + [None, None])[1],
+            "home_forma_pts": _f(td.get("home_forma_pts")),
+            "away_forma_pts": _f(td.get("away_forma_pts")),
+            "home_avg_scored": hs, "away_avg_scored": as_,
+            "home_avg_conceded": hc, "away_avg_conceded": ac,
+            "home_avg_scored_home": _f(td.get("home_scored_home")),
+            "home_avg_conceded_home": _f(td.get("home_conceded_home")),
+            "away_avg_scored_away": _f(td.get("away_scored_away")),
+            "away_avg_conceded_away": _f(td.get("away_conceded_away")),
+            # Derivatet — të njëjtat formula si te vektori i veçorive
+            "home_attack_strength": round(hs / MES, 3),
+            "away_attack_strength": round(as_ / MES, 3),
+            "home_defense_strength": round(hc / MES, 3) if hc is not None else None,
+            "away_defense_strength": round(ac / MES, 3) if ac is not None else None,
+            "home_volatility": _f(td.get("home_volatility")),
+            "away_volatility": _f(td.get("away_volatility")),
+            "home_rest_days": _f(td.get("home_rest_days")),
+            "away_rest_days": _f(td.get("away_rest_days")),
+            "odd_home": _f(p.get("koef_1")), "odd_draw": _f(p.get("koef_x")),
+            "odd_away": _f(p.get("koef_2")),
+            "ah_line": _f(td.get("ah_line")),
+            "ah_home_odd": _f(td.get("ah_home_odds")),
+            "ah_away_odd": _f(td.get("ah_away_odds")),
+            "ou25_over": _f(td.get("ou_over_odds")),
+            "ou25_under": _f(td.get("ou_under_odds")),
+            "gola_home": gh, "gola_away": ga,
+            "rezultati_1x2": "1" if gh > ga else ("X" if gh == ga else "2"),
+        })
+
+    if not rreshtat:
+        return {"ok": True, "shkruar": 0, "lexuar": len(preds), "kapercyer": kapercyer}
+
+    shkruar = 0
+    try:
+        hdr = dict(SUPABASE_SERVICE_HEADERS)
+        hdr["Content-Type"] = "application/json"
+        hdr["Prefer"] = "resolution=merge-duplicates"   # idempotent mbi match_id
+        for i in range(0, len(rreshtat), 200):
+            rr = requests.post(SUPABASE_URL_HISTORIK, headers=hdr,
+                               json=rreshtat[i:i + 200], timeout=30)
+            if rr.status_code in (200, 201, 204):
+                shkruar += len(rreshtat[i:i + 200])
+            else:
+                print(f"⚠️ mbush_trajnimin: {rr.status_code} {rr.text[:150]}")
+    except Exception as e:
+        return {"ok": False, "shkruar": shkruar, "gabim": str(e)}
+
+    print(f"🎓 Trajnimi: {shkruar} rreshta nga {len(preds)} parashikime te luajtura")
+    return {"ok": True, "shkruar": shkruar, "lexuar": len(preds), "kapercyer": kapercyer}
 
 
 def _kompjuto_dhe_ruaj_skedina(data_target):
