@@ -998,8 +998,10 @@ MIN_TOPUP = 15.0   # mbushja min e portofolit ($) — mbi minimumin ~$11 të NOW
 PPM_TIER2 = 2.0
 PPM_TIER3 = 2.0
 CMIMI_DITORE = 10.0   # zhbllokon Skedinën + Kombinimin e Ditës
-CMIMI_TRIAL  = 4.90   # provë 1-javore me pagesë (jo falas — bllokon llogari fallso)
-TRIAL_DITE   = 7
+CMIMI_TRIAL  = 4.90   # i papërdorur — prova tani jepet nga Whop, falas 7 ditë
+# Sa dite akses jep 'membership.activated' i Whop-it. Prova atje eshte 7 dite,
+# po fatura e pare mberrin diten 7-8; me 9 dite s'ka boshllek mes tyre.
+TRIAL_DITE   = 9
 
 # -- ARGETOHU (Gemini): kuote motivuese + kuiz trivie --
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -1170,6 +1172,11 @@ def _kredito_porosine(order_id):
         st = (_np_info(order_id).get("payment_status") or "").lower()
         if st not in ("finished", "confirmed", "partially_paid"):
             return False   # NOWPayments: vetëm pagesa e konfirmuar krediton
+    elif str(order_id).startswith("wh_"):
+        # WHOP: autoriteti eshte nenshkrimi HMAC-SHA256 i webhook-ut, i verifikuar
+        # te /api/whop/webhook PARA se te krijohet ky rresht. Rreshtat 'wh_' nuk
+        # krijohen dot nga asnje rruge tjeter, prandaj s'ka nevoje per rikontroll.
+        pass
     else:
         return False   # Cryptomus u hoq — porosite e vjetra s'verifikohen dot, ndaj s'kreditohen
 
@@ -1331,6 +1338,215 @@ async def np_webhook(request: Request):
         return {"state": 0}
     _kredito_porosine(data.get("order_id"))
     return {"state": 0}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# WHOP — PAGESA ME KARTE (webhook)
+# ══════════════════════════════════════════════════════════════════════════
+# Zgjidh dy probleme njeheresh:
+#   1. Abonimi VIP i blere me karte aktivizohet VETE (jo me dore te Supabase).
+#   2. Kreditet mbushen me KARTE, jo vetem me kripto.
+#
+# SIGURIA: Whop nenshkruan '{webhook-id}.{webhook-timestamp}.{trupi i papërpunuar}'
+# me HMAC-SHA256 dhe e dergon si header 'webhook-signature' ne formen 'v1,<base64>'.
+# Verifikohet me krahasim kohe-konstante; kerkesat me te vjetra se 5 minuta hidhen
+# poshte (mbrojtje nga replay). Pa WHOP_WEBHOOK_SECRET endpoint-i nuk krediton fare.
+#
+# KONFIGURIMI (variabla mjedisi te Render — ASNJE celes nuk shkruhet ne kod):
+#   WHOP_WEBHOOK_SECRET   detyrueshem — sekreti i webhook-ut nga paneli i Whop
+#   WHOP_PLAN_VIP         opsional    — id-ja e planit VIP; cdo pagese tjeter = kredite
+#   WHOP_LOG_RAW=1        opsional    — shkruan trupin e plote ne log (per rregullim)
+# ══════════════════════════════════════════════════════════════════════════
+
+WHOP_WEBHOOK_SECRET = os.environ.get("WHOP_WEBHOOK_SECRET", "").strip()
+WHOP_PLAN_VIP       = os.environ.get("WHOP_PLAN_VIP", "").strip()
+WHOP_LOG_RAW        = os.environ.get("WHOP_LOG_RAW", "0").strip() in ("1", "true", "True")
+# Çfare behet me nje pagese qe NUK perputhet me WHOP_PLAN_VIP.
+# Sa kohe qe Whop-i ka VETEM produktin VIP, vendose "vip".
+# Kur te shtosh paketat e krediteve, vendos WHOP_PLAN_VIP dhe ktheje ne "topup".
+WHOP_TIPI_DEFAULT   = os.environ.get("WHOP_TIPI_DEFAULT", "topup").strip().lower()
+if WHOP_TIPI_DEFAULT not in ("vip", "topup"):
+    WHOP_TIPI_DEFAULT = "topup"
+
+
+def _whop_verifiko(raw: bytes, wid: str, wts: str, wsig: str) -> bool:
+    """Verifikon nenshkrimin. Kthen False per cdo dyshim — kurre nuk 'jep perfitimin'."""
+    if not (WHOP_WEBHOOK_SECRET and raw and wid and wts and wsig):
+        return False
+    # 1) Freskia: jo me e vjeter se 5 minuta (dhe jo nga e ardhmja)
+    try:
+        mosha = time.time() - float(wts)
+        if mosha > 300 or mosha < -300:
+            return False
+    except Exception:
+        return False
+    # 2) HMAC-SHA256 mbi '{id}.{timestamp}.{trupi}'
+    try:
+        msg = f"{wid}.{wts}.".encode() + raw
+        pritur = base64.b64encode(
+            hmac.new(WHOP_WEBHOOK_SECRET.encode(), msg, hashlib.sha256).digest()
+        ).decode()
+    except Exception:
+        return False
+    # 3) Header-i mund te mbaje disa nenshkrime, ndare me hapesire: 'v1,aaa v1,bbb'
+    for pjesa in str(wsig).split():
+        vlera = pjesa.split(",", 1)[-1]
+        if hmac.compare_digest(vlera, pritur):
+            return True
+    return False
+
+
+def _whop_gjej_email(d):
+    """Nxjerr email-in e blerjes. Whop nuk e garanton nje shteg te vetem, prandaj
+    kerkohet ne disa vende — perfshire pergjigjen e pyetjes sone te checkout-it
+    ('Which email do you use on soccer1x2pro.com?'), qe ka perparesi."""
+    import re as _re
+    RX = _re.compile(r"[^@\s]+@[^@\s.]+\.[^@\s]+")
+
+    def _kerko_thelle(o, thelli=0):
+        """Kthen listen e email-eve te gjetur, me te vertetuarit e pyetjes se pare."""
+        if thelli > 6:
+            return []
+        gjetur = []
+        if isinstance(o, dict):
+            for k, v in o.items():
+                kl = str(k).lower()
+                if isinstance(v, str) and RX.fullmatch(v.strip()):
+                    # pergjigjet e fushave te personalizuara vijne te para
+                    peshë = 0 if ("custom" in kl or "response" in kl or "answer" in kl) else 1
+                    gjetur.append((peshë, v.strip().lower()))
+                else:
+                    gjetur += _kerko_thelle(v, thelli + 1)
+        elif isinstance(o, list):
+            for v in o:
+                gjetur += _kerko_thelle(v, thelli + 1)
+        elif isinstance(o, str) and RX.fullmatch(o.strip()):
+            gjetur.append((0, o.strip().lower()))
+        return gjetur
+
+    # a) fushat e personalizuara — pergjigja e pyetjes sone
+    for celes in ("custom_field_responses", "custom_fields", "checkout_session", "metadata"):
+        nen = d.get(celes)
+        if nen:
+            e = _kerko_thelle(nen)
+            if e:
+                return sorted(e)[0][1]
+    # b) shtigjet e zakonshme te blerësit
+    for shteg in (("user", "email"), ("member", "email"), ("customer", "email"),
+                  ("user_email",), ("email",)):
+        v = d
+        for hap in shteg:
+            v = v.get(hap) if isinstance(v, dict) else None
+            if v is None:
+                break
+        if isinstance(v, str) and RX.fullmatch(v.strip()):
+            return v.strip().lower()
+    # c) e fundit: cfaredo email brenda payload-it
+    e = _kerko_thelle(d)
+    return sorted(e)[0][1] if e else ""
+
+
+def _whop_shuma(d) -> float:
+    """Shuma e paguar ne DOLLARE. Whop mund ta jape ne cent — meqe asnje produkt
+    yni s'e kalon $100, cdo vlere mbi 1000 trajtohet si cent dhe pjesetohet."""
+    for celes in ("final_amount", "amount", "subtotal", "total", "amount_after_fees"):
+        v = d.get(celes)
+        if v is None:
+            continue
+        try:
+            x = float(v)
+        except Exception:
+            continue
+        if x <= 0:
+            continue
+        return round(x / 100.0, 2) if x > 1000 else round(x, 2)
+    return 0.0
+
+
+@app.post("/api/whop/webhook")
+async def whop_webhook(request: Request):
+    raw = await request.body()
+    ok = _whop_verifiko(raw,
+                        request.headers.get("webhook-id", ""),
+                        request.headers.get("webhook-timestamp", ""),
+                        request.headers.get("webhook-signature", ""))
+    if not ok:
+        print("[WHOP] nenshkrim i pavlefshem ose sekret i pavendosur — u shpërfill")
+        return {"ok": False, "kod": "SIG_INVALID"}
+
+    try:
+        ngj = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return {"ok": False, "kod": "JSON_INVALID"}
+
+    if WHOP_LOG_RAW:
+        print("[WHOP] payload:", json.dumps(ngj)[:4000])
+
+    lloji = str(ngj.get("type") or "")
+    # DY NGJARJE, DY ROLE TE NDRYSHME:
+    #   membership.activated -> aksesi FILLON (edhe kur prova eshte falas dhe s'ka pagese)
+    #   payment.succeeded    -> paguhet vertet: zgjat VIP-in 30 dite, ose mbush kredite
+    if lloji not in ("payment.succeeded", "membership.activated"):
+        return {"ok": True, "kod": "IGNORED", "type": lloji}
+
+    d = ngj.get("data") or {}
+    pay_id = str(d.get("id") or ngj.get("id") or "").strip()
+    if not pay_id:
+        return {"ok": False, "kod": "NO_PAYMENT_ID"}
+
+    email = _whop_gjej_email(d)
+    shuma = _whop_shuma(d)
+    plan  = str(d.get("plan_id") or d.get("plan") or "").strip()
+
+    if not email:
+        # Pagesa erdhi po s'dime kujt t'ia japim. Regjistrohet qe te mos humbase.
+        print(f"[WHOP] PAGESE PA EMAIL — pay_id={pay_id} shuma={shuma} plan={plan}")
+        _log_aktivitet("", "whop_pa_email",
+                       {"pay_id": pay_id, "shuma": shuma, "plan": plan})
+        return {"ok": False, "kod": "NO_EMAIL", "pay_id": pay_id}
+
+    # A ekziston llogaria? Pa te, s'ka ku te shkojne kreditet.
+    ures = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{requests.utils.quote(email, safe='')}&select=email",
+                        headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+    if not (ures.status_code == 200 and ures.json()):
+        print(f"[WHOP] LLOGARI E PANJOHUR — {email} pay_id={pay_id} shuma={shuma}")
+        _log_aktivitet(email, "whop_llogari_mungon",
+                       {"pay_id": pay_id, "shuma": shuma, "plan": plan})
+        return {"ok": False, "kod": "USER_NOT_FOUND", "email": email}
+
+    # A eshte kjo nje pagese/anetaresi VIP? Nese WHOP_PLAN_VIP eshte vendosur,
+    # vendos plani; ndryshe bie te WHOP_TIPI_DEFAULT.
+    _planet_vip = [p.strip() for p in WHOP_PLAN_VIP.split(",") if p.strip()]
+    _eshte_vip_plan = (plan in _planet_vip) if _planet_vip else (WHOP_TIPI_DEFAULT == "vip")
+
+    if lloji == "membership.activated":
+        # Fillimi i aksesit. Nese s'eshte plan VIP (p.sh. paket kreditesh),
+        # s'ka çfare te aktivizohet — kreditet i jep payment.succeeded.
+        if not _eshte_vip_plan:
+            return {"ok": True, "kod": "IGNORED_JO_VIP", "type": lloji}
+        tipi = "trial"          # -> TRIAL_DITE dite akses, mbulon proven falas
+        order_id = f"wh_m_{pay_id}"
+    else:
+        tipi = "vip" if _eshte_vip_plan else "topup"
+        order_id = f"wh_{pay_id}"
+
+    # IDEMPOTENCE: 'ignore-duplicates' — nje rimarrje e Whop-it nuk krijon rresht te dyte,
+    # dhe _kredito_porosine kthen False per cdo porosi qe eshte tashme 'paid'.
+    hdr = dict(SUPABASE_SERVICE_HEADERS)
+    hdr["Prefer"] = "resolution=ignore-duplicates"
+    try:
+        requests.post(SUPABASE_URL_POROSITE, headers=hdr, timeout=8,
+                      json={"order_id": order_id, "email": email, "tipi": tipi,
+                            "amount": f"{shuma:.2f}", "status": "wait",
+                            "krijuar": datetime.utcnow().isoformat()})
+    except Exception as e:
+        print(f"[WHOP] s'u ruajt porosia {order_id}: {e}")
+        return {"ok": False, "kod": "DB_ERROR"}
+
+    u_kreditua = _kredito_porosine(order_id)
+    print(f"[WHOP] {lloji} {email} tipi={tipi} shuma={shuma} "
+          f"pay_id={pay_id} kreditua={u_kreditua}")
+    return {"ok": True, "kreditua": bool(u_kreditua), "tipi": tipi, "order_id": order_id}
 
 
 @app.get("/api/nowpayments/order-status")
@@ -1620,25 +1836,21 @@ def _gjenero_kombinimet(top5):
 
 
 def _eshte_zhbllokuar_ditore(email):
-    if not email:
-        return False
-    if _eshte_vip(email):          # VIP = akses i plotë (përfshin produktet ditore)
-        return True
-    try:
-        sot = _data_lokale()
-        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email.lower().strip()}&select=ditore_unlock_date",
-                         headers=SUPABASE_SERVICE_HEADERS)
-        u = r.json() if r.status_code == 200 else []
-        return bool(u) and str(u[0].get("ditore_unlock_date") or "")[:10] == sot
-    except Exception:
-        return False
+    """DITORJA U HOQ SI PRODUKT ME PAGESE (gusht 2026).
+    Skedina e Ditës + Kombinimi i Ditës jane tani FALAS per kedo — sherbejne si
+    deshmi e cilesise qe con drejt abonimit VIP, jo si pagese me vete.
+    Kthen gjithmone True; asnje thirrje nuk e sheh me si te kycur."""
+    return True
 
 
 @app.post("/api/ditore/unlock")
 def ditore_unlock_me_kredite(payload: dict, authorization: str = Header(None)):
+    # DITORJA ESHTE FALAS — ky endpoint mbetet vetem per klientet e vjeter qe
+    # e therrasin ende. NUK zbret me kredite. Kthen sukses pa prekur portofolin.
     email = _email_auth(authorization, payload.get("email", ""))
-    if not email:
-        return {"sukses": False, "kod": "EMAIL_MISSING", "mesazhi": "email mungon"}
+    return {"sukses": True, "kod": "FALAS", "mesazhi": "Produktet ditore jane falas",
+            "ditore_unlock_date": _data_lokale()}
+
     r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,ditore_unlock_date",
                      headers=SUPABASE_SERVICE_HEADERS)
     u = r.json() if r.status_code == 200 else []
@@ -2319,8 +2531,10 @@ def _gjenero_skedine_fleksibel(pool, nr_min, nr_max, koef_target, grupet_lejuara
 # ============ LIMITET & PAGESAT (VIP COMBO / GENERATE TICKET) ============
 # VIP: 1 herë falas/ditë secilin, pastaj bllokohet deri nesër.
 # Jo-VIP: paguan nga portofoli për çdo gjenerim.
-CMIM_VIPCOMBO = 30.0   # jo-VIP paguan kaq për 1 VIP Combo
-CMIM_GENERATE = 10.0   # jo-VIP paguan kaq për 1 Generate Ticket
+# PASI I PERBASHKET 24-ORESH: nje pagese e vetme $5 zhbllokon TE DYJA
+# (VIP Combo + Generate) pa fund per ate dite. Prandaj te dy cmimet jane te njejta.
+CMIM_VIPCOMBO = 5.0    # jo-VIP paguan kaq -> hap VIP Combo DHE Generate per 24 ore
+CMIM_GENERATE = 5.0    # i njejti pas — kushdo qe e paguan, i merr te dyja
 
 # PRAGU I BESUESHMËRISË PËR VIP: abonentët VIP marrin VETËM ndeshje me besueshmëri
 # >= këtë vlerë (pretendimi "75–92%" te veçoritë VIP). Një ndeshje me 65% nuk i
@@ -2370,19 +2584,23 @@ def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float, paguaj: bool =
     Logjikë: VIP merr 1 gjenerim FALAS/ditë; pasi e përdor, mund të gjenerojë
     përsëri DUKE PAGUAR (njësoj si jo-VIP). 'paguaj=True' = përdoruesi e konfirmoi pagesën.
     Kthen dict {ok, is_vip, falas, kerko_pagese, mungojne_kredite, portofoli, cmimi, arsye}."""
-    fusha = "vipcombo_fundit" if produkt == "vipcombo" else "generate_fundit"
     emri = "VIP Combo" if produkt == "vipcombo" else "Generate Ticket"
     dt = _data_lokale(0)
     is_vip = _eshte_vip(email)
     portofoli = 0.0
     fundit = None
     try:
-        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{email}&select=portofoli,{fusha}",
-                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        # PASI I PERBASHKET: lexohen TE DY fushat — nje pagese hap te dyja produktet.
+        r = requests.get(
+            f"{SUPABASE_URL_USERS}?email=eq.{email}"
+            f"&select=portofoli,vipcombo_fundit,generate_fundit",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=8)
         if r.status_code == 200 and r.json():
             row = r.json()[0]
             portofoli = float(row.get("portofoli", 0) or 0)
-            fundit = row.get(fusha)
+            _vc = str(row.get("vipcombo_fundit") or "")[:10]
+            _gn = str(row.get("generate_fundit")  or "")[:10]
+            fundit = dt if (_vc == dt or _gn == dt) else None
     except Exception:
         pass
 
@@ -2400,13 +2618,13 @@ def _kontrollo_te_drejten(email: str, produkt: str, cmimi: float, paguaj: bool =
     if portofoli < cmimi:
         return {"ok": False, "is_vip": False, "falas": False, "mungojne_kredite": True,
                 "portofoli": portofoli, "cmimi": cmimi,
-                "kod": "PPM_NO_CREDITS", "arsye": f"{emri}: akses i pakufizuar për sot ${int(cmimi)}. Nuk ke kredite të mjaftueshme — mbush portofolin."}
+                "kod": "PPM_NO_CREDITS", "arsye": f"VIP Combo + Gjenero, pa fund për 24 orë: ${int(cmimi)}. Nuk ke kredite të mjaftueshme — mbush portofolin."}
 
     # 4) Jo-VIP, ka kredite, s'ka konfirmuar → kerko konfirmim (1 here, pastaj pa fund)
     if not paguaj:
         return {"ok": False, "is_vip": False, "falas": False, "kerko_pagese": True,
                 "portofoli": portofoli, "cmimi": cmimi,
-                "kod": "PPM_PAY_ONCE", "arsye": f"Paguaj ${int(cmimi)} një herë → gjenero PA FUND sot."}
+                "kod": "PPM_PAY_ONCE", "arsye": f"Paguaj ${int(cmimi)} një herë → VIP Combo + Gjenero, PA FUND për 24 orë."}
 
     # 5) Konfirmuar + ka kredite → vazhdo (paguhet 1 here sot)
     return {"ok": True, "is_vip": False, "falas": False,
@@ -2416,15 +2634,16 @@ def _konfirmo_perdorimin(email: str, produkt: str, cmimi: float, is_vip: bool, p
     """THIRRET VETËM PAS gjenerimit të suksesshëm.
     VIP ose 'falas' (pagoi tashme sot) → s'ndryshon asgjë (akses i pakufizuar).
     Jo-VIP hera e PARE sot → zbrit çmimin DHE shëno datën (day-pass → pa fund sot)."""
-    fusha = "vipcombo_fundit" if produkt == "vipcombo" else "generate_fundit"
     dt = _data_lokale(0)
     try:
         if is_vip or falas:
             return portofoli   # akses i pakufizuar — pa pagese te dyte
         ri = round(portofoli - cmimi, 2)
+        # PASI I PERBASHKET: vulosen TE DY fushat — pagesa hap VIP Combo DHE Generate.
         requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{email}",
                        headers=SUPABASE_SERVICE_HEADERS,
-                       json={"portofoli": ri, fusha: dt}, timeout=8)
+                       json={"portofoli": ri, "vipcombo_fundit": dt,
+                             "generate_fundit": dt}, timeout=8)
         _FULL_ACCESS_CACHE.pop(str(email).lower().strip(), None)   # akses ndryshoi → pastro cache
         return ri
     except Exception:
