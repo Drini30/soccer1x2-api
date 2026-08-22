@@ -991,7 +991,7 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
 # MODULI I PAGESAVE — PPM (kredite) + NOWPAYMENTS (server-autoritar)
 # Çmimet në USD (TEST — ndryshohen lehtë këtu).
 # ==========================================
-CMIMI_VIP = 69.99
+CMIMI_VIP = 29.90   # perputhet me planin ne Whop ($29.90/muaj) — mos i lejo te ndahen
 VIP_DITE  = 30
 PPM_TIER1 = 2.0    # çmim FIKS $2 për ndeshje (blihet VETËM me kredite — nën minimumin ~$11 të NOWPayments)
 MIN_TOPUP = 15.0   # mbushja min e portofolit ($) — mbi minimumin ~$11 të NOWPayments
