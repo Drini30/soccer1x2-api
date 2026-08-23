@@ -6342,25 +6342,65 @@ def _rimburso_ppm_humbur(match_id, rezultati_real, parashikimi):
             users = r2.json() if r2.status_code == 200 else []
         for u in users:
             blerjet = u.get("blerjet") or []
+
+            # ── KUFIRI: rimbursohen VETEM kreditet e BLERA, jo ato te rimbursuara ──
+            # Pa kete, $15 mbushje prodhojne rimbursime pa fund: blej -> humb -> merr
+            # prapa -> blej perseri, ne pafundesi. Rregulli: shuma e pergjithshme e
+            # rimbursuar nuk e kalon kurre shumen qe perdoruesi ka PAGUAR vertet.
+            _email_u = str(u.get("email") or "")
+            _mbushur = 0.0
+            try:
+                _rp = requests.get(
+                    f"{SUPABASE_URL_POROSITE}?email=eq.{requests.utils.quote(_email_u, safe='')}"
+                    f"&tipi=eq.topup&status=eq.paid&select=amount",
+                    headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+                for _p in (_rp.json() if _rp.status_code == 200 else []):
+                    try:
+                        _mbushur += float(_p.get("amount") or 0)
+                    except Exception:
+                        pass
+            except Exception:
+                _mbushur = 0.0
+            # sa i eshte kthyer deri tani
+            _rimbursuar_deri_tani = 0.0
+            for _b in blerjet:
+                if _b.get("rimbursuar"):
+                    try:
+                        _rimbursuar_deri_tani += float(_b.get("cmimi", 0) or 0)
+                    except Exception:
+                        pass
+            _hapesira = max(0.0, _mbushur - _rimbursuar_deri_tani)
+
             ndryshuar = False
             kthim = 0.0
             for b in blerjet:
                 if str(b.get("id")) == mid and not b.get("rimbursuar"):
                     try:
-                        kthim += float(b.get("cmimi", 0) or 0)
+                        _cm = float(b.get("cmimi", 0) or 0)
                     except Exception:
-                        pass
+                        _cm = 0.0
+                    if _cm > _hapesira:
+                        # kredite te rimbursuara me pare — kjo blerje nuk kthehet me
+                        b["rimbursuar"] = False
+                        b["pa_rimbursim"] = "kufiri i krediteve te blera"
+                        ndryshuar = True
+                        continue
+                    _hapesira -= _cm
+                    kthim += _cm
                     b["rimbursuar"] = True
                     b["rimbursuar_me"] = rezultati_real
                     ndryshuar = True
-            if ndryshuar and kthim > 0:
+            # Ruaj edhe kur kthim=0 — ndryshe shenimi 'pa_rimbursim' humbet dhe
+            # e njejta blerje rivleresohet ne cdo cikel pa fund.
+            if ndryshuar:
                 port_ri = round(float(u.get("portofoli", 0) or 0) + kthim, 2)
                 requests.patch(
                     f"{SUPABASE_URL_USERS}?email=eq.{requests.utils.quote(str(u.get('email')), safe='')}",
                     headers=SUPABASE_SERVICE_HEADERS,
                     json={"portofoli": port_ri, "blerjet": blerjet}, timeout=6)
                 try:
-                    _log_aktivitet(u.get("email"), "ppm_rimbursim",
+                    _log_aktivitet(u.get("email"),
+                                   "ppm_rimbursim" if kthim > 0 else "ppm_pa_rimbursim",
                                    {"match_id": mid, "kthim": round(kthim, 2),
                                     "parashikimi": parashikimi, "reale": rezultati_real})
                 except Exception:
