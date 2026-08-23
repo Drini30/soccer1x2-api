@@ -3763,11 +3763,21 @@ def _gjenero_pf():
         rec = {"ndeshja": nd, "liga_emri": p.get("liga_emri"), "data": p.get("data"),
                "ora": p.get("ora"), "parashikimi": par, "server_seed": seed,
                "hash_publik": _pf_hash(nd, par, seed), "statusi": "kycur",
-               "ekipi_1_id": p.get("ekipi_1_id"), "ekipi_2_id": p.get("ekipi_2_id")}
+               "ekipi_1_id": p.get("ekipi_1_id"), "ekipi_2_id": p.get("ekipi_2_id"),
+               # match_id: PA KETE, faqja nuk e njeh dot ndeshjen dhe pick-u del i
+               # kycur PA buton blerjeje. Rregulli: cdo hash = $2, pa perjashtim.
+               "match_id": str(p.get("id")) if p.get("id") else None}
+        _hdr_pf = {**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=ignore-duplicates"}
         try:
-            requests.post(PF_URL,
-                headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "resolution=ignore-duplicates"},
-                json=rec, timeout=8)
+            _rp = requests.post(PF_URL, headers=_hdr_pf, json=rec, timeout=8)
+            # Nese kolona 'match_id' s'ekziston ende ne tabele, PostgREST kthen 400.
+            # Riprovohet pa te, qe gjenerimi te mos ndalet — po logohet, se pa kolonen
+            # butoni i blerjes s'do te dale per te gjitha ndeshjet.
+            if _rp.status_code >= 400:
+                print(f"[PF] POST me match_id deshtoi ({_rp.status_code}): "
+                      f"{(_rp.text or '')[:160]} — riprovoj pa match_id")
+                rec.pop("match_id", None)
+                requests.post(PF_URL, headers=_hdr_pf, json=rec, timeout=8)
         except Exception:
             pass
 
@@ -6720,9 +6730,23 @@ def merr_parashikimet(background_tasks: BackgroundTasks, date: str = None, autho
             background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, data_target)  # rifresko në sfond
         return {"mesazhi": "Sukses", "skedina_grupuar": _maske(_me_live_fresh(payload, data_target)), "full_access": _full}
 
-    # 3) Asgjë në cache (hera e parë) → gjenero tani; cron-i do e parahapë më pas
-    rez = _kompjuto_dhe_ruaj_skedina(data_target)
-    return {"mesazhi": "Sukses" if rez else "Gabim", "skedina_grupuar": _maske(rez), "full_access": _full}
+    # 3) Cache i vjeter — KTHEJE, sado i vjeter qofte. Me mire ndeshje te
+    #    para nje ore se nje faqe qe rrotullohet dy minuta.
+    payload_vjeter, _ = _lexo_cache_db(data_target, max_age_min=10_000_000)
+    if payload_vjeter is not None:
+        SKEDINA_CACHE[data_target]       = payload_vjeter
+        SKEDINA_LAST_UPDATE[data_target] = koha_tani
+        background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, data_target)
+        return {"mesazhi": "Sukses",
+                "skedina_grupuar": _maske(_me_live_fresh(payload_vjeter, data_target)),
+                "full_access": _full}
+
+    # 4) Vertet s'ka asgje (data e re) → NIS gjenerimin ne sfond dhe kthe
+    #    MENJEHERE. Faqja kurre nuk e mban klientin duke pritur Monte Carlo-n:
+    #    llogaritja e vertete i takon cron-it, jo nje refresh-i te faqes.
+    background_tasks.add_task(_kompjuto_dhe_ruaj_skedina, data_target)
+    return {"mesazhi": "Sukses", "skedina_grupuar": [], "po_pergatitet": True,
+            "full_access": _full}
 
 
 def _parse_skor(s):
@@ -7442,7 +7466,30 @@ def api_cron_mbush_trajnimin(secret: str = None, limit: int = 500):
     return {"ok": True, "shkruar": shkruar, "lexuar": len(preds), "kapercyer": kapercyer}
 
 
+# Datat qe po gjenerohen NE KETE CAST. Lirohen sapo mbaron gjenerimi.
+# Pa kete, dhjete vizitore njekohesisht nisin dhjete Monte Carlo paralel
+# mbi nje instance falas dhe e mbysin fare.
+_GJEN_NE_VAZHDIM = set()
+
+
 def _kompjuto_dhe_ruaj_skedina(data_target):
+    """Porta kunder MBIVENDOSJES — jo kufi sa here gjenerohet.
+
+    NUK eshte 'nje here ne dite'. Cron-i vazhdon te gjeneroje cdo 30 minuta
+    dhe kuotat rifreskohen normalisht ne cdo cikel. E vetmja gje qe ndalohet
+    eshte nisja e nje gjenerimi te DYTE per te njejten date sa kohe i pari
+    ende po punon — ne ate rast kthehet menjehere ajo qe kemi, pa pritur.
+    Porta lirohet te 'finally', pra sapo gjenerimi mbaron ose deshton."""
+    if data_target in _GJEN_NE_VAZHDIM:
+        return SKEDINA_CACHE.get(data_target) or []
+    _GJEN_NE_VAZHDIM.add(data_target)
+    try:
+        return _kompjuto_dhe_ruaj_skedina_raw(data_target)
+    finally:
+        _GJEN_NE_VAZHDIM.discard(data_target)
+
+
+def _kompjuto_dhe_ruaj_skedina_raw(data_target):
     """LLOGARITJA E RËNDË: fixtures + odds + Monte Carlo + ruajtje. Kthen skedina_grupuar (listë)."""
     koha_tani = time.time()
     try:
