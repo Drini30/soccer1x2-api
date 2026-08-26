@@ -6896,7 +6896,18 @@ def cron_gjenero(background_tasks: BackgroundTasks, date: str = None):
     if date:
         datat = [date]
     else:
-        datat = [_data_lokale(i) for i in range(3)]
+        # ── SA DITE GJENEROHEN (ishte 3 — i akordueshem pa deploy) ────────────
+        # Cdo dite kushton nje cikel te plote: fixtures + odds + forma + renditje
+        # + lendime + Monte Carlo per cdo ndeshje. Mbi nje instance me 0.1 CPU
+        # dhe nje worker te vetem, dita e trete rrallehere shihet nga klienti
+        # (ndeshjet e pasnesermes) po e mban worker-in te zene sa te dyja te tjerat.
+        # Me 2 dite ngarkesa bie ~33% dhe faqja liron radhen me shpejt.
+        try:
+            _n_dite = int(os.environ.get("GEN_DITE", "2").strip())
+        except Exception:
+            _n_dite = 2
+        _n_dite = max(1, min(_n_dite, 5))
+        datat = [_data_lokale(i) for i in range(_n_dite)]
 
     # ── GJITHMONË (e lehtë, çdo ~10 min) ──
     # 1) Përditëso FT + ARKIVO ndeshjet e mbaruara → PPM History + Performanca
