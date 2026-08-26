@@ -5454,11 +5454,28 @@ def simulim_monte_carlo_v2(
         "p2": round(float(H[_ii < _jj].sum()), 4),
     }
 
-    # Top 15 rezultatet (si numra, per perputhshmeri me dist_gola)
+    # ── SA SKORE RUHEN (ishte 15 — i akordueshem pa deploy) ──────────────────
+    # MATUR mbi 606 ndeshje te arkivuara (korrik-gusht 2026): me 15 skore,
+    # `dist_gola` mbante mesatarisht vetem 89.5% te probabilitetit. Pjesa e
+    # hedhur ishin skoret e larta, ndaj:
+    #   • mesatarja e shperndarjes se ruajtur dilte 2.356 kur xG ishte 2.767
+    #     — nje humbje prej 0.41 golash qe s'kishte asnje shkak analitik;
+    #   • ne 9.1% te ndeshjeve skori REAL kishte probabilitet ZERO, sepse
+    #     as nuk ruhej. Aty `_prob_skori` kthen 0.0 dhe `_platt(0)` s'e ndreq
+    #     dot — nje zero mbetet zero, dhe log-loss e ndeshkon pafundesisht.
+    # Me 40 mbulimi shkon ~99%. Kjo NUK e ndryshon skorin e publikuar (ai
+    # zgjidhet nga `_order[:5]`, i paprekur) dhe as tregjet O/U (ato dalin nga
+    # matrica e plote H). Ndryshon vetem cilesia e probabiliteteve te ruajtura.
+    try:
+        _n_ruaj = int(os.environ.get("DIST_TOP_N", "40").strip())
+    except Exception:
+        _n_ruaj = 40
+    _n_ruaj = max(5, min(_n_ruaj, int(H.size)))
+
     _flat = H.flatten()
     _order = np.argsort(_flat)[::-1]
     rezultatet_freq = {}
-    for _idx in _order[:15]:
+    for _idx in _order[:_n_ruaj]:
         _i = int(_idx // H.shape[1]); _j = int(_idx % H.shape[1])
         _c = int(round(float(_flat[_idx]) * iteracione))
         if _c > 0:
