@@ -3740,6 +3740,26 @@ def _gjenero_pf():
         rows = r.json() if r.status_code == 200 else []
     except Exception:
         rows = []
+
+    # ── CILAT NDESHJE E KANE TASHME NJE HASH ────────────────────────────────
+    # MATUR ne prodhim (26 gusht): pa kete, funksioni gjeneronte nje seed te ri
+    # per te 60 ndeshjet ne CDO cikel dhe mbeshtetej te 'ignore-duplicates' qe
+    # baza t'i shperfillte. Por PostgREST e zbaton ate vetem mbi CELESIN PRIMAR
+    # — nje UNIQUE mbi (ndeshja, data) kthen 409 te forte. Rezultati ishin deri
+    # ne 120 kerkesa HTTP te deshtuara, sekuenciale, me timeout=8, brenda te
+    # njejtit worker — sa mjaftonte per ta bllokuar krejt faqen mbi 0.1 CPU.
+    # Nje kerkese e vetme ketu i zevendeson te gjitha.
+    _kane = set()
+    try:
+        _rx = requests.get(f"{PF_URL}?select=ndeshja,data&data=in.({dt_sot},{dt_neser})",
+                           headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        if _rx.status_code == 200:
+            _kane = {(str(x.get("ndeshja") or ""), str(x.get("data") or ""))
+                     for x in (_rx.json() or [])}
+    except Exception:
+        pass   # nese deshton, sillemi si me pare — riprovat mbeten te padëmshme
+
+    _te_reja = 0
     for p in rows:
         nd = p.get("ndeshja"); par = p.get("rezultati_sakt")
         if not nd or not par:
@@ -3759,6 +3779,11 @@ def _gjenero_pf():
                     pass
             except Exception:
                 pass
+        # E ka tashme hash-in → mos e riprovo. `is_premium` me lart u vu gjithsesi.
+        if (str(nd), str(p.get("data") or "")) in _kane:
+            continue
+        _te_reja += 1
+
         seed = secrets.token_hex(8)
         rec = {"ndeshja": nd, "liga_emri": p.get("liga_emri"), "data": p.get("data"),
                "ora": p.get("ora"), "parashikimi": par, "server_seed": seed,
@@ -3773,13 +3798,22 @@ def _gjenero_pf():
             # Nese kolona 'match_id' s'ekziston ende ne tabele, PostgREST kthen 400.
             # Riprovohet pa te, qe gjenerimi te mos ndalet — po logohet, se pa kolonen
             # butoni i blerjes s'do te dale per te gjitha ndeshjet.
-            if _rp.status_code >= 400:
+            # 409 = duplikat: nje UNIQUE mbi (ndeshja, data) qe PostgREST s'e trajton
+            # dot me 'ignore-duplicates'. Ky rast NUK eshte gabim — hash-i ekziston
+            # tashme — ndaj nuk riprovohet dhe nuk mbush logun.
+            if _rp.status_code == 409:
+                _kane.add((str(nd), str(p.get("data") or "")))
+            elif _rp.status_code >= 400:
                 print(f"[PF] POST me match_id deshtoi ({_rp.status_code}): "
                       f"{(_rp.text or '')[:160]} — riprovoj pa match_id")
                 rec.pop("match_id", None)
                 requests.post(PF_URL, headers=_hdr_pf, json=rec, timeout=8)
         except Exception:
             pass
+
+    if _te_reja:
+        print(f"[PF] {_te_reja} hash te rinj nga {len(rows)} ndeshje "
+              f"({len(rows) - _te_reja} i kishin tashme)")
 
 _pf_premium_backfilled = False
 
