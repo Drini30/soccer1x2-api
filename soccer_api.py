@@ -112,6 +112,20 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
            "besueshmerie/aftesi per treg; /api/status raporton vlerat aktive + XGB_GATI. "
            "HEQUR: SKOR_TAU, ONE_ONE_*; rregulluar kaosi i Europa League dhe FORMA_CACHE.")
 
+# ── VULA E DEPLOY-IT ─────────────────────────────────────────────────────────
+# NDRYSHOJE ME DORE sa here ngarkon nje version te ri ne Render.
+# /api/status e kthen te fusha `build`: keshtu shihet ne çast nese eshte LIVE
+# pikerisht skedari per te cilin po flitet, pa hamendesime.
+# Formati: DATA-shkronja  (2026-08-29-a, pastaj -b, -c per te njejten dite)
+BUILD = "2026-08-29-a"
+
+def _env_int(emri: str, parazgjedhje: int) -> int:
+    """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
+    try:
+        return int(str(os.environ.get(emri, parazgjedhje)).strip())
+    except Exception:
+        return int(parazgjedhje)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^https://(www\.)?soccer1x2pro\.com$|^https://([a-z0-9-]+\.)?rapidapi\.com$",
@@ -7863,6 +7877,7 @@ def api_status(request: Request, kalim: str = None):
         "ip_jote": _ip_klienti(request),
         "kalim_aktiv": _kalo,
         "version": VERSION,
+        "build":   BUILD,
         "koha":    _koha,
         # Vlerat AKTIVE (model_config -> env-var -> default), jo ato te momentit te importit.
         "konfigurimi": {
@@ -7906,6 +7921,11 @@ def api_status(request: Request, kalim: str = None):
             "BESU_PRAG_VIP":  _konf("BESU_PRAG_VIP", BESU_PRAG_VIP),
             "VALUE_EDGE_MIN": VALUE_EDGE_MIN,
             "VALUE_FILTER_ON": VALUE_FILTER_ON,
+            # Keto dy lexohen nga env BRENDA funksioneve (simulim_monte_carlo_v2 dhe
+            # cron_gjenero), ndaj nuk dukeshin askund. Parazgjedhjet duhet te
+            # mbeten te njejta ne te tri vendet.
+            "DIST_TOP_N":     _env_int("DIST_TOP_N", 40),
+            "GEN_DITE":       _env_int("GEN_DITE", 2),
         },
         "sherbimet": {
             "supabase":     bool(SUPABASE_URL_PREDS),
