@@ -5,20 +5,29 @@ ORDER BY data DESC
 LIMIT 1;
 
 
-WITH x AS (
+WITH y AS (
+    SELECT r1, r2, p1g, p2g,
+           mc_p1, mc_px, mc_p2,
+           pm_1, pm_x, pm_2,
+           (0.65*mc_p1 + 0.35*pm_1) AS b1,
+           (0.65*mc_px + 0.35*pm_x) AS bx,
+           (0.65*mc_p2 + 0.35*pm_2) AS b2
+    FROM v_analiza_rreze
+    WHERE mc_p1 IS NOT NULL AND pm_1 IS NOT NULL
+),
+x AS (
     SELECT CASE WHEN r1 > r2 THEN '1' WHEN r1 < r2 THEN '2' ELSE 'X' END AS reali,
            CASE WHEN p1g > p2g THEN '1' WHEN p1g < p2g THEN '2' ELSE 'X' END AS pub,
            CASE WHEN mc_p1 >= mc_px AND mc_p1 >= mc_p2 THEN '1'
                 WHEN mc_p2 >  mc_p1 AND mc_p2 >= mc_px THEN '2'
                 ELSE 'X' END AS mc,
-           CASE WHEN prob_1 >= prob_x AND prob_1 >= prob_2 THEN '1'
-                WHEN prob_2 >  prob_1 AND prob_2 >= prob_x THEN '2'
+           CASE WHEN b1 >= bx AND b1 >= b2 THEN '1'
+                WHEN b2 >  b1 AND b2 >= bx THEN '2'
                 ELSE 'X' END AS blend,
            CASE WHEN pm_1 >= pm_x AND pm_1 >= pm_2 THEN '1'
                 WHEN pm_2 >  pm_1 AND pm_2 >= pm_x THEN '2'
                 ELSE 'X' END AS treg
-    FROM v_analiza_rreze
-    WHERE mc_p1 IS NOT NULL AND prob_1 IS NOT NULL
+    FROM y
 )
 SELECT count(*) AS n,
        round(100.0*count(*) FILTER (WHERE pub   = reali)/count(*), 2) AS pub_pct,
@@ -29,16 +38,24 @@ SELECT count(*) AS n,
 FROM x;
 
 
-WITH x AS (
+WITH y AS (
+    SELECT r1, r2,
+           mc_p1, mc_px, mc_p2,
+           (0.65*mc_p1 + 0.35*pm_1) AS b1,
+           (0.65*mc_px + 0.35*pm_x) AS bx,
+           (0.65*mc_p2 + 0.35*pm_2) AS b2
+    FROM v_analiza_rreze
+    WHERE mc_p1 IS NOT NULL AND pm_1 IS NOT NULL
+),
+x AS (
     SELECT CASE WHEN r1 > r2 THEN '1' WHEN r1 < r2 THEN '2' ELSE 'X' END AS reali,
            CASE WHEN mc_p1 >= mc_px AND mc_p1 >= mc_p2 THEN '1'
                 WHEN mc_p2 >  mc_p1 AND mc_p2 >= mc_px THEN '2'
                 ELSE 'X' END AS mc,
-           CASE WHEN prob_1 >= prob_x AND prob_1 >= prob_2 THEN '1'
-                WHEN prob_2 >  prob_1 AND prob_2 >= prob_x THEN '2'
+           CASE WHEN b1 >= bx AND b1 >= b2 THEN '1'
+                WHEN b2 >  b1 AND b2 >= bx THEN '2'
                 ELSE 'X' END AS blend
-    FROM v_analiza_rreze
-    WHERE mc_p1 IS NOT NULL AND prob_1 IS NOT NULL
+    FROM y
 )
 SELECT count(*) AS n,
        count(*) FILTER (WHERE mc = reali AND blend <> reali) AS vetem_mc,
@@ -55,17 +72,25 @@ SELECT count(*) AS n,
 FROM x;
 
 
-WITH x AS (
+WITH y AS (
+    SELECT r1, r2, p1g, p2g,
+           mc_p1, mc_px, mc_p2,
+           (0.65*mc_p1 + 0.35*pm_1) AS b1,
+           (0.65*mc_px + 0.35*pm_x) AS bx,
+           (0.65*mc_p2 + 0.35*pm_2) AS b2
+    FROM v_analiza_rreze
+    WHERE mc_p1 IS NOT NULL AND pm_1 IS NOT NULL
+),
+x AS (
     SELECT CASE WHEN r1 > r2 THEN '1' WHEN r1 < r2 THEN '2' ELSE 'X' END AS reali,
            CASE WHEN p1g > p2g THEN '1' WHEN p1g < p2g THEN '2' ELSE 'X' END AS pub,
            CASE WHEN mc_p1 >= mc_px AND mc_p1 >= mc_p2 THEN '1'
                 WHEN mc_p2 >  mc_p1 AND mc_p2 >= mc_px THEN '2'
                 ELSE 'X' END AS mc,
-           CASE WHEN prob_1 >= prob_x AND prob_1 >= prob_2 THEN '1'
-                WHEN prob_2 >  prob_1 AND prob_2 >= prob_x THEN '2'
+           CASE WHEN b1 >= bx AND b1 >= b2 THEN '1'
+                WHEN b2 >  b1 AND b2 >= bx THEN '2'
                 ELSE 'X' END AS blend
-    FROM v_analiza_rreze
-    WHERE mc_p1 IS NOT NULL AND prob_1 IS NOT NULL
+    FROM y
 ),
 t AS (SELECT count(*)::numeric AS n FROM x)
 SELECT 'reale'::text AS burimi,
