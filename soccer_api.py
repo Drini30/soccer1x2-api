@@ -117,7 +117,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # /api/status e kthen te fusha `build`: keshtu shihet ne çast nese eshte LIVE
 # pikerisht skedari per te cilin po flitet, pa hamendesime.
 # Formati: DATA-shkronja  (2026-08-29-a, pastaj -b, -c per te njejten dite)
-BUILD = "2026-08-29-a"
+BUILD = "2026-09-03-a"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -1179,6 +1179,18 @@ def _kredito_porosine(order_id):
         return False   # s'ekziston ose tashmë e kredituar (idempotent)
     po = pros[0]
 
+    # `shuma` duhet te ekzistoje per ÇDO tip, sepse rreshti i fundit i ketij
+    # funksioni e shkruan ne log. Deri tani ishte e perkufizuar VETEM brenda
+    # deges "topup": ndaj çdo pagese vip/trial/ppm/ditore e kryente kreditimin,
+    # e shenonte porosine 'paid', dhe pastaj rrezohej me UnboundLocalError.
+    # Pasoja: webhook-u i Whop-it merrte 500 dhe e riprovonte (perdoruesi
+    # kreditohej sic duhej, po ne panelin e Whop-it dukej si deshtim), dhe
+    # 'pagese_sukses' nuk regjistrohej kurre per VIP.
+    try:
+        shuma = float(po.get("amount", 0) or 0)
+    except Exception:
+        shuma = 0.0
+
     # GATE AUTORITATIV: pyet VETË ofruesin (webhook/IPN e falsifikuar s'kalon dot)
     if str(order_id).startswith("pp_"):
         return False   # PayPal u hoq — porosite e vjetra s'verifikohen dot, ndaj s'kreditohen
@@ -1205,10 +1217,6 @@ def _kredito_porosine(order_id):
     update = {}
 
     if tipi == "topup":
-        try:
-            shuma = float(po.get("amount", 0))
-        except Exception:
-            shuma = 0.0
         update["portofoli"] = round(float(u.get("portofoli", 0) or 0) + shuma, 2)
     elif tipi in ("vip", "trial"):
         baza = datetime.utcnow()
@@ -1557,7 +1565,15 @@ async def whop_webhook(request: Request):
         print(f"[WHOP] s'u ruajt porosia {order_id}: {e}")
         return {"ok": False, "kod": "DB_ERROR"}
 
-    u_kreditua = _kredito_porosine(order_id)
+    # MBROJTJE: nje perjashtim ketu do te kthente 500 dhe Whop-i do ta shenonte
+    # dergesen si te deshtuar edhe kur kreditimi ka ndodhur. Riprovat e Whop-it
+    # jane te padëmshme (porosia eshte tashme 'paid' -> kthen False), po e mbajme
+    # pergjigjen 200 dhe e shenojme gabimin ne log qe te mos fshihet.
+    try:
+        u_kreditua = _kredito_porosine(order_id)
+    except Exception as e:
+        print(f"[WHOP] GABIM ne kreditim {order_id}: {type(e).__name__}: {e}")
+        u_kreditua = False
     print(f"[WHOP] {lloji} {email} tipi={tipi} shuma={shuma} "
           f"pay_id={pay_id} kreditua={u_kreditua}")
     return {"ok": True, "kreditua": bool(u_kreditua), "tipi": tipi, "order_id": order_id}
