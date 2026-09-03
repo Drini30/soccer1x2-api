@@ -1,3 +1,4 @@
+-- ==================== PYETJA 1 ====================
 SELECT jsonb_pretty(odds_reale::jsonb) AS struktura_e_kuotave
 FROM arkiv_rezultatesh
 WHERE odds_reale IS NOT NULL AND odds_reale::jsonb <> '{}'::jsonb
@@ -5,6 +6,7 @@ ORDER BY data DESC
 LIMIT 1;
 
 
+-- ==================== PYETJA 2 ====================
 WITH s AS (
     SELECT v.match_id, v.r1, v.r2, v.mc_p1, v.mc_px, v.mc_p2,
            a.dist_gola::jsonb AS dg
@@ -79,6 +81,7 @@ SELECT 'DREJTIMI',
 FROM f;
 
 
+-- ==================== PYETJA 3 ====================
 SELECT to_char(data::date, 'YYYY-MM') AS muaji,
        count(*) AS n,
        round(avg(tot_pritur), 3) AS lam_mes,
@@ -93,6 +96,7 @@ GROUP BY 1
 ORDER BY 1;
 
 
+-- ==================== PYETJA 4 ====================
 SELECT to_char(v.data::date, 'YYYY-MM') AS muaji,
        count(*) AS n,
        round(avg((a.tregjet_full::jsonb ->> 'Over 2.5')::numeric), 4) AS premtuar,
