@@ -4673,6 +4673,7 @@ def llogarit_xg_te_perparuara(
     forma_1: dict, forma_2: dict,
     elo_1: float, elo_2: float,
     p1_real: float, p2_real: float,
+    elo_vlen: bool = True,
 ) -> tuple:
     """
     xG final = kombinim i peshuar i 4 burimeve (peshat lart, env-var).
@@ -4712,8 +4713,26 @@ def llogarit_xg_te_perparuara(
     shtepie_bonus = 1.12
     jashte_minus  = 0.95
 
-    xg_1_final = (W_FORMA * xg1_forma + W_ELO * xg1_elo + W_MARKET * xg1_market + W_BASE * xg1_base) * shtepie_bonus
-    xg_2_final = (W_FORMA * xg2_forma + W_ELO * xg2_elo + W_MARKET * xg2_market + W_BASE * xg2_base) * jashte_minus
+    # ── ELO VETËM KUR TË DY ANËT KANË VLERË REALE ──
+    # `merr_elo_baze` kthen 600.0 fiks për çdo ekip jashtë GIGANTET_ELO (21 emra).
+    # Krahasimi i një 600-je të parazgjedhur me një historical_power të llogaritur
+    # prodhon hendek që nuk mat asgjë. Matur mbi 902 ndeshje të arkivuara:
+    #   grupi                 n     hendeku   largesia nga tregu   korr(gabim, elo_diff)
+    #   të dy realë         757       105            0.139              -0.1215
+    #   njëri 600            72       245            0.239              -0.3152
+    #   të dy 600            73         0            0.099                 —
+    # Grupi i fundit është kontrolli natyror: aty ELO nuk kontribuon fare në
+    # supremaci dhe modeli qëndron më afër tregut se kudo tjetër.
+    # Peshat rinormalizohen që shkalla e xG-së të mos zhvendoset kur ELO bie jashtë.
+    _w_elo = W_ELO if elo_vlen else 0.0
+    _wn    = W_FORMA + _w_elo + W_MARKET + W_BASE
+    if _wn <= 0:
+        _wn = 1.0
+
+    xg_1_final = ((W_FORMA * xg1_forma + _w_elo * xg1_elo
+                   + W_MARKET * xg1_market + W_BASE * xg1_base) / _wn) * shtepie_bonus
+    xg_2_final = ((W_FORMA * xg2_forma + _w_elo * xg2_elo
+                   + W_MARKET * xg2_market + W_BASE * xg2_base) / _wn) * jashte_minus
 
     # Kufijtë e rritur (3.50 → 4.20) që të lejojë rezultate me shumë gola
     xg_1_final = float(np.clip(xg_1_final, 0.35, 5.00))
@@ -5786,8 +5805,13 @@ def analizo_ndeshjen_premium_master(
     p2_real = (1/k2) / marzhi
 
     # DNA / ELO
-    elo_1    = float(dna_1.get("historical_power", merr_elo_baze(ekipi_1))) if dna_1 else merr_elo_baze(ekipi_1)
-    elo_2    = float(dna_2.get("historical_power", merr_elo_baze(ekipi_2))) if dna_2 else merr_elo_baze(ekipi_2)
+    # `_hp*` ndahet nga `elo_*` me qëllim: duhet ditur nëse vlera erdhi nga DNA apo
+    # nga dysheme e parazgjedhur, sepse vetëm e para është e krahasueshme.
+    _hp1 = (dna_1 or {}).get("historical_power")
+    _hp2 = (dna_2 or {}).get("historical_power")
+    elo_1    = float(_hp1) if _hp1 is not None else merr_elo_baze(ekipi_1)
+    elo_2    = float(_hp2) if _hp2 is not None else merr_elo_baze(ekipi_2)
+    _elo_vlen = (_hp1 is not None) and (_hp2 is not None)
     clutch_1 = float(dna_1.get("clutch_factor", 1.0))    if dna_1 else 1.0
     clutch_2 = float(dna_2.get("clutch_factor", 1.0))    if dna_2 else 1.0
     vol_1    = float(dna_1.get("volatility_index", 15.0)) if dna_1 else 15.0
@@ -5807,12 +5831,16 @@ def analizo_ndeshjen_premium_master(
 
     # ── XG TË AVANCUARA ──
     kaosi_liges = apliko_kaosin_e_liges(emri_liges, vol_1, vol_2)
-    is_derbi    = abs(elo_1 * desp_1 - elo_2 * desp_2) <= 30
+    # ⚠️ `is_derbi` kërkon ELO reale për të dy: me dy dysheme 600 kushti është GJITHNJË
+    #    i vërtetë, dhe derbi shumëzon kaos_factor me 1.15. Mbi arkivin: 73 ndeshje
+    #    (8%) merrnin zgjerim variance thjesht sepse të dy ekipet mungonin nga lista.
+    is_derbi    = _elo_vlen and abs(elo_1 * desp_1 - elo_2 * desp_2) <= 30
 
     xg_1, xg_2 = llogarit_xg_te_perparuara(
         forma_1, forma_2,
         elo_1 * desp_1, elo_2 * desp_2,
-        p1_real, p2_real
+        p1_real, p2_real,
+        elo_vlen=_elo_vlen
     )
 
     # ── HYBRID: kombino me XGBoost (nëse gati; ndryshe mban math) ──
@@ -5841,8 +5869,16 @@ def analizo_ndeshjen_premium_master(
     _xg2_mkt = XG_FLOOR + p2_real * (3.2 - XG_FLOOR)
     _xg1_elo = XG_FLOOR + _p1e_m * (3.0 - XG_FLOOR)
     _xg2_elo = XG_FLOOR + _p2e_m * (3.0 - XG_FLOOR)
-    _mod1 = (_xg1_mkt - xg_1) * MOD_K_TREG + (_xg1_elo - xg_1) * MOD_K_ELO
-    _mod2 = (_xg2_mkt - xg_2) * MOD_K_TREG + (_xg2_elo - xg_2) * MOD_K_ELO
+    # ⚠️ KANALI KRYESOR I ELO-s. Për një hendek 400-pikësh ky term shton ~0.47 gola
+    #    supremaci (0.00119/pikë) kundrejt ~0.00061/pikë që jep W_ELO te përzierja —
+    #    pra moduluesi peshon dyfishin. Pjerrësia e matur mbi arkivin (gusht, 562
+    #    ndeshje) ishte 0.00123/pikë, pra ky term e mban gati krejt efektin.
+    #    Kur ELO s'është reale për të dy, termi hiqet: përndryshe një hendek fantazmë
+    #    e tërheq xG-në kundër tregut (Mjallby–Lincoln: tregu 82.7% vendas, ELO e bëri
+    #    mysafirin favorit; termat ELO hoqën -0.54 gola supremaci).
+    _k_elo = MOD_K_ELO if _elo_vlen else 0.0
+    _mod1 = (_xg1_mkt - xg_1) * MOD_K_TREG + (_xg1_elo - xg_1) * _k_elo
+    _mod2 = (_xg2_mkt - xg_2) * MOD_K_TREG + (_xg2_elo - xg_2) * _k_elo
     _mod1 = float(np.clip(_mod1, MOD_KUFI_POSHTE, MOD_KUFI_LART))
     _mod2 = float(np.clip(_mod2, MOD_KUFI_POSHTE, MOD_KUFI_LART))
     xg_1 = float(np.clip(xg_1 + _mod1, 0.30, 5.00))
@@ -6261,6 +6297,10 @@ def analizo_ndeshjen_premium_master(
             "prob_1x2_mc": prob_1x2_mc,
             # ── FORCA / VLERESIMI ──
             "elo_1": round(float(elo_1), 1), "elo_2": round(float(elo_2), 1),
+            # A ishte ELO reale për TË DY? Pa këtë flag, matja pas dy javësh s'do të
+            # dinte cilat ndeshje e patën burimin ELO të fikur — dhe efekti do të
+            # shpërbëhej mes 92% të ndeshjeve që s'preken.
+            "elo_vlen": bool(_elo_vlen),
             "p_market_1": round(float(p1_real), 4), "p_market_2": round(float(p2_real), 4),
             "burimi_xg": burimi_xg,
             # ── MODULUESIT E APLIKUAR (per te rikrijuar zinxhirin) ──
