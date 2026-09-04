@@ -5828,6 +5828,15 @@ def simulim_monte_carlo_v2(
 # MODULI 5 (V2): BESUESHMËRIA ME KONSENSUS
 # ==========================================
 
+# ── VERSIONI I FORMULËS (env-var, pa deploy) ──
+#    "v3" = i akorduar mbi 910 ndeshje (default)  |  "v2" = sjellja e vjetër 35/30/25/10
+BES_VERSION  = os.environ.get("BES_VERSION", "v3").strip().lower()
+BES_W_SINJAL = _peshe_env("BES_W_SINJAL", 0.75)
+BES_W_FORMA  = _peshe_env("BES_W_FORMA",  0.25)
+BES_BAZE     = _peshe_env("BES_BAZE",     66.7)
+BES_SHKALLE  = _peshe_env("BES_SHKALLE",  24.4)
+
+
 def llogarit_besueshmeria_v2(
     prob_1x2_mc: dict,
     p1_market: float, p2_market: float, px_market: float,
@@ -5856,8 +5865,37 @@ def llogarit_besueshmeria_v2(
         forma_score = 0.35
 
     bonus_rez     = prob_rez_sakt * 0.5
-    raw           = 0.35 * konsensus + 0.30 * sinjal + 0.25 * forma_score + 0.10 * bonus_rez
-    besueshmeria  = 55.0 + (raw * 37.0)
+
+    # ── v2 (e vjetra) — mbahet e plotë; kthimi bëhet me BES_VERSION=v2, pa deploy ──
+    if BES_VERSION == "v2":
+        raw          = 0.35 * konsensus + 0.30 * sinjal + 0.25 * forma_score + 0.10 * bonus_rez
+        besueshmeria = 55.0 + (raw * 37.0)
+        return round(float(np.clip(besueshmeria, 55.0, 92.0)), 1)
+
+    # ── v3 — MATUR mbi 910 ndeshje të arkivuara ──
+    # Korrelacioni i secilit përbërës me goditjen e DREJTIMIT:
+    #     sinjal        +0.2953      ← i vetmi parashikues i vërtetë
+    #     forma_score   +0.0887
+    #     konsensus     -0.0203      ← ANTI-parashikon
+    #     bonus_rez     -0.0414      ← anti-parashikon, dhe jep 0.9% të dallimit
+    #     e gjithë formula v2  +0.2373
+    # Pra `sinjal` VETËM e mundte formulën e plotë: t = -2.89, p = 0.004 (Williams,
+    # korrelacione të varura). Tri termat e tjerë po hollonin të vetmin sinjal të mirë.
+    #
+    # Përse u hoq `konsensus` dhe jo u rregullua: ai llogaritet PAS përzierjes së 1X2
+    # me tregun (thirrja vjen pas saj), ndaj mat 0.65 herë mospajtimin e vërtetë —
+    # e verifikuar: sd 0.0630 kundrejt 0.0970 e papërzier, raport 0.649. Por të dyja
+    # variantet japin korrelacion IDENTIK (-0.0203), sepse janë transformime lineare
+    # të së njëjtës madhësi. Rregullimi do t'i jepte vetëm më shumë peshë një termi
+    # që anti-parashikon.
+    #
+    # ⚠️ Asnjë përbërës nuk parashikon SKORIN ekzakt (të gjithë nën 0.05). Kjo masë
+    #    vlen për drejtimin, jo për CS — mos e përdor si filtër skori.
+    #
+    # BES_BAZE/BES_SHKALLE janë zgjedhje PARAQITJEJE: i mbajnë mesataren ~75 dhe
+    # shpërndarjen ~4 pikë, që numri i shfaqur të mos kërcejë ndaj v2-shit.
+    raw          = BES_W_SINJAL * sinjal + BES_W_FORMA * forma_score
+    besueshmeria = BES_BAZE + (raw * BES_SHKALLE)
     return round(float(np.clip(besueshmeria, 55.0, 92.0)), 1)
 
 # ==========================================
@@ -8118,6 +8156,9 @@ def api_status(request: Request, kalim: str = None):
         "konfigurimi": {
             "W_FORMA":        round(W_FORMA, 4),
             "W_ELO":          round(W_ELO, 4),
+            "BES_VERSION":    BES_VERSION,
+            "BES_W_SINJAL":   round(BES_W_SINJAL, 3),
+            "BES_W_FORMA":    round(BES_W_FORMA, 3),
             "W_MARKET":       round(W_MARKET, 4),
             "W_BASE":         round(W_BASE, 4),
             "W_XGB":          _konf("W_XGB", W_XGB),
