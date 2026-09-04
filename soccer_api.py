@@ -2757,6 +2757,11 @@ CMIM_GENERATE = 5.0    # i njejti pas — kushdo qe e paguan, i merr te dyja
 #    ushqen llogarit_besueshmeria_v2. Rimate me /api/performanca → kalibrimi.kurba.
 BESU_PRAG_VIP = 75.0
 BESU_PRAG_VIPCOMBO = 70.0   # kufi më i ulët vetëm për VIP Combo
+# ⚠️ TANI I PAPËRDORUR. Të dy combo-t zgjedhin mbi skorë, ku `besueshmeria` korrelon
+#    0.0222 me goditjen (0.67 sigma mbi 910 ndeshje) — pra nuk zgjidhte asgjë.
+#    Mbahet i përkufizuar që kthimi mbrapsht të jetë i lehtë. `_filtro_besu` vazhdon
+#    të përdoret te skedina e ditës, ku bastet janë drejtimore dhe aty ajo masë VLEN
+#    (korr 0.2373 me goditjen e drejtimit).
 
 def _nm_key(p):
     return (p.get("ndeshja") or "").strip().lower()
@@ -3678,7 +3683,7 @@ def _tip_rezultati(skor):
     return "1" if h > a else ("2" if a > h else "X")
 
 
-def _top_rezultate_sakta(p, n=4):
+def _top_rezultate_sakta(p, n=4, detyro_publikuarin=True):
     """TOP-N: kthen thjesht N skoret me te mundshme nga shperndarja e golave.
        (Prove mbi 5292 ndeshje: top-N godet me shume se cdo skeme diversiteti/simetrie.)"""
     dist = p.get("dist_gola") or {}
@@ -3708,7 +3713,50 @@ def _top_rezultate_sakta(p, n=4):
         if len(zgjedhur) >= n:
             break
         shto(k, v)
+
+    # ── PËRPUTHJA ME SKORIN E PUBLIKUAR ──
+    # `rezultati_sakt` zgjidhet nga shtresat (aff + rregulli i fituesit + LEAN),
+    # ndërsa kjo listë vjen nga top-N i papërpunuar. Matur mbi 910 ndeshje të
+    # arkivuara, renditja e skorit të publikuar brenda `dist_gola`:
+    #     renditja 1: 37.9%   2: 31.1%   3: 14.6%   4: 11.4%   5+: 4.9%
+    # Pra me rez=3 ai mungon nga combo në 16.4% të ndeshjeve dhe me rez=4 në 5.0%
+    # — përdoruesi sheh një parashikim kryesor që s'ndodhet te lista e vet.
+    if detyro_publikuarin and rez_sakt:
+        _kp = str(rez_sakt).replace(" ", "")
+        if _kp and _kp in dist and _kp not in seen:
+            zgjedhur = [mk(_kp)] + zgjedhur[:max(0, n - 1)]
     return zgjedhur[:n]
+
+
+# Filtri i diversitetit te combo i ndeshjeve — fiket me COMBO_DIVERSITET=0.
+COMBO_DIVERSITET = os.environ.get("COMBO_DIVERSITET", "1").strip() not in ("0", "false", "False")
+
+
+def _mbulimi_topn(p, n):
+    """P(rezultati real bie brenda N skoreve me te mundshem) sipas modelit.
+
+    Kjo eshte madhesia qe ka rendesi per nje combo me N skore per ndeshje —
+    jo probabiliteti i skorit kryesor, dhe aspak `besueshmeria`.
+
+    MATUR mbi 910 ndeshje, i ndare ne kater breza sipas kesaj vlere:
+        p3 < 28%   -> ndodhi 19.8%
+        p3 28-32%  -> ndodhi 27.9%
+        p3 32-36%  -> ndodhi 32.0%
+        p3 >= 36%  -> ndodhi 36.3%
+    Pra dallon fort (19.8 -> 36.3, permiresim relativ 83%), ndonese e
+    mbivlereson nivelin me ~3 pike. Per renditje ka rendesi radha, jo niveli.
+    """
+    dist = (p or {}).get("dist_gola") or {}
+    if not dist:
+        return 0.0
+    try:
+        vlerat = sorted((float(v) for v in dist.values()), reverse=True)
+        total = sum(vlerat)
+    except Exception:
+        return 0.0
+    if total <= 0:
+        return 0.0
+    return sum(vlerat[:max(1, int(n))]) / total
 
 
 @app.get("/api/ligat-disponueshme")
@@ -4417,7 +4465,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     _vfilt = "&is_value=eq.true" if VALUE_FILTER_ON else ""   # baste-vlerë: vetëm ndeshjet me edge
     vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria,is_value"
               f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}"
-              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=besueshmeria.desc.nullslast,koef_rez_sakt.asc&limit=30")
+              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=60")
     if liga and liga.strip():
         vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(vc_url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -4458,22 +4506,21 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
             rif = True
         return nd, rif
 
-    # SHKALLËZIMI I BESUESHMËRISË: nis GJITHMONË nga % më e lartë (renditja besueshmeria.desc).
-    # Nëse s'plotësohet kërkesa me pragun 70, ulet me shkallë (65→60→55→50). Kurrë nën 50.
+    # ── RENDITJA SIPAS MBULIMIT, JO BESUESHMËRISË ──
+    # Kaskada e vjetër (prag 70→65→60→55→50 mbi `besueshmeria`) u hoq sepse ajo
+    # zgjidhte mbi një masë që NUK mat asgjë për skorin. Matur mbi 910 ndeshje:
+    #     korr(besueshmeria, goditje e SKORIT)    = 0.0222   (0.67 sigma)
+    #     korr(besueshmeria, goditje e DREJTIMIT) = 0.2373
+    # Pra `besueshmeria` është masë e mirë për 1X2 dhe e padobishme për skorë —
+    # thjesht po përdorej për gjënë e gabuar këtu. Ajo mbetet e ruajtur dhe e
+    # kthyer te përgjigjja; thjesht nuk zgjedh më.
     ndeshjet, rifilluar, rows, prag_perdorur = [], False, rows_plot, None
     if _manual:
         ndeshjet, rifilluar = _provo_vc(rows_plot)   # manual: pikërisht ndeshjet e zgjedhura, pa prag
     else:
-        for _prag in (BESU_PRAG_VIPCOMBO, 65.0, 60.0, 55.0, 50.0):
-            rows_p = _filtro_besu(rows_plot, prag=_prag)
-            nd, rif = _provo_vc(rows_p)
-            if len(nd) >= nr:
-                ndeshjet, rifilluar, rows, prag_perdorur = nd, rif, rows_p, _prag
-                break
-        if len(ndeshjet) < nr and not _drejta["is_vip"]:
-            # Jo-VIP (që paguan): si mundësi e fundit, i gjithë pool-i (i renditur nga besueshmëria)
-            ndeshjet, rifilluar = _provo_vc(rows_plot)
-            rows = rows_plot
+        rows_plot = sorted(rows_plot, key=lambda p: _mbulimi_topn(p, rez), reverse=True)
+        ndeshjet, rifilluar = _provo_vc(rows_plot)
+        rows = rows_plot
     if len(ndeshjet) < nr:
         return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF", "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të mjaftueshme (u provua deri në ≥50%). Provo më vonë."}
 
@@ -9669,25 +9716,48 @@ def vip_combo_nde(email: str = "", nr: int = 4, madhesi: str = "23", liga: str =
     if madhesi not in ("2", "3", "23"):
         madhesi = "23"
     dt = _data_lokale(0); dt_neser = _data_lokale(1)
+    # `besueshmeria` s'kërkohet më as si filtër as si renditje: korr me goditjen e
+    # skorit doli 0.0222 (0.67 sigma) mbi 910 ndeshje. Renditja bëhet në Python
+    # sipas probabilitetit të vetë skorit — shih poshtë.
     url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria"
            f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null"
-           f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&besueshmeria=not.is.null"
-           f"&order=besueshmeria.desc&limit=40")
+           f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)"
+           f"&order=koef_rez_sakt.asc&limit=60")
     if liga and liga.strip():
         url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
     rows_plot = r.json() if r.status_code == 200 else []
 
-    def _ndertimi_nde(rws):
-        """PA DUBLIKATA (sipas emrit); vetëm rreshta me probabilitet real të skorit."""
+    def _ndertimi_nde(rws, diversitet=True):
+        """PA DUBLIKATA (sipas emrit); vetëm rreshta me probabilitet real të skorit.
+
+        `diversitet=True`: mos zgjidh dy ndeshje me TË NJËJTIN skor. Kalohet te
+        ndeshja pasardhëse, jo te skori i dytë i së njëjtës ndeshje — ndaj kostoja
+        është e vogël: probabilitetet e skorit mezi ndryshojnë mes ndeshjeve
+        (8.7%-13.5% mbi 910 ndeshje), pra zbritja është ~0.5 pikë për leg.
+        Për një combo me tri ndeshje: 0.120^3 = 0.001728 kundrejt
+        0.120 x 0.115 x 0.110 = 0.001518, pra rreth 12% më pak.
+
+        ⚠️ Ky filtër NUK justifikohet nga kalibrimi. U mat per-skor mbi 910
+        ndeshje dhe asnjë devijim s'e kalon 1 sigma:
+            1-1  premtoi 13.41%  goditi 11.42%  raport 0.85  (-0.87 sigma)
+            2-0  premtoi 12.33%  goditi 10.69%  raport 0.87  (-0.63 sigma)
+            2-1  premtoi  8.74%  goditi 10.50%  raport 1.20  (+0.88 sigma)
+        Pra `2-0` s'është i mbivlerësuar në mënyrë të matshme. Arsyeja e këtij
+        filtri është ulja e dështimit të korreluar dhe paraqitja — jo saktësia.
+        """
         nd = []
         _pare = set()
+        _skore_pare = set()
         for p in rws:
             _k = _nm_key(p)
             if _k and _k in _pare:
                 continue
             pr = _prob_rez_sakt(p)
             if pr <= 0:
+                continue
+            _sk = str(p.get("rezultati_sakt") or "").replace(" ", "")
+            if diversitet and _sk and _sk in _skore_pare:
                 continue
             try:
                 kf = float(p.get("koef_rez_sakt") or 0)
@@ -9701,21 +9771,37 @@ def vip_combo_nde(email: str = "", nr: int = 4, madhesi: str = "23", liga: str =
                        "besueshmeria": p.get("besueshmeria")})
             if _k:
                 _pare.add(_k)
+            if _sk:
+                _skore_pare.add(_sk)
             if len(nd) >= nr:
                 break
         return nd
 
-    # PËRZGJEDHJA NIS NGA % MË E LARTË (besueshmeria.desc); pragu ulet me shkallë vetëm po s'mjaftoi
-    ndeshjet, prag_perdorur = [], None
-    for _prag in (BESU_PRAG_VIPCOMBO, 65.0, 60.0, 55.0, 50.0):
-        nd = _ndertimi_nde(_filtro_besu(rows_plot, prag=_prag))
-        if len(nd) > len(ndeshjet):
-            ndeshjet, prag_perdorur = nd, _prag
-        if len(nd) >= nr:
-            break
+    # ── RENDITJA SIPAS PROBABILITETIT TË SKORIT, JO BESUESHMËRISË ──
+    # Kaskada e vjetër (70→65→60→55→50 mbi `besueshmeria`) u hoq: ajo masë korrelon
+    # 0.0222 me goditjen e skorit, pra s'zgjidhte asgjë. Katër sinjale u provuan mbi
+    # 910 ndeshje kundrejt goditjes së skorit (bazë 11.21%):
+    #     prob i vetë skorit  +0.0431 (1.30 sigma)   <- më i miri
+    #     mbulimi top-3       +0.0223 (0.67)
+    #     lambda totale       -0.0215 (-0.65)
+    #     besueshmeria        +0.0222 (0.67)
+    # Asnjëri s'kalon 1.3 sigma. Por kjo NUK do të thotë se s'ka sinjal: probabilitetet
+    # e skorit luajnë vetëm 8.7%-13.5%, pra sd ~0.02 mbi një bazë 0.11. Korrelacioni
+    # maksimal i mundshëm nga kalibrim i PËRSOSUR do të ishte 0.064, dhe ne matëm
+    # 0.0431 ± 0.033 — plotësisht në pajtim me të. Sinjali s'mungon; thjesht
+    # probabilitetet mezi ndryshojnë. Renditja sipas tij jep ndoshta 13% në vend të
+    # 11%: e vogël, por reale, dhe dyfishi i asaj që jep `besueshmeria`.
+    rows_plot = sorted(rows_plot, key=lambda p: _prob_rez_sakt(p), reverse=True)
+    prag_perdorur = None
+    ndeshjet = _ndertimi_nde(rows_plot, diversitet=COMBO_DIVERSITET)
+    if len(ndeshjet) < nr and COMBO_DIVERSITET:
+        # S'u mbush me diversitet të plotë -> lirohet kufizimi, që të mos mbetet bosh.
+        _pa_div = _ndertimi_nde(rows_plot, diversitet=False)
+        if len(_pa_div) > len(ndeshjet):
+            ndeshjet = _pa_div
     if len(ndeshjet) < 2 or (madhesi == "3" and len(ndeshjet) < 3):
         return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF",
-                "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të mjaftueshme (u provua deri në ≥50%). Provo më vonë."}
+                "arsye": "Sot s'ka mjaft ndeshje me shpërndarje skori të përdorshme. Provo më vonë."}
 
     madhesite = {"2": [2], "3": [3], "23": [2, 3]}[madhesi]
     kombinimet = []
