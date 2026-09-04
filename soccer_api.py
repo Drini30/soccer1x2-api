@@ -117,7 +117,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # /api/status e kthen te fusha `build`: keshtu shihet ne çast nese eshte LIVE
 # pikerisht skedari per te cilin po flitet, pa hamendesime.
 # Formati: DATA-shkronja  (2026-08-29-a, pastaj -b, -c per te njejten dite)
-BUILD = "2026-09-03-a"
+BUILD = "2026-09-03-b"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -999,6 +999,185 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
                    headers=SUPABASE_SERVICE_HEADERS,
                    json={"isVip": True, "vip_skadon_me": skadon})
     return {"sukses": True, "email": email, "vip_skadon_me": skadon}
+
+
+# ── DHURATE TRIAL: akses i plote + email njoftimi ────────────────────────────
+# Pse nje endpoint i vecante dhe jo /api/admin/set_vip:
+#   1. set_vip nuk kontrollon nese llogaria ekziston. PATCH mbi 0 rreshta kthen
+#      sukses, ndaj nje email i shkruar gabim kalon i heshtur dhe ti mendon se
+#      e dhurove aksesin.
+#   2. set_vip e ZEVENDESON daten e skadimit. Nese dikush ka tashme 20 dite VIP,
+#      nje "dhurate" 7-ditore do t'ia SHKURTONTE aksesin. Ketu ditet mblidhen,
+#      njesoj si te _kredito_porosine.
+#   3. Dhurata pa njoftim nuk ka kuptim — perdoruesi s'e merr vesh kurre.
+
+def _email_dhurate(emri: str, dite: int, skadon: str, gjuha: str = "en"):
+    """Kthen (subject, html) per emailin e dhurates."""
+    lidhja = SITE_URL.rstrip("/")
+    if gjuha == "sq":
+        subject = f"{dite} dite akses VIP falas — SOCCER1X2 PRO"
+        pershendetja = f"Pershendetje {emri}," if emri else "Pershendetje,"
+        trupi = f"""
+        <p>{pershendetja}</p>
+        <p>Faleminderit qe u regjistrove ne SOCCER1X2 PRO. Sapo te kemi hapur
+           <b>{dite} dite akses te plote VIP</b>, si dhurate. Nuk duhet kartë
+           dhe nuk ka asgje per te anuluar — thjesht hyr dhe perdore.</p>
+        <p><b>Skadon me {skadon}.</b></p>
+        <p>Cfare te hapet:</p>
+        <ul>
+          <li><b>Skedina e Dites</b> — 4 piket me te sigurta te dites</li>
+          <li><b>Kombinimi i Dites</b> — 6 skedina me koeficient 10+</li>
+          <li><b>VIP Combo</b> — kombinimi premium i dites</li>
+          <li><b>Gjenero</b> — nderto skedinen tende me koeficientin qe do</li>
+          <li><b>Analizat e plota</b> — xG, Elo, shperndarja e skoreve</li>
+        </ul>
+        <p>Nje gje qe duam ta themi hapur: ky eshte nje model statistikor, jo nje
+           garanci. Ne publikojme edhe humbjet. Luaj vetem ate qe mund ta humbasesh.</p>
+        """
+        butoni = "Hyr ne llogari"
+    else:
+        subject = f"Your {dite}-day VIP access is open — SOCCER1X2 PRO"
+        pershendetja = f"Hi {emri}," if emri else "Hi,"
+        trupi = f"""
+        <p>{pershendetja}</p>
+        <p>Thanks for signing up to SOCCER1X2 PRO. We have just unlocked
+           <b>{dite} days of full VIP access</b> on your account, as a gift.
+           No card needed, nothing to cancel — just log in and use it.</p>
+        <p><b>It expires on {skadon}.</b></p>
+        <p>What this opens:</p>
+        <ul>
+          <li><b>Daily Ticket</b> — the four safest picks of the day</li>
+          <li><b>Daily Combo</b> — six tickets at odds of 10 or more</li>
+          <li><b>VIP Combo</b> — the premium combination of the day</li>
+          <li><b>Generate</b> — build your own ticket at the odds you want</li>
+          <li><b>Full analysis</b> — expected goals, Elo, score distribution</li>
+        </ul>
+        <p>One thing we would rather say up front: this is a statistical model,
+           not a guarantee. We publish our losses too. Only stake what you can
+           afford to lose.</p>
+        """
+        butoni = "Open my account"
+
+    html = f"""<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;
+                 line-height:1.6;color:#1b1b1b;max-width:560px;margin:0 auto">
+      <div style="background:#0f172a;color:#fff;padding:18px 22px;border-radius:8px 8px 0 0">
+        <div style="font-size:19px;font-weight:bold;letter-spacing:.5px">SOCCER1X2 PRO</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-top:none;padding:22px;border-radius:0 0 8px 8px">
+        {trupi}
+        <p style="margin:26px 0 8px">
+          <a href="{lidhja}" style="background:#0f172a;color:#fff;text-decoration:none;
+             padding:12px 22px;border-radius:6px;display:inline-block;font-weight:bold">{butoni}</a>
+        </p>
+        <p style="color:#64748b;font-size:12px;margin-top:22px">
+          You are receiving this because you created an account on
+          <a href="{lidhja}" style="color:#64748b">soccer1x2pro.com</a>.
+        </p>
+      </div>
+    </div>"""
+    return subject, html
+
+
+def _dhurato_nje(email: str, dite: int, gjuha: str, dergo: bool):
+    """Nje llogari. Kthen dict me rezultatin — kurre nuk ngre perjashtim."""
+    em = str(email or "").lower().strip()
+    if not em:
+        return {"email": email, "sukses": False, "kod": "EMAIL_MISSING"}
+    kuota = requests.utils.quote(em, safe="")
+    try:
+        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{kuota}"
+                         f"&select=email,emri,isVip,vip_skadon_me",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        return {"email": em, "sukses": False, "kod": "DB_ERROR", "info": str(e)[:120]}
+    if not rows:
+        return {"email": em, "sukses": False, "kod": "USER_NOT_FOUND"}
+    u = rows[0]
+
+    # Ditet MBLIDHEN mbi skadimin ekzistues — kurre nuk e shkurtojne.
+    baza = datetime.utcnow()
+    if u.get("vip_skadon_me"):
+        try:
+            d = datetime.strptime(str(u["vip_skadon_me"])[:10], "%Y-%m-%d")
+            if d > baza:
+                baza = d
+        except Exception:
+            pass
+    skadon = (baza + timedelta(days=dite)).strftime("%Y-%m-%d")
+
+    try:
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{kuota}",
+                       headers=SUPABASE_SERVICE_HEADERS,
+                       json={"isVip": True, "vip_skadon_me": skadon}, timeout=8)
+    except Exception as e:
+        return {"email": em, "sukses": False, "kod": "PATCH_FAILED", "info": str(e)[:120]}
+
+    try:
+        _FULL_ACCESS_CACHE.pop(em, None)   # akses ndryshoi -> pastro cache
+    except Exception:
+        pass
+    _log_aktivitet(em, "dhurate_trial", {"dite": dite, "skadon": skadon})
+
+    ok_email, info_email = False, "u anashkalua"
+    if dergo:
+        subject, html = _email_dhurate(str(u.get("emri") or "").strip(), dite, skadon, gjuha)
+        ok_email, info_email = _dergo_email(em, subject, html)
+
+    return {"email": em, "sukses": True, "dite": dite, "vip_skadon_me": skadon,
+            "email_derguar": bool(ok_email), "email_info": info_email}
+
+
+@app.post("/api/admin/dhurato_trial")
+def admin_dhurato_trial(payload: dict, x_admin_token: str = Header(None)):
+    """Dhuron akses te plote per N dite dhe njofton me email.
+    Trupi: {"emails": ["a@x.com","b@x.com"], "dite": 7, "gjuha": "en",
+            "dergo_email": true}
+    Pranon edhe "email" te vetem ne vend te "emails".
+    'dry_run': true e bën vetem kontrollin — nuk shkruan dhe nuk dergon asgje."""
+    _kontrollo_admin(x_admin_token)
+
+    lista = payload.get("emails")
+    if not lista:
+        nje = payload.get("email")
+        lista = [nje] if nje else []
+    if not isinstance(lista, list) or not lista:
+        return {"sukses": False, "kod": "EMAILS_MISSING"}
+    if len(lista) > 50:
+        return {"sukses": False, "kod": "TOO_MANY", "maks": 50}
+
+    try:
+        dite = int(payload.get("dite", 7))
+    except Exception:
+        dite = 7
+    dite = max(1, min(dite, 90))
+    gjuha = str(payload.get("gjuha", "en")).lower().strip()
+    dergo = bool(payload.get("dergo_email", True))
+
+    # Dry-run: shiko cilat llogari ekzistojne PARA se te preket ndonje gje.
+    if bool(payload.get("dry_run", False)):
+        gjetur = []
+        for e in lista:
+            em = str(e or "").lower().strip()
+            try:
+                r = requests.get(f"{SUPABASE_URL_USERS}?email=eq."
+                                 f"{requests.utils.quote(em, safe='')}"
+                                 f"&select=email,emri,isVip,vip_skadon_me",
+                                 headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+                rows = r.json() if r.status_code == 200 else []
+            except Exception:
+                rows = []
+            gjetur.append({"email": em, "ekziston": bool(rows),
+                           "isVip": (rows[0].get("isVip") if rows else None),
+                           "vip_skadon_me": (rows[0].get("vip_skadon_me") if rows else None)})
+        return {"sukses": True, "dry_run": True, "dite": dite,
+                "email_do_dergohej": dergo, "llogarite": gjetur}
+
+    rez = [_dhurato_nje(e, dite, gjuha, dergo) for e in lista]
+    return {"sukses": True, "dite": dite, "gjuha": gjuha,
+            "u_dhuruan": sum(1 for x in rez if x.get("sukses")),
+            "emaile_derguar": sum(1 for x in rez if x.get("email_derguar")),
+            "rezultatet": rez}
 
 
 # ==========================================
@@ -2578,6 +2757,11 @@ CMIM_GENERATE = 5.0    # i njejti pas — kushdo qe e paguan, i merr te dyja
 #    ushqen llogarit_besueshmeria_v2. Rimate me /api/performanca → kalibrimi.kurba.
 BESU_PRAG_VIP = 75.0
 BESU_PRAG_VIPCOMBO = 70.0   # kufi më i ulët vetëm për VIP Combo
+# ⚠️ TANI I PAPËRDORUR. Të dy combo-t zgjedhin mbi skorë, ku `besueshmeria` korrelon
+#    0.0222 me goditjen (0.67 sigma mbi 910 ndeshje) — pra nuk zgjidhte asgjë.
+#    Mbahet i përkufizuar që kthimi mbrapsht të jetë i lehtë. `_filtro_besu` vazhdon
+#    të përdoret te skedina e ditës, ku bastet janë drejtimore dhe aty ajo masë VLEN
+#    (korr 0.2373 me goditjen e drejtimit).
 
 def _nm_key(p):
     return (p.get("ndeshja") or "").strip().lower()
@@ -3499,7 +3683,7 @@ def _tip_rezultati(skor):
     return "1" if h > a else ("2" if a > h else "X")
 
 
-def _top_rezultate_sakta(p, n=4):
+def _top_rezultate_sakta(p, n=4, detyro_publikuarin=True):
     """TOP-N: kthen thjesht N skoret me te mundshme nga shperndarja e golave.
        (Prove mbi 5292 ndeshje: top-N godet me shume se cdo skeme diversiteti/simetrie.)"""
     dist = p.get("dist_gola") or {}
@@ -3529,7 +3713,50 @@ def _top_rezultate_sakta(p, n=4):
         if len(zgjedhur) >= n:
             break
         shto(k, v)
+
+    # ── PËRPUTHJA ME SKORIN E PUBLIKUAR ──
+    # `rezultati_sakt` zgjidhet nga shtresat (aff + rregulli i fituesit + LEAN),
+    # ndërsa kjo listë vjen nga top-N i papërpunuar. Matur mbi 910 ndeshje të
+    # arkivuara, renditja e skorit të publikuar brenda `dist_gola`:
+    #     renditja 1: 37.9%   2: 31.1%   3: 14.6%   4: 11.4%   5+: 4.9%
+    # Pra me rez=3 ai mungon nga combo në 16.4% të ndeshjeve dhe me rez=4 në 5.0%
+    # — përdoruesi sheh një parashikim kryesor që s'ndodhet te lista e vet.
+    if detyro_publikuarin and rez_sakt:
+        _kp = str(rez_sakt).replace(" ", "")
+        if _kp and _kp in dist and _kp not in seen:
+            zgjedhur = [mk(_kp)] + zgjedhur[:max(0, n - 1)]
     return zgjedhur[:n]
+
+
+# Filtri i diversitetit te combo i ndeshjeve — fiket me COMBO_DIVERSITET=0.
+COMBO_DIVERSITET = os.environ.get("COMBO_DIVERSITET", "1").strip() not in ("0", "false", "False")
+
+
+def _mbulimi_topn(p, n):
+    """P(rezultati real bie brenda N skoreve me te mundshem) sipas modelit.
+
+    Kjo eshte madhesia qe ka rendesi per nje combo me N skore per ndeshje —
+    jo probabiliteti i skorit kryesor, dhe aspak `besueshmeria`.
+
+    MATUR mbi 910 ndeshje, i ndare ne kater breza sipas kesaj vlere:
+        p3 < 28%   -> ndodhi 19.8%
+        p3 28-32%  -> ndodhi 27.9%
+        p3 32-36%  -> ndodhi 32.0%
+        p3 >= 36%  -> ndodhi 36.3%
+    Pra dallon fort (19.8 -> 36.3, permiresim relativ 83%), ndonese e
+    mbivlereson nivelin me ~3 pike. Per renditje ka rendesi radha, jo niveli.
+    """
+    dist = (p or {}).get("dist_gola") or {}
+    if not dist:
+        return 0.0
+    try:
+        vlerat = sorted((float(v) for v in dist.values()), reverse=True)
+        total = sum(vlerat)
+    except Exception:
+        return 0.0
+    if total <= 0:
+        return 0.0
+    return sum(vlerat[:max(1, int(n))]) / total
 
 
 @app.get("/api/ligat-disponueshme")
@@ -4238,7 +4465,7 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
     _vfilt = "&is_value=eq.true" if VALUE_FILTER_ON else ""   # baste-vlerë: vetëm ndeshjet me edge
     vc_url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria,is_value"
               f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}"
-              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=besueshmeria.desc.nullslast,koef_rez_sakt.asc&limit=30")
+              f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&order=koef_rez_sakt.asc&limit=60")
     if liga and liga.strip():
         vc_url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(vc_url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
@@ -4279,22 +4506,21 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
             rif = True
         return nd, rif
 
-    # SHKALLËZIMI I BESUESHMËRISË: nis GJITHMONË nga % më e lartë (renditja besueshmeria.desc).
-    # Nëse s'plotësohet kërkesa me pragun 70, ulet me shkallë (65→60→55→50). Kurrë nën 50.
+    # ── RENDITJA SIPAS MBULIMIT, JO BESUESHMËRISË ──
+    # Kaskada e vjetër (prag 70→65→60→55→50 mbi `besueshmeria`) u hoq sepse ajo
+    # zgjidhte mbi një masë që NUK mat asgjë për skorin. Matur mbi 910 ndeshje:
+    #     korr(besueshmeria, goditje e SKORIT)    = 0.0222   (0.67 sigma)
+    #     korr(besueshmeria, goditje e DREJTIMIT) = 0.2373
+    # Pra `besueshmeria` është masë e mirë për 1X2 dhe e padobishme për skorë —
+    # thjesht po përdorej për gjënë e gabuar këtu. Ajo mbetet e ruajtur dhe e
+    # kthyer te përgjigjja; thjesht nuk zgjedh më.
     ndeshjet, rifilluar, rows, prag_perdorur = [], False, rows_plot, None
     if _manual:
         ndeshjet, rifilluar = _provo_vc(rows_plot)   # manual: pikërisht ndeshjet e zgjedhura, pa prag
     else:
-        for _prag in (BESU_PRAG_VIPCOMBO, 65.0, 60.0, 55.0, 50.0):
-            rows_p = _filtro_besu(rows_plot, prag=_prag)
-            nd, rif = _provo_vc(rows_p)
-            if len(nd) >= nr:
-                ndeshjet, rifilluar, rows, prag_perdorur = nd, rif, rows_p, _prag
-                break
-        if len(ndeshjet) < nr and not _drejta["is_vip"]:
-            # Jo-VIP (që paguan): si mundësi e fundit, i gjithë pool-i (i renditur nga besueshmëria)
-            ndeshjet, rifilluar = _provo_vc(rows_plot)
-            rows = rows_plot
+        rows_plot = sorted(rows_plot, key=lambda p: _mbulimi_topn(p, rez), reverse=True)
+        ndeshjet, rifilluar = _provo_vc(rows_plot)
+        rows = rows_plot
     if len(ndeshjet) < nr:
         return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF", "arsye": f"Sot s'ka {nr} ndeshje me besueshmëri të mjaftueshme (u provua deri në ≥50%). Provo më vonë."}
 
@@ -4689,6 +4915,7 @@ def llogarit_xg_te_perparuara(
     forma_1: dict, forma_2: dict,
     elo_1: float, elo_2: float,
     p1_real: float, p2_real: float,
+    elo_vlen: bool = True,
 ) -> tuple:
     """
     xG final = kombinim i peshuar i 4 burimeve (peshat lart, env-var).
@@ -4728,8 +4955,26 @@ def llogarit_xg_te_perparuara(
     shtepie_bonus = 1.12
     jashte_minus  = 0.95
 
-    xg_1_final = (W_FORMA * xg1_forma + W_ELO * xg1_elo + W_MARKET * xg1_market + W_BASE * xg1_base) * shtepie_bonus
-    xg_2_final = (W_FORMA * xg2_forma + W_ELO * xg2_elo + W_MARKET * xg2_market + W_BASE * xg2_base) * jashte_minus
+    # ── ELO VETËM KUR TË DY ANËT KANË VLERË REALE ──
+    # `merr_elo_baze` kthen 600.0 fiks për çdo ekip jashtë GIGANTET_ELO (21 emra).
+    # Krahasimi i një 600-je të parazgjedhur me një historical_power të llogaritur
+    # prodhon hendek që nuk mat asgjë. Matur mbi 902 ndeshje të arkivuara:
+    #   grupi                 n     hendeku   largesia nga tregu   korr(gabim, elo_diff)
+    #   të dy realë         757       105            0.139              -0.1215
+    #   njëri 600            72       245            0.239              -0.3152
+    #   të dy 600            73         0            0.099                 —
+    # Grupi i fundit është kontrolli natyror: aty ELO nuk kontribuon fare në
+    # supremaci dhe modeli qëndron më afër tregut se kudo tjetër.
+    # Peshat rinormalizohen që shkalla e xG-së të mos zhvendoset kur ELO bie jashtë.
+    _w_elo = W_ELO if elo_vlen else 0.0
+    _wn    = W_FORMA + _w_elo + W_MARKET + W_BASE
+    if _wn <= 0:
+        _wn = 1.0
+
+    xg_1_final = ((W_FORMA * xg1_forma + _w_elo * xg1_elo
+                   + W_MARKET * xg1_market + W_BASE * xg1_base) / _wn) * shtepie_bonus
+    xg_2_final = ((W_FORMA * xg2_forma + _w_elo * xg2_elo
+                   + W_MARKET * xg2_market + W_BASE * xg2_base) / _wn) * jashte_minus
 
     # Kufijtë e rritur (3.50 → 4.20) që të lejojë rezultate me shumë gola
     xg_1_final = float(np.clip(xg_1_final, 0.35, 5.00))
@@ -5630,6 +5875,15 @@ def simulim_monte_carlo_v2(
 # MODULI 5 (V2): BESUESHMËRIA ME KONSENSUS
 # ==========================================
 
+# ── VERSIONI I FORMULËS (env-var, pa deploy) ──
+#    "v3" = i akorduar mbi 910 ndeshje (default)  |  "v2" = sjellja e vjetër 35/30/25/10
+BES_VERSION  = os.environ.get("BES_VERSION", "v3").strip().lower()
+BES_W_SINJAL = _peshe_env("BES_W_SINJAL", 0.75)
+BES_W_FORMA  = _peshe_env("BES_W_FORMA",  0.25)
+BES_BAZE     = _peshe_env("BES_BAZE",     66.7)
+BES_SHKALLE  = _peshe_env("BES_SHKALLE",  24.4)
+
+
 def llogarit_besueshmeria_v2(
     prob_1x2_mc: dict,
     p1_market: float, p2_market: float, px_market: float,
@@ -5658,8 +5912,37 @@ def llogarit_besueshmeria_v2(
         forma_score = 0.35
 
     bonus_rez     = prob_rez_sakt * 0.5
-    raw           = 0.35 * konsensus + 0.30 * sinjal + 0.25 * forma_score + 0.10 * bonus_rez
-    besueshmeria  = 55.0 + (raw * 37.0)
+
+    # ── v2 (e vjetra) — mbahet e plotë; kthimi bëhet me BES_VERSION=v2, pa deploy ──
+    if BES_VERSION == "v2":
+        raw          = 0.35 * konsensus + 0.30 * sinjal + 0.25 * forma_score + 0.10 * bonus_rez
+        besueshmeria = 55.0 + (raw * 37.0)
+        return round(float(np.clip(besueshmeria, 55.0, 92.0)), 1)
+
+    # ── v3 — MATUR mbi 910 ndeshje të arkivuara ──
+    # Korrelacioni i secilit përbërës me goditjen e DREJTIMIT:
+    #     sinjal        +0.2953      ← i vetmi parashikues i vërtetë
+    #     forma_score   +0.0887
+    #     konsensus     -0.0203      ← ANTI-parashikon
+    #     bonus_rez     -0.0414      ← anti-parashikon, dhe jep 0.9% të dallimit
+    #     e gjithë formula v2  +0.2373
+    # Pra `sinjal` VETËM e mundte formulën e plotë: t = -2.89, p = 0.004 (Williams,
+    # korrelacione të varura). Tri termat e tjerë po hollonin të vetmin sinjal të mirë.
+    #
+    # Përse u hoq `konsensus` dhe jo u rregullua: ai llogaritet PAS përzierjes së 1X2
+    # me tregun (thirrja vjen pas saj), ndaj mat 0.65 herë mospajtimin e vërtetë —
+    # e verifikuar: sd 0.0630 kundrejt 0.0970 e papërzier, raport 0.649. Por të dyja
+    # variantet japin korrelacion IDENTIK (-0.0203), sepse janë transformime lineare
+    # të së njëjtës madhësi. Rregullimi do t'i jepte vetëm më shumë peshë një termi
+    # që anti-parashikon.
+    #
+    # ⚠️ Asnjë përbërës nuk parashikon SKORIN ekzakt (të gjithë nën 0.05). Kjo masë
+    #    vlen për drejtimin, jo për CS — mos e përdor si filtër skori.
+    #
+    # BES_BAZE/BES_SHKALLE janë zgjedhje PARAQITJEJE: i mbajnë mesataren ~75 dhe
+    # shpërndarjen ~4 pikë, që numri i shfaqur të mos kërcejë ndaj v2-shit.
+    raw          = BES_W_SINJAL * sinjal + BES_W_FORMA * forma_score
+    besueshmeria = BES_BAZE + (raw * BES_SHKALLE)
     return round(float(np.clip(besueshmeria, 55.0, 92.0)), 1)
 
 # ==========================================
@@ -5802,8 +6085,13 @@ def analizo_ndeshjen_premium_master(
     p2_real = (1/k2) / marzhi
 
     # DNA / ELO
-    elo_1    = float(dna_1.get("historical_power", merr_elo_baze(ekipi_1))) if dna_1 else merr_elo_baze(ekipi_1)
-    elo_2    = float(dna_2.get("historical_power", merr_elo_baze(ekipi_2))) if dna_2 else merr_elo_baze(ekipi_2)
+    # `_hp*` ndahet nga `elo_*` me qëllim: duhet ditur nëse vlera erdhi nga DNA apo
+    # nga dysheme e parazgjedhur, sepse vetëm e para është e krahasueshme.
+    _hp1 = (dna_1 or {}).get("historical_power")
+    _hp2 = (dna_2 or {}).get("historical_power")
+    elo_1    = float(_hp1) if _hp1 is not None else merr_elo_baze(ekipi_1)
+    elo_2    = float(_hp2) if _hp2 is not None else merr_elo_baze(ekipi_2)
+    _elo_vlen = (_hp1 is not None) and (_hp2 is not None)
     clutch_1 = float(dna_1.get("clutch_factor", 1.0))    if dna_1 else 1.0
     clutch_2 = float(dna_2.get("clutch_factor", 1.0))    if dna_2 else 1.0
     vol_1    = float(dna_1.get("volatility_index", 15.0)) if dna_1 else 15.0
@@ -5823,12 +6111,16 @@ def analizo_ndeshjen_premium_master(
 
     # ── XG TË AVANCUARA ──
     kaosi_liges = apliko_kaosin_e_liges(emri_liges, vol_1, vol_2)
-    is_derbi    = abs(elo_1 * desp_1 - elo_2 * desp_2) <= 30
+    # ⚠️ `is_derbi` kërkon ELO reale për të dy: me dy dysheme 600 kushti është GJITHNJË
+    #    i vërtetë, dhe derbi shumëzon kaos_factor me 1.15. Mbi arkivin: 73 ndeshje
+    #    (8%) merrnin zgjerim variance thjesht sepse të dy ekipet mungonin nga lista.
+    is_derbi    = _elo_vlen and abs(elo_1 * desp_1 - elo_2 * desp_2) <= 30
 
     xg_1, xg_2 = llogarit_xg_te_perparuara(
         forma_1, forma_2,
         elo_1 * desp_1, elo_2 * desp_2,
-        p1_real, p2_real
+        p1_real, p2_real,
+        elo_vlen=_elo_vlen
     )
 
     # ── HYBRID: kombino me XGBoost (nëse gati; ndryshe mban math) ──
@@ -5857,8 +6149,16 @@ def analizo_ndeshjen_premium_master(
     _xg2_mkt = XG_FLOOR + p2_real * (3.2 - XG_FLOOR)
     _xg1_elo = XG_FLOOR + _p1e_m * (3.0 - XG_FLOOR)
     _xg2_elo = XG_FLOOR + _p2e_m * (3.0 - XG_FLOOR)
-    _mod1 = (_xg1_mkt - xg_1) * MOD_K_TREG + (_xg1_elo - xg_1) * MOD_K_ELO
-    _mod2 = (_xg2_mkt - xg_2) * MOD_K_TREG + (_xg2_elo - xg_2) * MOD_K_ELO
+    # ⚠️ KANALI KRYESOR I ELO-s. Për një hendek 400-pikësh ky term shton ~0.47 gola
+    #    supremaci (0.00119/pikë) kundrejt ~0.00061/pikë që jep W_ELO te përzierja —
+    #    pra moduluesi peshon dyfishin. Pjerrësia e matur mbi arkivin (gusht, 562
+    #    ndeshje) ishte 0.00123/pikë, pra ky term e mban gati krejt efektin.
+    #    Kur ELO s'është reale për të dy, termi hiqet: përndryshe një hendek fantazmë
+    #    e tërheq xG-në kundër tregut (Mjallby–Lincoln: tregu 82.7% vendas, ELO e bëri
+    #    mysafirin favorit; termat ELO hoqën -0.54 gola supremaci).
+    _k_elo = MOD_K_ELO if _elo_vlen else 0.0
+    _mod1 = (_xg1_mkt - xg_1) * MOD_K_TREG + (_xg1_elo - xg_1) * _k_elo
+    _mod2 = (_xg2_mkt - xg_2) * MOD_K_TREG + (_xg2_elo - xg_2) * _k_elo
     _mod1 = float(np.clip(_mod1, MOD_KUFI_POSHTE, MOD_KUFI_LART))
     _mod2 = float(np.clip(_mod2, MOD_KUFI_POSHTE, MOD_KUFI_LART))
     xg_1 = float(np.clip(xg_1 + _mod1, 0.30, 5.00))
@@ -6277,6 +6577,10 @@ def analizo_ndeshjen_premium_master(
             "prob_1x2_mc": prob_1x2_mc,
             # ── FORCA / VLERESIMI ──
             "elo_1": round(float(elo_1), 1), "elo_2": round(float(elo_2), 1),
+            # A ishte ELO reale për TË DY? Pa këtë flag, matja pas dy javësh s'do të
+            # dinte cilat ndeshje e patën burimin ELO të fikur — dhe efekti do të
+            # shpërbëhej mes 92% të ndeshjeve që s'preken.
+            "elo_vlen": bool(_elo_vlen),
             "p_market_1": round(float(p1_real), 4), "p_market_2": round(float(p2_real), 4),
             "burimi_xg": burimi_xg,
             # ── MODULUESIT E APLIKUAR (per te rikrijuar zinxhirin) ──
@@ -7899,6 +8203,10 @@ def api_status(request: Request, kalim: str = None):
         "konfigurimi": {
             "W_FORMA":        round(W_FORMA, 4),
             "W_ELO":          round(W_ELO, 4),
+            "BES_VERSION":    BES_VERSION,
+            "COMBO_DIVERSITET": bool(COMBO_DIVERSITET),
+            "BES_W_SINJAL":   round(BES_W_SINJAL, 3),
+            "BES_W_FORMA":    round(BES_W_FORMA, 3),
             "W_MARKET":       round(W_MARKET, 4),
             "W_BASE":         round(W_BASE, 4),
             "W_XGB":          _konf("W_XGB", W_XGB),
@@ -9409,25 +9717,48 @@ def vip_combo_nde(email: str = "", nr: int = 4, madhesi: str = "23", liga: str =
     if madhesi not in ("2", "3", "23"):
         madhesi = "23"
     dt = _data_lokale(0); dt_neser = _data_lokale(1)
+    # `besueshmeria` s'kërkohet më as si filtër as si renditje: korr me goditjen e
+    # skorit doli 0.0222 (0.67 sigma) mbi 910 ndeshje. Renditja bëhet në Python
+    # sipas probabilitetit të vetë skorit — shih poshtë.
     url = (f"{SUPABASE_URL_PREDS}?select=id,ndeshja,ora,liga_emri,rezultati_sakt,koef_rez_sakt,dist_gola,besueshmeria"
            f"&data=in.({dt},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null"
-           f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)&besueshmeria=not.is.null"
-           f"&order=besueshmeria.desc&limit=40")
+           f"&statusi=not.in.(FT,AET,PEN,AWD,WO,CANC,PST,ABD)"
+           f"&order=koef_rez_sakt.asc&limit=60")
     if liga and liga.strip():
         url += f"&liga_emri=eq.{requests.utils.quote(liga.strip(), safe='')}"
     r = requests.get(url, headers=SUPABASE_SERVICE_HEADERS, timeout=10)
     rows_plot = r.json() if r.status_code == 200 else []
 
-    def _ndertimi_nde(rws):
-        """PA DUBLIKATA (sipas emrit); vetëm rreshta me probabilitet real të skorit."""
+    def _ndertimi_nde(rws, diversitet=True):
+        """PA DUBLIKATA (sipas emrit); vetëm rreshta me probabilitet real të skorit.
+
+        `diversitet=True`: mos zgjidh dy ndeshje me TË NJËJTIN skor. Kalohet te
+        ndeshja pasardhëse, jo te skori i dytë i së njëjtës ndeshje — ndaj kostoja
+        është e vogël: probabilitetet e skorit mezi ndryshojnë mes ndeshjeve
+        (8.7%-13.5% mbi 910 ndeshje), pra zbritja është ~0.5 pikë për leg.
+        Për një combo me tri ndeshje: 0.120^3 = 0.001728 kundrejt
+        0.120 x 0.115 x 0.110 = 0.001518, pra rreth 12% më pak.
+
+        ⚠️ Ky filtër NUK justifikohet nga kalibrimi. U mat per-skor mbi 910
+        ndeshje dhe asnjë devijim s'e kalon 1 sigma:
+            1-1  premtoi 13.41%  goditi 11.42%  raport 0.85  (-0.87 sigma)
+            2-0  premtoi 12.33%  goditi 10.69%  raport 0.87  (-0.63 sigma)
+            2-1  premtoi  8.74%  goditi 10.50%  raport 1.20  (+0.88 sigma)
+        Pra `2-0` s'është i mbivlerësuar në mënyrë të matshme. Arsyeja e këtij
+        filtri është ulja e dështimit të korreluar dhe paraqitja — jo saktësia.
+        """
         nd = []
         _pare = set()
+        _skore_pare = set()
         for p in rws:
             _k = _nm_key(p)
             if _k and _k in _pare:
                 continue
             pr = _prob_rez_sakt(p)
             if pr <= 0:
+                continue
+            _sk = str(p.get("rezultati_sakt") or "").replace(" ", "")
+            if diversitet and _sk and _sk in _skore_pare:
                 continue
             try:
                 kf = float(p.get("koef_rez_sakt") or 0)
@@ -9441,21 +9772,37 @@ def vip_combo_nde(email: str = "", nr: int = 4, madhesi: str = "23", liga: str =
                        "besueshmeria": p.get("besueshmeria")})
             if _k:
                 _pare.add(_k)
+            if _sk:
+                _skore_pare.add(_sk)
             if len(nd) >= nr:
                 break
         return nd
 
-    # PËRZGJEDHJA NIS NGA % MË E LARTË (besueshmeria.desc); pragu ulet me shkallë vetëm po s'mjaftoi
-    ndeshjet, prag_perdorur = [], None
-    for _prag in (BESU_PRAG_VIPCOMBO, 65.0, 60.0, 55.0, 50.0):
-        nd = _ndertimi_nde(_filtro_besu(rows_plot, prag=_prag))
-        if len(nd) > len(ndeshjet):
-            ndeshjet, prag_perdorur = nd, _prag
-        if len(nd) >= nr:
-            break
+    # ── RENDITJA SIPAS PROBABILITETIT TË SKORIT, JO BESUESHMËRISË ──
+    # Kaskada e vjetër (70→65→60→55→50 mbi `besueshmeria`) u hoq: ajo masë korrelon
+    # 0.0222 me goditjen e skorit, pra s'zgjidhte asgjë. Katër sinjale u provuan mbi
+    # 910 ndeshje kundrejt goditjes së skorit (bazë 11.21%):
+    #     prob i vetë skorit  +0.0431 (1.30 sigma)   <- më i miri
+    #     mbulimi top-3       +0.0223 (0.67)
+    #     lambda totale       -0.0215 (-0.65)
+    #     besueshmeria        +0.0222 (0.67)
+    # Asnjëri s'kalon 1.3 sigma. Por kjo NUK do të thotë se s'ka sinjal: probabilitetet
+    # e skorit luajnë vetëm 8.7%-13.5%, pra sd ~0.02 mbi një bazë 0.11. Korrelacioni
+    # maksimal i mundshëm nga kalibrim i PËRSOSUR do të ishte 0.064, dhe ne matëm
+    # 0.0431 ± 0.033 — plotësisht në pajtim me të. Sinjali s'mungon; thjesht
+    # probabilitetet mezi ndryshojnë. Renditja sipas tij jep ndoshta 13% në vend të
+    # 11%: e vogël, por reale, dhe dyfishi i asaj që jep `besueshmeria`.
+    rows_plot = sorted(rows_plot, key=lambda p: _prob_rez_sakt(p), reverse=True)
+    prag_perdorur = None
+    ndeshjet = _ndertimi_nde(rows_plot, diversitet=COMBO_DIVERSITET)
+    if len(ndeshjet) < nr and COMBO_DIVERSITET:
+        # S'u mbush me diversitet të plotë -> lirohet kufizimi, që të mos mbetet bosh.
+        _pa_div = _ndertimi_nde(rows_plot, diversitet=False)
+        if len(_pa_div) > len(ndeshjet):
+            ndeshjet = _pa_div
     if len(ndeshjet) < 2 or (madhesi == "3" and len(ndeshjet) < 3):
         return {"sukses": False, "kod": "VIPCOMBO_NOT_ENOUGH_CONF",
-                "arsye": "Sot s'ka mjaft ndeshje me besueshmëri të mjaftueshme (u provua deri në ≥50%). Provo më vonë."}
+                "arsye": "Sot s'ka mjaft ndeshje me shpërndarje skori të përdorshme. Provo më vonë."}
 
     madhesite = {"2": [2], "3": [3], "23": [2, 3]}[madhesi]
     kombinimet = []
