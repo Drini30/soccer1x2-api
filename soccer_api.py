@@ -8204,6 +8204,7 @@ def api_status(request: Request, kalim: str = None):
             "W_FORMA":        round(W_FORMA, 4),
             "W_ELO":          round(W_ELO, 4),
             "BES_VERSION":    BES_VERSION,
+            "COMBO_DIVERSITET": bool(COMBO_DIVERSITET),
             "BES_W_SINJAL":   round(BES_W_SINJAL, 3),
             "BES_W_FORMA":    round(BES_W_FORMA, 3),
             "W_MARKET":       round(W_MARKET, 4),
