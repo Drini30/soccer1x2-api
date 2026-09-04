@@ -30,13 +30,15 @@ WITH b AS (
 ),
 k AS (
     SELECT b.match_id, b.r1, b.r2,
-           (SELECT sum(x.v::numeric)/50000.0 FROM
-              (SELECT v FROM jsonb_each_text(b.dg) ORDER BY v::numeric DESC LIMIT 3) x) AS p3,
-           (SELECT sum(x.v::numeric)/50000.0 FROM
-              (SELECT v FROM jsonb_each_text(b.dg) ORDER BY v::numeric DESC LIMIT 4) x) AS p4,
+           (SELECT sum(t.v::numeric)/50000.0 FROM
+              (SELECT e.v FROM jsonb_each_text(b.dg) AS e(k, v)
+                ORDER BY e.v::numeric DESC LIMIT 3) t)                    AS p3,
+           (SELECT sum(t.v::numeric)/50000.0 FROM
+              (SELECT e.v FROM jsonb_each_text(b.dg) AS e(k, v)
+                ORDER BY e.v::numeric DESC LIMIT 4) t)                    AS p4,
            CASE WHEN b.dg ? (b.r1 || '-' || b.r2)
-                THEN (SELECT count(*) + 1 FROM jsonb_each_text(b.dg) AS e(k, v)
-                       WHERE e.v::numeric > (b.dg ->> (b.r1 || '-' || b.r2))::numeric)
+                THEN (SELECT count(*) + 1 FROM jsonb_each_text(b.dg) AS e2(k, v)
+                       WHERE e2.v::numeric > (b.dg ->> (b.r1 || '-' || b.r2))::numeric)
                 ELSE 99 END AS rend_reale
     FROM b
 )
@@ -58,8 +60,9 @@ ORDER BY 1;
 WITH b AS (
     SELECT v.p1g, v.p2g, v.r1, v.r2, v.tot_pritur, v.besueshmeria,
            ((a.dist_gola::jsonb ->> (v.p1g || '-' || v.p2g))::numeric / 50000.0) AS prez,
-           (SELECT sum(x.v::numeric)/50000.0 FROM
-              (SELECT v FROM jsonb_each_text(a.dist_gola::jsonb) ORDER BY v::numeric DESC LIMIT 3) x) AS p3
+           (SELECT sum(t.v::numeric)/50000.0 FROM
+              (SELECT e.v FROM jsonb_each_text(a.dist_gola::jsonb) AS e(k, v)
+                ORDER BY e.v::numeric DESC LIMIT 3) t)                             AS p3
     FROM v_analiza_rreze v
     JOIN arkiv_rezultatesh a ON a.match_id = v.match_id
     WHERE a.dist_gola IS NOT NULL AND a.dist_gola::jsonb <> '{}'::jsonb
