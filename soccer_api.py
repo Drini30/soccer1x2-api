@@ -4291,6 +4291,20 @@ def pf_list(email: str = "", authorization: str = Header(None)):
             item["parashikimi"] = pf_row.get("parashikimi")
             item["vip_open"] = True
         out.append(item)
+
+    # ── RENDITJA SIPAS ORËS SË FILLIMIT ──
+    # Baza kthen `krijuar.desc` (radha e gjenerimit), e cila s'ka lidhje me orën e
+    # ndeshjes. Këtu rreshtohen si te programi: e para që luhet rri lart.
+    # Ndeshjet me orë të palexueshme (p.sh. "FT" te rreshtat e vjetër) shkojnë te
+    # fundi i ditës së vet, që të mos ndërpresin radhën.
+    def _celes_ore(x):
+        _d = str(x.get("data") or "9999-99-99")
+        _m = _re_vlere.match(r"\s*(\d{1,2}):(\d{2})", str(x.get("ora") or ""))
+        if _m:
+            return (_d, 0, int(_m.group(1)) * 60 + int(_m.group(2)))
+        return (_d, 1, 0)
+
+    out.sort(key=_celes_ore)
     return {"pikat": out}
 
 @app.get("/api/pf/verify")
@@ -8312,7 +8326,9 @@ def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gj
     _lim = max(1, min(limit, 2000))
     _filtro = bool(VALUE_FILTER_ON) and not te_gjitha
     _fetch = min(_lim * 5, 2000) if _filtro else _lim
-    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.desc&limit={_fetch}"
+    # `ora.asc` brenda dites: e njejta radhe si te kutia e Hash-it (/api/pf/list),
+    # ku ndeshjet rreshtohen sipas ores se fillimit. Ditet mbeten me te rejat lart.
+    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.asc&limit={_fetch}"
     if liga.strip():
         q += f"&liga=eq.{requests.utils.quote(liga.strip(), safe='')}"
     if vetem_goditje:
