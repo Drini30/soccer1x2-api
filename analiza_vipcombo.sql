@@ -16,7 +16,7 @@ SELECT COALESCE(renditja_e_publikuar::text, 'jashte dist_gola') AS renditja,
        count(*)                                                 AS n,
        round(100.0*count(*)/sum(count(*)) OVER (), 1)           AS pct
 FROM r
-GROUP BY 1
+GROUP BY renditja_e_publikuar
 ORDER BY (renditja_e_publikuar IS NULL), renditja_e_publikuar
 LIMIT 12;
 
