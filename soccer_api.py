@@ -117,7 +117,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # /api/status e kthen te fusha `build`: keshtu shihet ne çast nese eshte LIVE
 # pikerisht skedari per te cilin po flitet, pa hamendesime.
 # Formati: DATA-shkronja  (2026-08-29-a, pastaj -b, -c per te njejten dite)
-BUILD = "2026-08-29-a"
+BUILD = "2026-09-03-b"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -1001,6 +1001,185 @@ def admin_set_vip(payload: dict, x_admin_token: str = Header(None)):
     return {"sukses": True, "email": email, "vip_skadon_me": skadon}
 
 
+# ── DHURATE TRIAL: akses i plote + email njoftimi ────────────────────────────
+# Pse nje endpoint i vecante dhe jo /api/admin/set_vip:
+#   1. set_vip nuk kontrollon nese llogaria ekziston. PATCH mbi 0 rreshta kthen
+#      sukses, ndaj nje email i shkruar gabim kalon i heshtur dhe ti mendon se
+#      e dhurove aksesin.
+#   2. set_vip e ZEVENDESON daten e skadimit. Nese dikush ka tashme 20 dite VIP,
+#      nje "dhurate" 7-ditore do t'ia SHKURTONTE aksesin. Ketu ditet mblidhen,
+#      njesoj si te _kredito_porosine.
+#   3. Dhurata pa njoftim nuk ka kuptim — perdoruesi s'e merr vesh kurre.
+
+def _email_dhurate(emri: str, dite: int, skadon: str, gjuha: str = "en"):
+    """Kthen (subject, html) per emailin e dhurates."""
+    lidhja = SITE_URL.rstrip("/")
+    if gjuha == "sq":
+        subject = f"{dite} dite akses VIP falas — SOCCER1X2 PRO"
+        pershendetja = f"Pershendetje {emri}," if emri else "Pershendetje,"
+        trupi = f"""
+        <p>{pershendetja}</p>
+        <p>Faleminderit qe u regjistrove ne SOCCER1X2 PRO. Sapo te kemi hapur
+           <b>{dite} dite akses te plote VIP</b>, si dhurate. Nuk duhet kartë
+           dhe nuk ka asgje per te anuluar — thjesht hyr dhe perdore.</p>
+        <p><b>Skadon me {skadon}.</b></p>
+        <p>Cfare te hapet:</p>
+        <ul>
+          <li><b>Skedina e Dites</b> — 4 piket me te sigurta te dites</li>
+          <li><b>Kombinimi i Dites</b> — 6 skedina me koeficient 10+</li>
+          <li><b>VIP Combo</b> — kombinimi premium i dites</li>
+          <li><b>Gjenero</b> — nderto skedinen tende me koeficientin qe do</li>
+          <li><b>Analizat e plota</b> — xG, Elo, shperndarja e skoreve</li>
+        </ul>
+        <p>Nje gje qe duam ta themi hapur: ky eshte nje model statistikor, jo nje
+           garanci. Ne publikojme edhe humbjet. Luaj vetem ate qe mund ta humbasesh.</p>
+        """
+        butoni = "Hyr ne llogari"
+    else:
+        subject = f"Your {dite}-day VIP access is open — SOCCER1X2 PRO"
+        pershendetja = f"Hi {emri}," if emri else "Hi,"
+        trupi = f"""
+        <p>{pershendetja}</p>
+        <p>Thanks for signing up to SOCCER1X2 PRO. We have just unlocked
+           <b>{dite} days of full VIP access</b> on your account, as a gift.
+           No card needed, nothing to cancel — just log in and use it.</p>
+        <p><b>It expires on {skadon}.</b></p>
+        <p>What this opens:</p>
+        <ul>
+          <li><b>Daily Ticket</b> — the four safest picks of the day</li>
+          <li><b>Daily Combo</b> — six tickets at odds of 10 or more</li>
+          <li><b>VIP Combo</b> — the premium combination of the day</li>
+          <li><b>Generate</b> — build your own ticket at the odds you want</li>
+          <li><b>Full analysis</b> — expected goals, Elo, score distribution</li>
+        </ul>
+        <p>One thing we would rather say up front: this is a statistical model,
+           not a guarantee. We publish our losses too. Only stake what you can
+           afford to lose.</p>
+        """
+        butoni = "Open my account"
+
+    html = f"""<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;
+                 line-height:1.6;color:#1b1b1b;max-width:560px;margin:0 auto">
+      <div style="background:#0f172a;color:#fff;padding:18px 22px;border-radius:8px 8px 0 0">
+        <div style="font-size:19px;font-weight:bold;letter-spacing:.5px">SOCCER1X2 PRO</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-top:none;padding:22px;border-radius:0 0 8px 8px">
+        {trupi}
+        <p style="margin:26px 0 8px">
+          <a href="{lidhja}" style="background:#0f172a;color:#fff;text-decoration:none;
+             padding:12px 22px;border-radius:6px;display:inline-block;font-weight:bold">{butoni}</a>
+        </p>
+        <p style="color:#64748b;font-size:12px;margin-top:22px">
+          You are receiving this because you created an account on
+          <a href="{lidhja}" style="color:#64748b">soccer1x2pro.com</a>.
+        </p>
+      </div>
+    </div>"""
+    return subject, html
+
+
+def _dhurato_nje(email: str, dite: int, gjuha: str, dergo: bool):
+    """Nje llogari. Kthen dict me rezultatin — kurre nuk ngre perjashtim."""
+    em = str(email or "").lower().strip()
+    if not em:
+        return {"email": email, "sukses": False, "kod": "EMAIL_MISSING"}
+    kuota = requests.utils.quote(em, safe="")
+    try:
+        r = requests.get(f"{SUPABASE_URL_USERS}?email=eq.{kuota}"
+                         f"&select=email,emri,isVip,vip_skadon_me",
+                         headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        return {"email": em, "sukses": False, "kod": "DB_ERROR", "info": str(e)[:120]}
+    if not rows:
+        return {"email": em, "sukses": False, "kod": "USER_NOT_FOUND"}
+    u = rows[0]
+
+    # Ditet MBLIDHEN mbi skadimin ekzistues — kurre nuk e shkurtojne.
+    baza = datetime.utcnow()
+    if u.get("vip_skadon_me"):
+        try:
+            d = datetime.strptime(str(u["vip_skadon_me"])[:10], "%Y-%m-%d")
+            if d > baza:
+                baza = d
+        except Exception:
+            pass
+    skadon = (baza + timedelta(days=dite)).strftime("%Y-%m-%d")
+
+    try:
+        requests.patch(f"{SUPABASE_URL_USERS}?email=eq.{kuota}",
+                       headers=SUPABASE_SERVICE_HEADERS,
+                       json={"isVip": True, "vip_skadon_me": skadon}, timeout=8)
+    except Exception as e:
+        return {"email": em, "sukses": False, "kod": "PATCH_FAILED", "info": str(e)[:120]}
+
+    try:
+        _FULL_ACCESS_CACHE.pop(em, None)   # akses ndryshoi -> pastro cache
+    except Exception:
+        pass
+    _log_aktivitet(em, "dhurate_trial", {"dite": dite, "skadon": skadon})
+
+    ok_email, info_email = False, "u anashkalua"
+    if dergo:
+        subject, html = _email_dhurate(str(u.get("emri") or "").strip(), dite, skadon, gjuha)
+        ok_email, info_email = _dergo_email(em, subject, html)
+
+    return {"email": em, "sukses": True, "dite": dite, "vip_skadon_me": skadon,
+            "email_derguar": bool(ok_email), "email_info": info_email}
+
+
+@app.post("/api/admin/dhurato_trial")
+def admin_dhurato_trial(payload: dict, x_admin_token: str = Header(None)):
+    """Dhuron akses te plote per N dite dhe njofton me email.
+    Trupi: {"emails": ["a@x.com","b@x.com"], "dite": 7, "gjuha": "en",
+            "dergo_email": true}
+    Pranon edhe "email" te vetem ne vend te "emails".
+    'dry_run': true e bën vetem kontrollin — nuk shkruan dhe nuk dergon asgje."""
+    _kontrollo_admin(x_admin_token)
+
+    lista = payload.get("emails")
+    if not lista:
+        nje = payload.get("email")
+        lista = [nje] if nje else []
+    if not isinstance(lista, list) or not lista:
+        return {"sukses": False, "kod": "EMAILS_MISSING"}
+    if len(lista) > 50:
+        return {"sukses": False, "kod": "TOO_MANY", "maks": 50}
+
+    try:
+        dite = int(payload.get("dite", 7))
+    except Exception:
+        dite = 7
+    dite = max(1, min(dite, 90))
+    gjuha = str(payload.get("gjuha", "en")).lower().strip()
+    dergo = bool(payload.get("dergo_email", True))
+
+    # Dry-run: shiko cilat llogari ekzistojne PARA se te preket ndonje gje.
+    if bool(payload.get("dry_run", False)):
+        gjetur = []
+        for e in lista:
+            em = str(e or "").lower().strip()
+            try:
+                r = requests.get(f"{SUPABASE_URL_USERS}?email=eq."
+                                 f"{requests.utils.quote(em, safe='')}"
+                                 f"&select=email,emri,isVip,vip_skadon_me",
+                                 headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+                rows = r.json() if r.status_code == 200 else []
+            except Exception:
+                rows = []
+            gjetur.append({"email": em, "ekziston": bool(rows),
+                           "isVip": (rows[0].get("isVip") if rows else None),
+                           "vip_skadon_me": (rows[0].get("vip_skadon_me") if rows else None)})
+        return {"sukses": True, "dry_run": True, "dite": dite,
+                "email_do_dergohej": dergo, "llogarite": gjetur}
+
+    rez = [_dhurato_nje(e, dite, gjuha, dergo) for e in lista]
+    return {"sukses": True, "dite": dite, "gjuha": gjuha,
+            "u_dhuruan": sum(1 for x in rez if x.get("sukses")),
+            "emaile_derguar": sum(1 for x in rez if x.get("email_derguar")),
+            "rezultatet": rez}
+
+
 # ==========================================
 # MODULI I PAGESAVE — PPM (kredite) + NOWPAYMENTS (server-autoritar)
 # Çmimet në USD (TEST — ndryshohen lehtë këtu).
@@ -1179,6 +1358,18 @@ def _kredito_porosine(order_id):
         return False   # s'ekziston ose tashmë e kredituar (idempotent)
     po = pros[0]
 
+    # `shuma` duhet te ekzistoje per ÇDO tip, sepse rreshti i fundit i ketij
+    # funksioni e shkruan ne log. Deri tani ishte e perkufizuar VETEM brenda
+    # deges "topup": ndaj çdo pagese vip/trial/ppm/ditore e kryente kreditimin,
+    # e shenonte porosine 'paid', dhe pastaj rrezohej me UnboundLocalError.
+    # Pasoja: webhook-u i Whop-it merrte 500 dhe e riprovonte (perdoruesi
+    # kreditohej sic duhej, po ne panelin e Whop-it dukej si deshtim), dhe
+    # 'pagese_sukses' nuk regjistrohej kurre per VIP.
+    try:
+        shuma = float(po.get("amount", 0) or 0)
+    except Exception:
+        shuma = 0.0
+
     # GATE AUTORITATIV: pyet VETË ofruesin (webhook/IPN e falsifikuar s'kalon dot)
     if str(order_id).startswith("pp_"):
         return False   # PayPal u hoq — porosite e vjetra s'verifikohen dot, ndaj s'kreditohen
@@ -1205,10 +1396,6 @@ def _kredito_porosine(order_id):
     update = {}
 
     if tipi == "topup":
-        try:
-            shuma = float(po.get("amount", 0))
-        except Exception:
-            shuma = 0.0
         update["portofoli"] = round(float(u.get("portofoli", 0) or 0) + shuma, 2)
     elif tipi in ("vip", "trial"):
         baza = datetime.utcnow()
@@ -1557,7 +1744,15 @@ async def whop_webhook(request: Request):
         print(f"[WHOP] s'u ruajt porosia {order_id}: {e}")
         return {"ok": False, "kod": "DB_ERROR"}
 
-    u_kreditua = _kredito_porosine(order_id)
+    # MBROJTJE: nje perjashtim ketu do te kthente 500 dhe Whop-i do ta shenonte
+    # dergesen si te deshtuar edhe kur kreditimi ka ndodhur. Riprovat e Whop-it
+    # jane te padëmshme (porosia eshte tashme 'paid' -> kthen False), po e mbajme
+    # pergjigjen 200 dhe e shenojme gabimin ne log qe te mos fshihet.
+    try:
+        u_kreditua = _kredito_porosine(order_id)
+    except Exception as e:
+        print(f"[WHOP] GABIM ne kreditim {order_id}: {type(e).__name__}: {e}")
+        u_kreditua = False
     print(f"[WHOP] {lloji} {email} tipi={tipi} shuma={shuma} "
           f"pay_id={pay_id} kreditua={u_kreditua}")
     return {"ok": True, "kreditua": bool(u_kreditua), "tipi": tipi, "order_id": order_id}
