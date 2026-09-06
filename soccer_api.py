@@ -3183,7 +3183,7 @@ def _ruaj_vip_legs(email, ndeshjet, pool):
             pm = pmap.get(nd, {})
             rezt = n.get("rezultatet") or []
             skoret = "|".join(str(r.get("skor", "")) for r in rezt)
-            koef0 = (rezt[0].get("koef") if rezt else None)
+            koef0 = ((rezt[0].get("koef_real") or rezt[0].get("koef")) if rezt else None)
             rows.append({
                 "skedina_id": sid, "user_email": (email or None),
                 "pozicioni_leg": i + 1, "total_legs": len(ndeshjet),
@@ -3676,6 +3676,30 @@ def telegram_dergo(key: str = "", date: str = None):
 
 
 # ===================== VIP COMBO (vetëm VIP) — 2 ndeshje × 4 rezultate të sakta =====================
+# ── MARZHI I KUOTAVE ───────────────────────────────────────────────────────────
+# `1/prob` është kuota e DREJTË: ajo që do të paguante një bukmejker pa fitim.
+# Asnjë bukmejker s'e paguan. Marzhi i matur i tregut CS mbi arkivin tonë është
+# overround 1.170 — pra shuma e 1/kuota mbi të gjitha skoret del 1.17, jo 1.00.
+# Prandaj kuota reale ≈ (1/1.176) × kuota e drejtë = 0.85 × kuota e drejtë.
+#
+# Ky është pikërisht faktori që `koef_rez_sakt` përdor prej fillimi (rreshti ku
+# llogaritet: min(40, (1/p) * 0.85)) dhe që `/api/vip-combo-nde` e trashëgon prej
+# tij. VETËM `/api/vip-combo` shfaqte `1/prob` të papastruar — dhe meqë ai
+# shumëzon 3 këmbë, gabimi rritej në 1.176³ = 1.63× te kuota e kombinimit.
+#
+# Kufiri 40.0 është i njëjti si te `koef_rez_sakt`: mbi të kuotat bëhen fiktive
+# sepse mostra që i prodhon (50,000 simulime) s'i dallon dot skoret nën 0.02%.
+MARZHI_KUOTES = float(os.environ.get("MARZHI_KUOTES", "0.85").strip() or 0.85)
+KOEF_MAKS     = float(os.environ.get("KOEF_MAKS", "40").strip() or 40.0)
+
+
+def _koef_real(prob):
+    """Kuota që një bukmejker do të paguante vërtet për këtë probabilitet."""
+    if not prob or prob <= 0:
+        return 0.0
+    return round(min(KOEF_MAKS, (1.0 / float(prob)) * MARZHI_KUOTES), 2)
+
+
 def _tip_rezultati(skor):
     h, a = _parse_score(skor)
     if h is None:
@@ -3703,7 +3727,12 @@ def _top_rezultate_sakta(p, n=4, detyro_publikuarin=True):
         if v is None:
             v = dist.get(k, dist.get(str(k).replace(" ", ""), 0))
         prob = (float(v) / total) if total else 0.0
-        return {"skor": k, "prob": round(prob, 4), "koef": round(1.0 / prob, 2) if prob > 0 else 0}
+        # `koef`      — kuota e DREJTË (1/prob). E ruan B2B-ja te `fair_odds`.
+        # `koef_real` — kuota që paguan vërtet tregu, pas marzhit. Kjo shfaqet
+        #               te VIP Combo dhe kjo ruhet te historiku i biletave.
+        return {"skor": k, "prob": round(prob, 4),
+                "koef": round(1.0 / prob, 2) if prob > 0 else 0,
+                "koef_real": _koef_real(prob)}
 
     def shto(k, v=None):
         zgjedhur.append(mk(k, v)); seen.add(k)
@@ -4379,9 +4408,15 @@ def diag(email: str = ""):
 def _ruaj_vip_combo(dt, nr, rez, ndeshjet):
     """Ruan përkufizimin e VIP Combo-s (një herë/ditë për çdo konfigurim) për vlerësim të mëvonshëm."""
     try:
+        # Ruhet kuota REALE, sepse `_vleso_vip_combot` e shumëzon atë për të
+        # raportuar sa pagoi bileta fituese. Me kuotën e drejtë ai numër dilte
+        # 1.63× më i lartë se realiteti për një treshe.
         trim = [{"id": n.get("id"), "ndeshja": n.get("ndeshja"), "liga": n.get("liga"),
                  "rezultati_sakt": n.get("rezultati_sakt"),
-                 "rezultatet": [{"skor": x.get("skor"), "koef": x.get("koef")} for x in (n.get("rezultatet") or [])]}
+                 "rezultatet": [{"skor": x.get("skor"),
+                                 "koef": x.get("koef_real") or _koef_real(x.get("prob")),
+                                 "koef_drejte": x.get("koef")}
+                                for x in (n.get("rezultatet") or [])]}
                 for n in ndeshjet]
         hdr = dict(SUPABASE_SERVICE_HEADERS)
         hdr["Prefer"] = "resolution=ignore-duplicates"
@@ -4546,21 +4581,35 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
             rez_list = [r + [x] for r in rez_list for x in lst]
         return rez_list
 
+    # ── KUOTAT E SHFAQURA JANË ATO REALE, JO TË DREJTAT ──
+    # Deri tani `koef_total` ishte prodhim i kuotave `1/prob`, pra pa asnjë marzh.
+    # Me 3 këmbë ai e fryn kuotën 1.176³ = 1.63× kundrejt asaj që paguan një
+    # bukmejker, dhe e bën biletën të duket saktësisht break-even (EV = numri i
+    # linjave = vënia) kur në të vërtetë kthen ~0.63 për euro. `koef_drejte`
+    # mbetet i kthyer që diferenca të jetë e shikueshme.
     listat = [n["rezultatet"] for n in ndeshjet]
     kombinimet = []
     for kombo in prodhim(listat):
-        jp = 1.0; kt = 1.0
+        jp = 1.0; kt = 1.0; ktd = 1.0
         skedina = []
         for i, rr in enumerate(kombo):
-            jp *= (rr["prob"] or 0)
-            kt *= (rr["koef"] or 1)
-            skedina.append({"ndeshja": ndeshjet[i]["ndeshja"], "skor": rr["skor"], "koef": rr["koef"]})
-        kombinimet.append({"skedina": skedina, "prob": round(jp, 5), "koef_total": round(kt, 2)})
+            _kr = rr.get("koef_real") or _koef_real(rr.get("prob"))
+            jp  *= (rr["prob"] or 0)
+            kt  *= (_kr or 1)
+            ktd *= (rr["koef"] or 1)
+            skedina.append({"ndeshja": ndeshjet[i]["ndeshja"], "skor": rr["skor"],
+                            "koef": round(_kr, 2), "koef_drejte": rr["koef"]})
+        kombinimet.append({"skedina": skedina, "prob": round(jp, 5),
+                           "koef_total": round(kt, 2), "koef_total_drejte": round(ktd, 2)})
     kombinimet.sort(key=lambda k: k["prob"], reverse=True)
 
     mbulim = 1.0
     for n in ndeshjet:
         mbulim *= sum(x["prob"] for x in n["rezultatet"])
+    # KTHIMI I PRITUR me 1 njësi në ÇDO linjë: Σ(p × kuota) / numri i linjave.
+    # Me kuota të drejta del saktësisht 1.00 (break-even sipas ndërtimit); me
+    # kuota reale del ~0.85^nr, sepse marzhi i një këmbe shumëzohet për çdo këmbë.
+    _ev = (sum(k["prob"] * k["koef_total"] for k in kombinimet) / len(kombinimet)) if kombinimet else 0.0
     _ruaj_vip_combo(dt, nr, rez, ndeshjet)
     _porto_ri = _konfirmo_perdorimin(email, "vipcombo", CMIM_VIPCOMBO, _drejta["is_vip"], _drejta["portofoli"], _drejta.get("falas", False))
     if not _manual: _ruaj_given_ids(email, "vipcombo", [n.get("id") for n in ndeshjet if n.get("id")])
@@ -4575,7 +4624,9 @@ def vip_combo(email: str = "", nr: int = 2, rez: int = 4, liga: str = "", paguaj
             "nr_kombinimesh": len(kombinimet),
             "portofoli": _porto_ri, "u_pagua": (not _drejta["is_vip"] and not _drejta.get("falas", False)),
             "cmimi": CMIM_VIPCOMBO,
-            "mbulimi_perqind": round(mbulim * 100, 1)}
+            "mbulimi_perqind": round(mbulim * 100, 1),
+            "kthimi_i_pritur": round(_ev, 3),
+            "marzhi_kuotes": MARZHI_KUOTES}
 
 
 # ==========================================
