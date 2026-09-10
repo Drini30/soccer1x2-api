@@ -117,7 +117,10 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # /api/status e kthen te fusha `build`: keshtu shihet ne çast nese eshte LIVE
 # pikerisht skedari per te cilin po flitet, pa hamendesime.
 # Formati: DATA-shkronja  (2026-08-29-a, pastaj -b, -c per te njejten dite)
-BUILD = "2026-09-03-b"
+# Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
+# për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
+# NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
+BUILD = "2026-09-10-ppm10"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
