@@ -117,7 +117,10 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # /api/status e kthen te fusha `build`: keshtu shihet ne çast nese eshte LIVE
 # pikerisht skedari per te cilin po flitet, pa hamendesime.
 # Formati: DATA-shkronja  (2026-08-29-a, pastaj -b, -c per te njejten dite)
-BUILD = "2026-09-03-b"
+# Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
+# për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
+# NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
+BUILD = "2026-09-10-ppm10"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -4012,20 +4015,115 @@ def _pf_hash(ndeshja, parashikimi, seed):
     msg = f"{ndeshja}|{parashikimi}|{seed}"
     return hashlib.sha256(msg.encode("utf-8")).hexdigest()
 
+
+# ── SA NDESHJE PREMIUM NË DITË ────────────────────────────────────────────────
+# Renditja sipas `koef_rez_sakt` ASC ekzistonte prej fillimi, por me limit=60 ajo
+# s'priste asgjë: ~60-70 ndeshje/ditë do të thotë se çdo ndeshje bëhej premium.
+#
+# MATUR mbi 1,080 ndeshje të arkivuara, duke i renditur sipas `p_pub` (= 0.85/koef_rez_sakt,
+# pra i njëjti rend) dhe duke marrë vetëm majën:
+#     maja  5%  (n=54)  -> premtoi 16.30%, goditi 16.67%  | 1 nga 3: 37.0%  | 1 nga 5: 55.6%
+#     maja 15%  (n=162) -> premtoi 14.98%, goditi 15.43%  | 1 nga 3: 38.9%  | 1 nga 5: 57.4%
+#     maja 20%  (n=216) ->                goditi 15.28%  | 1 nga 3: 37.5%  | 1 nga 5: 56.0%
+#     TË GJITHA (n=1080)->                goditi 10.90%  | 1 nga 3: 29.6%  | 1 nga 5: 45.1%
+# Pra maja 15% e dyfishon normën e dukshme pa prekur asnjë parashikim.
+#
+# PSE FUNKSIONON DHE PSE PRITET TË VAZHDOJË: nuk është korrelacion i gjetur me
+# kërkim — është vetë probabiliteti që modeli i jep skorit që publikon, dhe modeli
+# doli i kalibruar (premtoi 11.25%, dha 10.72% mbi 1,017 ndeshje; raport 0.953).
+# Renditja sipas një probabiliteti të kalibruar është e vetmja "gjetje" që s'ka
+# nevojë të mbijetojë asnjë testi jashtë-mostre.
+#
+# TAVANI: asnjë filtër s'e kalon ~17% te skori i vetëm, sepse asnjë ndeshje futbolli
+# s'ka një skor të vetëm 40% të mundshëm — shpërndarja jonë më e përqendruar që kemi
+# parë i jep majës 15.5%. 40% arrihet vetëm duke shitur 3 skore, jo një.
+try:
+    PPM_MAKS_DITE = int(os.environ.get("PPM_MAKS_DITE", "10").strip() or 10)
+except Exception:
+    PPM_MAKS_DITE = 10
+
+
+def _kuota_premium_e_mbetur(datat):
+    """Sa ndeshje premium mund të shtohen ende sot/nesër, sipas PPM_MAKS_DITE.
+
+    PSE DUHET: `is_premium` është ngjitës — sapo vihet, mbetet. Ndërsa dita ecën,
+    ndeshjet e mbaruara dalin nga grupi i kandidatëve dhe të tjerat ngjiten te maja,
+    ndaj pa këtë numërim kuota ditore do të rritej vetvetiu deri sa të bëheshin
+    premium thuajse të gjitha — pikërisht gjendja që po heqim.
+    """
+    mbetur = {d: PPM_MAKS_DITE for d in datat}
+    if PPM_MAKS_DITE <= 0:
+        return mbetur
+    try:
+        _r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=data&is_premium=is.true&data=in.({','.join(datat)})&limit=1000",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        if _r.status_code == 200:
+            for _x in (_r.json() or []):
+                _d = str(_x.get("data") or "")
+                if _d in mbetur:
+                    mbetur[_d] -= 1
+    except Exception:
+        pass   # nëse dështon, sillemi si më parë — kuota e plotë, pa bllokuar gjenerimin
+    return {d: max(0, n) for d, n in mbetur.items()}
+
 def _gjenero_pf():
     """Krijon 'commitment' (hash i kyçur) për ndeshjet premium të sotme që s'e kanë ende."""
     dt_sot = _data_lokale(0); dt_neser = _data_lokale(1)
     fund = "FT,AET,PEN,AWD,WO,CANC,PST,ABD"
     try:
         _vfilt = "&is_value=eq.true" if VALUE_FILTER_ON else ""   # Opsioni A: hash/premium vetëm mbi baste-vlerë
+        # `data.asc` u hoq nga renditja: me të, ndeshjet e sotme e thithnin krejt
+        # limitin dhe nesërmja mbetej pa asnjë. Limiti u ngrit që të vijnë të gjithë
+        # kandidatët; prerja bëhet më poshtë, në Python.
         r = requests.get(
-            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,ora,data,rezultati_sakt,ekipi_1_id,ekipi_2_id,is_premium,is_value"
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,ora,data,rezultati_sakt,koef_rez_sakt,ekipi_1_id,ekipi_2_id,is_premium,is_value"
             f"&data=in.({dt_sot},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}&statusi=not.in.({fund})"
-            f"&order=data.asc,koef_rez_sakt.asc&limit=60",
+            f"&koef_rez_sakt=not.is.null&limit=300",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         rows = r.json() if r.status_code == 200 else []
     except Exception:
         rows = []
+
+    # ── FILTRI: VETËM MAJA E DITËS ────────────────────────────────────────────
+    # Renditja bëhet KËTU, jo te baza. `koef_rez_sakt` shkruhet si varg i formatuar
+    # (shih ku kthehet nga llogaritja: f"{koef_rez_sakt:.2f}"), ndaj nëse kolona
+    # është tekst atëherë `order=koef_rez_sakt.asc` do të rendiste alfabetikisht —
+    # "10.81" përpara "5.92" — dhe filtri do të zgjidhte pikërisht ndeshjet më të
+    # pasigurta. Renditja në Python me float() është e saktë pavarësisht tipit.
+    #
+    # Pritet te PPM_MAKS_DITE për ditë, duke zbritur ato që janë tashmë premium.
+    # Ndeshjet që janë tashmë premium kalojnë pa e ngrënë kuotën — ato u zgjodhën
+    # në një cikël të mëparshëm dhe s'duhet të përjashtojnë njëra-tjetrën.
+    def _koef_num(x):
+        try:
+            v = float(x.get("koef_rez_sakt"))
+            return v if v > 0 else 9e9
+        except Exception:
+            return 9e9        # i palexueshëm -> te fundi, s'zgjidhet kurrë i pari
+    rows.sort(key=_koef_num)
+
+    if PPM_MAKS_DITE > 0 and rows:
+        _mbetur = _kuota_premium_e_mbetur([dt_sot, dt_neser])
+        _zgjedhur, _lene = [], 0
+        for _p in rows:
+            _d = str(_p.get("data") or "")
+            if _p.get("is_premium"):
+                _zgjedhur.append(_p)          # tashmë premium — vazhdon, pa prekur kuotën
+            elif _mbetur.get(_d, 0) > 0:
+                _mbetur[_d] -= 1
+                _zgjedhur.append(_p)
+            else:
+                _lene += 1
+        if _lene:
+            print(f"🎯 PPM: {len(_zgjedhur)} ndeshje brenda kuotës ({PPM_MAKS_DITE}/ditë), "
+                  f"{_lene} u lanë jashtë si më pak të sigurta")
+        rows = _zgjedhur
+    else:
+        # PPM_MAKS_DITE=0 -> filtri i fikur. Kthehet kufiri i vjetër prej 60, që
+        # fikja të riprodhojë sjelljen e mëparshme e të mos i bëjë premium edhe më
+        # shumë ndeshje se përpara (limiti i bazës u ngrit në 300 më lart).
+        rows = rows[:60]
 
     # ── CILAT NDESHJE E KANE TASHME NJE HASH ────────────────────────────────
     # MATUR ne prodhim (26 gusht): pa kete, funksioni gjeneronte nje seed te ri
@@ -8270,6 +8368,9 @@ def api_status(request: Request, kalim: str = None):
             "W_ELO":          round(W_ELO, 4),
             "BES_VERSION":    BES_VERSION,
             "COMBO_DIVERSITET": bool(COMBO_DIVERSITET),
+            "PPM_MAKS_DITE":  PPM_MAKS_DITE,
+            "MARZHI_KUOTES":  MARZHI_KUOTES,
+            "KOEF_MAKS":      KOEF_MAKS,
             "BES_W_SINJAL":   round(BES_W_SINJAL, 3),
             "BES_W_FORMA":    round(BES_W_FORMA, 3),
             "W_MARKET":       round(W_MARKET, 4),
