@@ -120,7 +120,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
 # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
 # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
-BUILD = "2026-09-10-ppm10"
+BUILD = "2026-09-12-ppm10b"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -4042,6 +4042,29 @@ try:
 except Exception:
     PPM_MAKS_DITE = 10
 
+# ── SA KANDIDATE DUHEN PARA SE TE SHPENZOHET KUOTA E NJE DITE ─────────────────
+# `_gjenero_pf()` nuk thirret nga nje cron — thirret nga /api/pf/list, pra sa here
+# qe dikush hap faqen PPM, dhe punon per SOT dhe NESER.
+#
+# ÇFARË NDODHI MË 13 SHTATOR: dikush e hapi faqen me 12 shtator kur per 13-shin
+# ishin gjeneruar ende vetem pak ndeshje. Ato e zune kuoten prej 10. Kur me pas
+# u gjeneruan ndeshjet e mira, kuota ishte e mbushur dhe ato mbeten jashte:
+#     premium deri te koef 11.47 (p_pub  7.4%)
+#     jashte  qe nga koef  6.16 (p_pub 13.8%)
+# Pra u publikua nje pick 7.4% ndersa nje 13.8% mbeti jashte — e kunderta e
+# qellimit te filtrit. Me `limit=60` te vjeter kjo ishte e pademshme sepse ne fund
+# shenoheshin thuajse te gjitha; me kuote 10, kush vjen i pari e merr vendin.
+#
+# DHE S'KTHEHET MBRAPSHT: hash-i PF eshte zotim publik, nuk hiqet dot pas krijimit.
+#
+# RREGULLI: kuota e nje dite shpenzohet vetem kur grupi i kandidateve te asaj dite
+# ka arritur kete prag — pra kur gjenerimi i saj ka mbaruar. Dita e SOTME perjashtohet
+# gjithmone: grupi i saj eshte perfunduar dje, s'ka me cfare te vije.
+try:
+    PPM_MIN_KANDIDATE = int(os.environ.get("PPM_MIN_KANDIDATE", "30").strip() or 30)
+except Exception:
+    PPM_MIN_KANDIDATE = 30
+
 
 def _kuota_premium_e_mbetur(datat):
     """Sa ndeshje premium mund të shtohen ende sot/nesër, sipas PPM_MAKS_DITE.
@@ -4105,19 +4128,38 @@ def _gjenero_pf():
 
     if PPM_MAKS_DITE > 0 and rows:
         _mbetur = _kuota_premium_e_mbetur([dt_sot, dt_neser])
-        _zgjedhur, _lene = [], 0
+
+        # Sa kandidatë ka secila ditë NË KËTË CIKËL. Nëse nesërmja s'e ka arritur
+        # ende pragun, gjenerimi i saj s'ka mbaruar: kuota e saj lihet e paprekur
+        # dhe mbushet në një thirrje të mëvonshme, kur grupi të jetë i plotë.
+        _grupi = {}
+        for _p in rows:
+            _d = str(_p.get("data") or "")
+            _grupi[_d] = _grupi.get(_d, 0) + 1
+        _lejohet = {
+            _d: (_d == dt_sot) or (_grupi.get(_d, 0) >= PPM_MIN_KANDIDATE)
+            for _d in (dt_sot, dt_neser)
+        }
+        for _d, _ok in _lejohet.items():
+            if not _ok:
+                print(f"⏳ PPM: {_d} shtyhet — vetëm {_grupi.get(_d, 0)} kandidatë "
+                      f"(duhen {PPM_MIN_KANDIDATE}); kuota ruhet për grupin e plotë")
+
+        _zgjedhur, _lene, _shtyre = [], 0, 0
         for _p in rows:
             _d = str(_p.get("data") or "")
             if _p.get("is_premium"):
                 _zgjedhur.append(_p)          # tashmë premium — vazhdon, pa prekur kuotën
+            elif not _lejohet.get(_d, False):
+                _shtyre += 1                  # dita s'është gati; as s'zgjidhet, as s'humbet
             elif _mbetur.get(_d, 0) > 0:
                 _mbetur[_d] -= 1
                 _zgjedhur.append(_p)
             else:
                 _lene += 1
-        if _lene:
-            print(f"🎯 PPM: {len(_zgjedhur)} ndeshje brenda kuotës ({PPM_MAKS_DITE}/ditë), "
-                  f"{_lene} u lanë jashtë si më pak të sigurta")
+        if _lene or _shtyre:
+            print(f"🎯 PPM: {len(_zgjedhur)} brenda kuotës ({PPM_MAKS_DITE}/ditë), "
+                  f"{_lene} jashtë si më pak të sigurta, {_shtyre} të shtyra për grup të plotë")
         rows = _zgjedhur
     else:
         # PPM_MAKS_DITE=0 -> filtri i fikur. Kthehet kufiri i vjetër prej 60, që
