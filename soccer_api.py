@@ -120,7 +120,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
 # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
 # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
-BUILD = "2026-09-12-ppm10b"
+BUILD = "2026-09-14-fitues-treg"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -5823,12 +5823,110 @@ def _maintenance_kalim(request, kalim: str = None) -> bool:
         pass
     return False
 
-# ── RREGULLI I FITUESIT: pragu i "favoritit te qarte" (diferenca p_fitues - p_barazim).
-# Nen kete prag -> ndeshje e ngushte -> lejo barazim. Mbi -> skori DETYROHET te respektoje favoritin.
+# ══════════════════════════════════════════════════════════════════════════
+# MODULI I FITUESIT — kush e vendos drejtimin e skorit te publikuar
+# ══════════════════════════════════════════════════════════════════════════
+# Rregulli: nese ka nje favorit te QARTE (p_fitues - p_barazim > prag), skori i
+# publikuar DETYROHET ta respektoje ate favorit; ndryshe ndeshja quhet e ngushte
+# dhe barazimi lejohet.
+#
+# BURIMI — cilat probabilitete 1X2 e marrin kete vendim. Deri me 13/09/2026 ishte
+# gjithmone `prob_1x2` i PASTER i Monte Carlo-s, para cdo blendi me tregun.
+# TESTI (1,343 ndeshje te mbaruara, arkivi i plote, 3 variante x 5 pragje):
+#
+#   varianti                prag   skor i sakte   drejtim   barazime te publikuara
+#   A  MC i paster          0.10       9.38%       50.34%        14.7%
+#   A  MC i paster          0.12       9.98%       49.81%        20.8%
+#   B  tregu (devig)        0.10      10.65%       52.57%        13.9%
+#   B  tregu (devig)        0.12      11.02%       52.49%        19.4%   <= me i miri
+#   C  tregu + korrigjim    0.12      10.72%       52.87%        11.5%
+#
+# B e mund A te CDO prag dhe NE TE DY matjet njeheresh — s'ka shkembim. Kundrejt
+# prodhimit (A @ 0.10): +1.64pp skor i sakte DHE +2.15pp drejtim. Shkaku eshte i
+# matur me pare ne kete sesion: probabilitetet 1X2 para-blend jane pjesa me e
+# dobet e modelit (log-loss 1.0095 kundrejt 0.9760 te tregut, t=2.33, p=0.020) —
+# dhe rregulli po e merrte vendimin pikerisht mbi ate input.
+#
+# ⚠️ B nuk shton asnje parameter te akorduar — thjesht nderron burimin. C shton tre
+# konstante te pershtatura mbi TE NJEJTIN arkiv (rrezik mbi-pershtatjeje), ndaj vjen
+# e FIKUR. Ne kete sesion kemi pare kater here gjetje qe avullojne jashte mostres.
+#
+# WINNER_BURIMI:  0 = MC i paster (sjellja e vjeter)
+#                 1 = tregu i devigosur (parazgjedhja, varianti B)
+#                 2 = tregu + korrigjim favorit-autsajder (varianti C)
+# Pa kuota 1X2 ne ndeshje -> biem automatikisht te MC-ja, pa gabim.
+# Te tria akordohen pa deploy nga `model_config` ose env-var.
+WINNER_BURIMI_MC   = 0
+WINNER_BURIMI_TREG = 1
+WINNER_BURIMI_KORR = 2
+
 try:
     WINNER_PRAG = float(os.environ.get("WINNER_PRAG", "0.15").strip())
 except Exception:
     WINNER_PRAG = 0.15
+# Pragu kur burimi eshte tregu. I NDARE nga WINNER_PRAG me qellim: nderrimi i burimit
+# e nderron kuptimin e pragut, ndaj vlera e vjeter e Render-it (0.10) s'duhet te
+# rrjedhe mbi rregullin e ri. Optimumi i matur per tregun eshte 0.12.
+try:
+    WINNER_PRAG_TREG = float(os.environ.get("WINNER_PRAG_TREG", "0.12").strip())
+except Exception:
+    WINNER_PRAG_TREG = 0.12
+
+# Korrigjimi favorit-autsajder (vetem kur WINNER_BURIMI=2). I matur mbi arkivin:
+# favoritet fitojne me shpesh se sa thote kuota (+1.63pp), autsajderet me rralle
+# (-1.87pp); ne brezin 75%+ hendeku ishte +6.25pp.
+WINNER_FLB_75 = 0.060    # favorit >= 75%  -> shto kaq te favoriti
+WINNER_FLB_65 = 0.036    # favorit >= 65%
+WINNER_FLB_40 = 0.035    # favorit 35–45% (zona e ndeshjeve te ngushta)
+
+
+def _korrigjo_flb(p1: float, px: float, p2: float) -> tuple:
+    """Korrigjimi favorit-autsajder mbi 1X2 te devigosur. Kthen trioshen e rinormalizuar."""
+    _pmax = max(p1, p2)
+    if   _pmax >= 0.75: _d = WINNER_FLB_75
+    elif _pmax >= 0.65: _d = WINNER_FLB_65
+    elif 0.35 <= _pmax <= 0.45: _d = WINNER_FLB_40
+    else: return (p1, px, p2)
+    if p1 >= p2:
+        p1 += _d
+    else:
+        p2 += _d
+    _s = p1 + px + p2
+    return (p1 / _s, px / _s, p2 / _s) if _s > 0 else (p1, px, p2)
+
+
+def _moduli_i_fituesit(prob_mc: dict, mkt_1x2=None) -> tuple:
+    """
+    Vendos drejtimin qe duhet te respektoje skori i publikuar.
+    Kthen (drejtimi, burimi_perdorur) ku drejtimi eshte "1", "2" ose None (e ngushte).
+    """
+    _burimi = int(_konf("WINNER_BURIMI", WINNER_BURIMI_TREG))
+    _p1 = float(prob_mc.get("p1") or 0.0)
+    _px = float(prob_mc.get("px") or 0.0)
+    _p2 = float(prob_mc.get("p2") or 0.0)
+    _prag = _konf("WINNER_PRAG", WINNER_PRAG)
+    _emri = "mc"
+
+    if _burimi in (WINNER_BURIMI_TREG, WINNER_BURIMI_KORR) and mkt_1x2:
+        try:
+            _m1, _mx, _m2 = (float(x) for x in mkt_1x2)
+            _sm = _m1 + _mx + _m2
+            if _sm > 0 and min(_m1, _mx, _m2) > 0:
+                _m1, _mx, _m2 = _m1 / _sm, _mx / _sm, _m2 / _sm   # devigosje
+                _emri = "treg"
+                if _burimi == WINNER_BURIMI_KORR:
+                    _m1, _mx, _m2 = _korrigjo_flb(_m1, _mx, _m2)
+                    _emri = "treg_korr"
+                _p1, _px, _p2 = _m1, _mx, _m2
+                _prag = _konf("WINNER_PRAG_TREG", WINNER_PRAG_TREG)
+        except Exception:
+            pass   # kuota te prishura -> mbetemi te MC-ja
+
+    if _p1 >= _p2 and (_p1 - _px) > _prag:
+        return ("1", _emri)
+    if _p2 > _p1 and (_p2 - _px) > _prag:
+        return ("2", _emri)
+    return (None, _emri)
 
 
 def _ht_ft_distribuim(xg_ht_1, xg_ht_2, xg_2h_1, xg_2h_2, max_g=6):
@@ -5924,7 +6022,8 @@ def simulim_monte_carlo_v2(
     iteracione: int = MC_ITERACIONE,
     rho: float = RHO_DC,
     seed: int = None,
-    aff: float = 0.5
+    aff: float = 0.5,
+    mkt_1x2=None
 ) -> tuple:
     """
     Monte Carlo vectorized me numpy — 50,000 simulime në ~60ms.
@@ -6005,12 +6104,14 @@ def simulim_monte_carlo_v2(
         _score = _freq * (1.0 / (1.0 + _difft * aff))
         kandidatet.append((_i, _j, _freq, _score))
     kandidatet.sort(key=lambda x: x[3], reverse=True)
-    # ── RREGULLI I FITUESIT: skori respekton favoritin e QARTE (nga p1/px/p2). ──
+    # ── MODULI I FITUESIT: skori respekton favoritin e QARTE (shih lart). ──
     # NUK prek frekuencat/Dixon-Coles; vetem filtron kandidatet kur ka favorit te qarte.
-    _wp1 = prob_1x2["p1"]; _wpx = prob_1x2["px"]; _wp2 = prob_1x2["p2"]
-    if _wp1 >= _wp2 and (_wp1 - _wpx) > WINNER_PRAG:
+    # Burimi i vendimit eshte tregu i devigosur (varianti B), me rikthim te MC-se
+    # kur ndeshja s'ka kuota 1X2.
+    _drejtimi, _ = _moduli_i_fituesit(prob_1x2, mkt_1x2)
+    if _drejtimi == "1":
         _fkand = [_k for _k in kandidatet if _k[0] > _k[1]]   # favorit vendas -> vetem fitore vendase
-    elif _wp2 > _wp1 and (_wp2 - _wpx) > WINNER_PRAG:
+    elif _drejtimi == "2":
         _fkand = [_k for _k in kandidatet if _k[1] > _k[0]]   # favorit mysafir -> vetem fitore mysafiri
     else:
         _fkand = kandidatet                                    # ngushte -> lejo barazim
@@ -6465,7 +6566,8 @@ def analizo_ndeshjen_premium_master(
         pass
     rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
         _xg1_norm, _xg2_norm, kaosi_liges, is_derbi, iteracione=MC_ITERACIONE,
-        seed=_seed_ndeshja, aff=_aff_dyn
+        seed=_seed_ndeshja, aff=_aff_dyn,
+        mkt_1x2=((p1_real, px_real, p2_real) if None not in (p1_real, px_real, p2_real) else None)
     )
 
     # ── BLEND FINAL I 1X2 ME TREGUN ──
@@ -6564,11 +6666,16 @@ def analizo_ndeshjen_premium_master(
     #    Tani: totali i normalizuar + prag i akordueshëm (default 3.20 = vërtet i hapur).
     _prag_hapur = _konf("FALLBACK_HAPUR", FALLBACK_HAPUR)
     if (g1 + g2 <= 1) and (_xg1_norm + _xg2_norm > _prag_hapur):
-        _p1f = float(prob_1x2_mc.get("p1", 0.0))
-        _pxf = float(prob_1x2_mc.get("px", 0.0))
-        _p2f = float(prob_1x2_mc.get("p2", 0.0))
-        _forco_1 = (_p1f - _pxf) > WINNER_PRAG and _p1f >= _p2f
-        _forco_2 = (_p2f - _pxf) > WINNER_PRAG and _p2f > _p1f
+        # KOHERENCA: drejtimi vendoset nga NJE vend i vetem — moduli i fituesit.
+        # Perpara, kjo dege e mbante testin e vet mbi `prob_1x2_mc` TASHME te blenduar
+        # me tregun (35%) dhe mbi WINNER_PRAG te vjeter, ndaj mund ta kthente skorin ne
+        # nje drejtim qe moduli s'e kishte zgjedhur.
+        _drejtimi_fb, _ = _moduli_i_fituesit(
+            prob_1x2_mc,
+            ((p1_real, px_real, p2_real) if None not in (p1_real, px_real, p2_real) else None)
+        )
+        _forco_1 = (_drejtimi_fb == "1")
+        _forco_2 = (_drejtimi_fb == "2")
         for r, freq in sorted(rezultatet_freq.items(), key=lambda x: x[1], reverse=True):
             try:
                 rg1, rg2 = map(int, r.split("-"))
@@ -8444,7 +8551,10 @@ def api_status(request: Request, kalim: str = None):
             "XG_FLOOR":       XG_FLOOR,
             "RHO_DC":         RHO_DC,
             "MC_ITERACIONE":  MC_ITERACIONE,
-            "WINNER_PRAG":    WINNER_PRAG,
+            "WINNER_BURIMI":  int(_konf("WINNER_BURIMI", WINNER_BURIMI_TREG)),
+            "WINNER_PRAG":    _konf("WINNER_PRAG", WINNER_PRAG),
+            "WINNER_PRAG_TREG": _konf("WINNER_PRAG_TREG", WINNER_PRAG_TREG),
+            "PPM_MIN_KANDIDATE": PPM_MIN_KANDIDATE,
             "INJURY_PEN_PER": INJURY_PEN_PER,
             "INJURY_PEN_CAP": INJURY_PEN_CAP,
             "PLATT_A":        _konf("PLATT_A", PLATT_A),
