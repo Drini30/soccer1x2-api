@@ -130,7 +130,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
 # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
 # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
-BUILD = "2026-09-15-api-publike"
+BUILD = "2026-09-15-vula"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -6894,6 +6894,12 @@ def analizo_ndeshjen_premium_master(
         "forma_1":      {k: forma_1[k] for k in ["win_rate", "k_wins_rresht", "lodhja_factor"]},
         "forma_2":      {k: forma_2[k] for k in ["win_rate", "k_wins_rresht", "lodhja_factor"]},
         "training_data": {
+            # ── VULA E VERSIONIT ──
+            # Pa kete, "a u gjenerua kjo ndeshje me modelin e ri?" s'ka pergjigje te
+            # drejtperdrejte — duhet zbuluar nga sjellja, gje qe eshte e pasakte sepse
+            # rregullat pasuese (draw→LEAN) e nderrojne skorin ligjerisht. Nje varg
+            # i vetem e zgjidh perjete, edhe per cdo ndryshim te ardhshem.
+            "build": BUILD,
             # ── OUTPUTET FINALE ──
             "xg_1": round(float(xg_1), 3), "xg_2": round(float(xg_2), 3),
             "prob_1x2_mc": prob_1x2_mc,
@@ -6903,7 +6909,10 @@ def analizo_ndeshjen_premium_master(
             # dinte cilat ndeshje e patën burimin ELO të fikur — dhe efekti do të
             # shpërbëhej mes 92% të ndeshjeve që s'preken.
             "elo_vlen": bool(_elo_vlen),
+            # px mungonte: pa te s'rindertohet dot vendimi i modulit te fituesit, qe
+            # mbeshtetet pikerisht te diferenca (p_fitues - p_barazim).
             "p_market_1": round(float(p1_real), 4), "p_market_2": round(float(p2_real), 4),
+            "p_market_x": round(float(px_real), 4),
             "burimi_xg": burimi_xg,
             # ── MODULUESIT E APLIKUAR (per te rikrijuar zinxhirin) ──
             "modulator_1": round(float(_mod_1), 3), "modulator_2": round(float(_mod_2), 3),
