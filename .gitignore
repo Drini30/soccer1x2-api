@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Sekretet — kurre ne repo. Celesat lexohen nga env-var te Render.
+.env
+.env.*
+*.pem
+*.key

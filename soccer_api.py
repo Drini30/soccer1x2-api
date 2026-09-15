@@ -95,7 +95,17 @@ def _ngarko_modelet_xgb():
 
 _ngarko_modelet_xgb()
 
-app = FastAPI(title="SOCCER1X2 PRO API - Expert System", description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2")
+# ⚠️ docs_url/redoc_url/openapi_url = None ME QELLIM.
+# FastAPI i ndez vetvetiu /docs, /redoc dhe /openapi.json, dhe aty listohen TE GJITHA
+# 71 rrugët — perfshire /api/admin/*, /api/cron/* dhe /v1/admin/create-key. Kjo eshte
+# nje harte e plote e siperfaqes sone per ke do qe e hap URL-ne. Perpara nje publikimi
+# qe sjell trafik te qellimshem, kjo mbyllet. Dokumentacioni publik behet vetem per
+# API-ne B2B, te kuruar me dore, te /v1/docs (shih me poshte).
+app = FastAPI(
+    title="SOCCER1X2 PRO API - Expert System",
+    description="Advanced Monte Carlo & Dynamic ELO Prediction Engine V2",
+    docs_url=None, redoc_url=None, openapi_url=None,
+)
 
 # Version i deploy-it — ndryshohet me çdo version te ri per te konfirmuar cka eshte LIVE ne Render.
 VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
@@ -120,7 +130,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
 # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
 # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
-BUILD = "2026-09-14-vdekura"
+BUILD = "2026-09-15-api-publike"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -10025,6 +10035,219 @@ def b2b_leagues(x_rapidapi_proxy_secret: str = Header(None), x_api_key: str = He
         cnt[lg] = cnt.get(lg, 0) + 1
     out = [{"league": k, "fixtures": v} for k, v in sorted(cnt.items(), key=lambda x: -x[1])]
     return {"success": True, "count": len(out), "leagues": out}
+
+
+# ==========================================================================
+# DOKUMENTACIONI PUBLIK I /v1 — i kuruar me dore, JO i gjeneruar nga FastAPI
+# ==========================================================================
+# PSE ME DORE: skema automatike e FastAPI-t i nxjerr te 71 rruget, perfshire
+# admin dhe cron. Kjo ketu permban VETEM kater rruget B2B dhe asgje tjeter.
+# PSE DUHET: RapidAPI, Zyla, APILayer dhe Postman e importojne listimin nga nje
+# skedar OpenAPI. Me te, nje listim behet ne minuta ne vend te oresh me dore —
+# dhe te kater platformat marrin te njejtin pershkrim, pa mospërputhje.
+B2B_BASE_URL = os.environ.get("B2B_BASE_URL", "https://soccer1x2-api.onrender.com").strip()
+
+_B2B_SKEMA_NDESHJA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "integer", "description": "Fixture id (stable, matches the upstream fixture id).", "example": 1391847},
+        "match": {"type": "string", "example": "Arsenal vs Chelsea"},
+        "home_team": {"type": "string", "example": "Arsenal"},
+        "away_team": {"type": "string", "example": "Chelsea"},
+        "league": {"type": "string", "example": "England - Premier League"},
+        "date": {"type": "string", "format": "date", "example": "2026-09-15"},
+        "kickoff": {"type": "string", "description": "Local kickoff time (Europe/Tirane), or 'FT' once finished.", "example": "17:00"},
+        "status": {"type": "string", "description": "NS, 1H, HT, 2H, FT, PST, CANC …", "example": "NS"},
+        "confidence": {"type": "number", "description": "Model confidence 0-100 for this fixture.", "example": 62.4},
+        "best_bet": {"type": "string", "description": "Single highest-edge market for this fixture.", "example": "Over 1.5"},
+        "correct_score": {
+            "type": "object",
+            "description": "Most likely exact scoreline.",
+            "properties": {
+                "score": {"type": "string", "example": "2-1"},
+                "fair_odds": {"type": "number", "description": "1/probability — no bookmaker margin applied.", "example": 8.13},
+            },
+        },
+        "top_scorelines": {
+            "type": "array",
+            "description": "Three most likely scorelines, highest probability first.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "score": {"type": "string", "example": "2-1"},
+                    "probability": {"type": "number", "example": 0.123},
+                    "fair_odds": {"type": "number", "example": 8.13},
+                },
+            },
+        },
+        "markets": {
+            "type": "object",
+            "description": ("Per-market model probability and odds. Keys are market names: "
+                            "1, X, 2, 1X, X2, 12, Over/Under 1.5-3.5, GG, NG, and half-time variants."),
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "probability": {"type": "number", "description": "Model probability, 0-1.", "example": 0.5412},
+                    "odds": {"type": "number", "description": "Market odds where available, otherwise fair odds (1/probability).", "example": 1.85},
+                },
+            },
+        },
+    },
+}
+
+_B2B_GABIMI = {
+    "type": "object",
+    "properties": {"detail": {"type": "string", "example": "Invalid API key."}},
+}
+
+
+def _b2b_openapi() -> dict:
+    """Skema OpenAPI 3.0 vetem per /v1 — ushqimi per RapidAPI/Zyla/APILayer/Postman."""
+    def _pergjigjet(ok_schema):
+        return {
+            "200": {"description": "Success", "content": {"application/json": {"schema": ok_schema}}},
+            "401": {"description": "Missing or invalid API key.", "content": {"application/json": {"schema": _B2B_GABIMI}}},
+            "403": {"description": "API key disabled.", "content": {"application/json": {"schema": _B2B_GABIMI}}},
+            "429": {"description": "Daily request limit reached. Resets at midnight Europe/Tirane.",
+                    "content": {"application/json": {"schema": _B2B_GABIMI}}},
+        }
+
+    return {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "SOCCER1X2 PRO — Football Predictions API",
+            "version": "1.0.0",
+            "description": (
+                "Football match predictions from a hybrid engine: gradient-boosted expected goals "
+                "blended with market-implied strength, then 50,000 Monte Carlo simulations per "
+                "fixture with a Dixon-Coles low-score correction.\n\n"
+                "**What makes it different:** every probability is calibrated against settled results, "
+                "not just produced. Over a 1,017-match archive the engine promised an 11.25% exact-score "
+                "hit rate and delivered 10.72% — a calibration ratio of 0.953. Probabilities are meant "
+                "to be used as probabilities, including the `fair_odds` fields, which carry no "
+                "bookmaker margin.\n\n"
+                "**Coverage:** today's and tomorrow's fixtures across the leagues listed by `/v1/leagues`.\n\n"
+                "**Authentication:** send your key in the `X-API-Key` header. Traffic arriving through an "
+                "API marketplace is authenticated by that marketplace instead.\n\n"
+                "**Rate limits:** free keys are capped at 100 requests/day, resetting at midnight "
+                "Europe/Tirane. Exceeding the cap returns HTTP 429.\n\n"
+                "**Not betting advice.** Predictions are statistical estimates. No outcome is guaranteed."
+            ),
+            "contact": {"name": "SOCCER1X2 PRO", "url": "https://soccer1x2pro.com"},
+        },
+        "servers": [{"url": B2B_BASE_URL, "description": "Production"}],
+        "tags": [{"name": "Predictions", "description": "Match predictions and markets."},
+                 {"name": "Metadata", "description": "Service status and league coverage."}],
+        "components": {
+            "securitySchemes": {
+                "ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key",
+                               "description": "Your personal API key. Not required when calling through a marketplace."}
+            },
+            "schemas": {"Prediction": _B2B_SKEMA_NDESHJA, "Error": _B2B_GABIMI},
+        },
+        "security": [{"ApiKeyAuth": []}],
+        "paths": {
+            "/v1/status": {
+                "get": {
+                    "tags": ["Metadata"], "summary": "Service status",
+                    "description": "Health check and a summary of engine, coverage and available markets. No authentication required.",
+                    "operationId": "getStatus", "security": [],
+                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {
+                        "type": "object",
+                        "properties": {"api": {"type": "string"}, "version": {"type": "string"},
+                                       "status": {"type": "string", "example": "ok"}, "engine": {"type": "string"},
+                                       "coverage": {"type": "string"}, "markets": {"type": "string"},
+                                       "auth": {"type": "string"}},
+                    }}}}},
+                }
+            },
+            "/v1/predictions": {
+                "get": {
+                    "tags": ["Predictions"], "summary": "List predictions",
+                    "description": "Every prediction for a given day, ordered by kickoff time.",
+                    "operationId": "listPredictions",
+                    "parameters": [
+                        {"name": "date", "in": "query", "required": False,
+                         "description": "`today` (default), `tomorrow`, or one of those two dates as YYYY-MM-DD. Other dates return 400.",
+                         "schema": {"type": "string", "default": "today", "example": "today"}},
+                        {"name": "league", "in": "query", "required": False,
+                         "description": "Exact league name as returned by `/v1/leagues`. Omit for every league.",
+                         "schema": {"type": "string", "example": "England - Premier League"}},
+                        {"name": "limit", "in": "query", "required": False,
+                         "description": "Maximum fixtures to return. Clamped to 1-100.",
+                         "schema": {"type": "integer", "default": 50, "minimum": 1, "maximum": 100}},
+                    ],
+                    "responses": dict(_pergjigjet({
+                        "type": "object",
+                        "properties": {"success": {"type": "boolean", "example": True},
+                                       "date": {"type": "string", "format": "date"},
+                                       "count": {"type": "integer", "example": 24},
+                                       "predictions": {"type": "array", "items": {"$ref": "#/components/schemas/Prediction"}}},
+                    }), **{"400": {"description": "Requested a date outside today/tomorrow.",
+                                   "content": {"application/json": {"schema": _B2B_GABIMI}}}}),
+                }
+            },
+            "/v1/predictions/{pred_id}": {
+                "get": {
+                    "tags": ["Predictions"], "summary": "Get one prediction",
+                    "description": "A single prediction by fixture id.",
+                    "operationId": "getPrediction",
+                    "parameters": [{"name": "pred_id", "in": "path", "required": True,
+                                    "description": "Fixture id, as returned in the `id` field of a prediction.",
+                                    "schema": {"type": "integer", "example": 1391847}}],
+                    "responses": dict(_pergjigjet({
+                        "type": "object",
+                        "properties": {"success": {"type": "boolean", "example": True},
+                                       "prediction": {"$ref": "#/components/schemas/Prediction"}},
+                    }), **{"404": {"description": "No prediction with that id.",
+                                   "content": {"application/json": {"schema": _B2B_GABIMI}}}}),
+                }
+            },
+            "/v1/leagues": {
+                "get": {
+                    "tags": ["Metadata"], "summary": "List covered leagues",
+                    "description": "Leagues with fixtures today or tomorrow, and how many fixtures each has. Use these names for the `league` filter.",
+                    "operationId": "listLeagues",
+                    "responses": _pergjigjet({
+                        "type": "object",
+                        "properties": {"success": {"type": "boolean", "example": True},
+                                       "count": {"type": "integer", "example": 31},
+                                       "leagues": {"type": "array", "items": {
+                                           "type": "object",
+                                           "properties": {"league": {"type": "string", "example": "England - Premier League"},
+                                                          "fixtures": {"type": "integer", "example": 10}}}}},
+                    }),
+                }
+            },
+        },
+    }
+
+
+@app.get("/v1/openapi.json")
+def b2b_openapi_json():
+    """Skema OpenAPI e /v1 — shkarkohet dhe ngarkohet direkt te cdo treg API-sh."""
+    return _b2b_openapi()
+
+
+@app.get("/v1/docs", response_class=HTMLResponse)
+def b2b_docs():
+    """Dokumentacioni publik i /v1 (Swagger UI). Vetem kater rruget B2B."""
+    return """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SOCCER1X2 PRO — API Documentation</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css">
+<style>body{margin:0}.topbar{display:none}</style>
+</head>
+<body>
+<div id="swagger"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.min.js"></script>
+<script>
+SwaggerUIBundle({url:"/v1/openapi.json",dom_id:"#swagger",docExpansion:"list",defaultModelsExpandDepth:1});
+</script>
+</body>
+</html>"""
 
 
 # ---------- Admin: krijo / fik çelësa (vetëm me B2B_ADMIN_SECRET) ----------
