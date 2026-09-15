@@ -120,7 +120,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
 # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
 # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
-BUILD = "2026-09-14-fitues-treg"
+BUILD = "2026-09-14-vdekura"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -7116,18 +7116,70 @@ def _rimburso_ppm_humbur(match_id, rezultati_real, parashikimi):
         pass
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# NDESHJET E VDEKURA — pse rikontrolloheshin përjetë
+# ══════════════════════════════════════════════════════════════════════════
+# Kur API-Sports kthente CANC/PST/ABD, kodi shkonte te dega `else` dhe e HIDHTE
+# ate informacion — nuk e shkruante kurre ne DB. Rreshti mbetej me `statusi`
+# e vjeter (NS/TBD), pra "i pambaruar" pergjithmone, dhe rikontrollohej ne cdo
+# cikel. Shtimi i CANC/PST/ABD te filtri VETEM nuk e zgjidhte dot: ato vlera
+# s'ekzistonin kurre ne kolone. Zgjidhja eshte ne dy pjese:
+#   1) SHKRUAJ statusin e vertete (me poshte), qe filtri te kete cfare kap;
+#   2) DRITARE KOHE mbi `data` — kufi i sigurt pavaresisht statusit: nje ndeshje
+#      me e vjeter se kaq qe s'ka arritur FT, s'do te arrije me.
+# PST mbahet ne listen e shkrimit por NUK eshte perfundimtar: nje ndeshje e
+# shtyre mund te luhet me te njejtin id javë me vone. Aty e ndal dritarja, jo
+# statusi — dhe ajo eshte sjellja e duhur, sepse parashikimi i asaj dite
+# (kuotat, forma) ka skaduar prej kohesh.
+STATUSE_FUND = "FT,AET,PEN,AWD,WO,CANC,PST,ABD"
+_STATUSE_TE_VDEKURA = ("CANC", "ABD", "AWD", "WO", "PST")
+PPM_DRITARE_DITE = _env_int("PPM_DRITARE_DITE", 7)
+
+# THROTTLE: `task_perditeso_ppm_te_perfunduara` NUK eshte cron — thirret ne sfond
+# nga /api/skedina, /api/live dhe /api/pf/list, pra ne CDO hapje faqeje. Me 100
+# rreshta te ngecur ishin 5 thirrje API-Sports per VIZITOR, jo per gjysme ore.
+PPM_REFRESH_MIN_SEK = _env_int("PPM_REFRESH_MIN_SEK", 300)
+_PPM_REFRESH = {"ts": 0.0}
+
+
+def _filtri_pa_mbaruar() -> str:
+    """Filtri i perbashket: ndeshje qe s'kane mbaruar, brenda dritares se kohes."""
+    return (f"&statusi=not.in.({STATUSE_FUND})"
+            f"&data=gte.{_data_lokale(-PPM_DRITARE_DITE)}")
+
+
+def _shenjo_statusin_e_vdekur(fix_id, status, statusi_ne_db=None) -> bool:
+    """Shkruan ne DB nje status qe s'do te kthehet vetvetiu ne FT.
+    Pa kete, rreshti mbetet 'i pambaruar' dhe rikontrollohet pafundesisht."""
+    if status not in _STATUSE_TE_VDEKURA:
+        return False
+    if statusi_ne_db and str(statusi_ne_db).strip().upper() == status:
+        return False   # e shenuar tashme — mos e prek DB-ne kot
+    try:
+        requests.patch(f"{SUPABASE_URL_PREDS}?id=eq.{fix_id}",
+                       headers=SUPABASE_SERVICE_HEADERS,
+                       json={"statusi": status}, timeout=5)
+        return True
+    except Exception:
+        return False
+
+
 def task_perditeso_ppm_te_perfunduara():
     """
     Kontrollon në Supabase për ndeshje PPM të paplotësuara dhe i përditëson.
     Thirret AUTOMATIKISHT në sfond çdo herë që ngarkohet skedina.
     Përdoruesi nuk pret — vetëm ata që hapin /api/skedina pas mbarimit do ta marrin.
     """
+    _tani = time.time()
+    if _tani - _PPM_REFRESH["ts"] < PPM_REFRESH_MIN_SEK:
+        return   # u ekzekutua rishtazi — mos e perserit per cdo vizitor
+    _PPM_REFRESH["ts"] = _tani
     try:
         # select i plotë → mundëson arkivim automatik në të njëjtin hap
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,statusi,ndeshja,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
             f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,is_premium"
-            f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
+            f"{_filtri_pa_mbaruar()}",
             headers=SUPABASE_SERVICE_HEADERS, timeout=8
         )
         if res.status_code != 200:
@@ -7186,6 +7238,10 @@ def task_perditeso_ppm_te_perfunduara():
                             _rimburso_ppm_humbur(fix_id, rezultati_str, _pred.get("rezultati_sakt"))
                     except Exception:
                         pass
+                else:
+                    # E ANULUAR/SHTYRE/NDERPRERE -> shkruaje, mos e harro (shih lart).
+                    _shenjo_statusin_e_vdekur(
+                        fix_id, status, (preds_by_id.get(fix_id) or {}).get("statusi"))
     except:
         pass
 
@@ -8555,6 +8611,8 @@ def api_status(request: Request, kalim: str = None):
             "WINNER_PRAG":    _konf("WINNER_PRAG", WINNER_PRAG),
             "WINNER_PRAG_TREG": _konf("WINNER_PRAG_TREG", WINNER_PRAG_TREG),
             "PPM_MIN_KANDIDATE": PPM_MIN_KANDIDATE,
+            "PPM_DRITARE_DITE": PPM_DRITARE_DITE,
+            "PPM_REFRESH_MIN_SEK": PPM_REFRESH_MIN_SEK,
             "INJURY_PEN_PER": INJURY_PEN_PER,
             "INJURY_PEN_CAP": INJURY_PEN_CAP,
             "PLATT_A":        _konf("PLATT_A", PLATT_A),
@@ -8880,7 +8938,7 @@ def perditeso_rezultatet_perfunduara():
         res = requests.get(
             f"{SUPABASE_URL_PREDS}?select=id,ndeshja,statusi,ekipi_1,ekipi_2,liga_emri,data,ora,ora_sakte,"
             f"koef_1,koef_x,koef_2,odds_reale,rezultati_sakt,tregjet,best_bet,besueshmeria,training_data,dist_gola,is_value,is_premium"
-            f"&statusi=not.in.(FT,AET,PEN,AWD,WO)",
+            f"{_filtri_pa_mbaruar()}",
             headers=SUPABASE_SERVICE_HEADERS,
             timeout=10
         )
@@ -8894,6 +8952,7 @@ def perditeso_rezultatet_perfunduara():
         preds_by_id = {str(p.get("id")): p for p in ndeshjet_pa_mbaruar}
         u_perditesuan = 0
         ende_aktive   = 0
+        te_vdekura    = 0
         deshtuan      = 0
 
         # Merr ID-të dhe i kontrollon në batch
@@ -8955,12 +9014,19 @@ def perditeso_rezultatet_perfunduara():
                     except Exception:
                         pass
                 else:
-                    ende_aktive += 1
+                    # E ANULUAR/SHTYRE/NDERPRERE -> shkruaje, qe te dale nga filtri
+                    # dhe te mos rikontrollohet ne cdo cikel (shih lart).
+                    if _shenjo_statusin_e_vdekur(
+                            fix_id, status, (preds_by_id.get(fix_id) or {}).get("statusi")):
+                        te_vdekura += 1
+                    else:
+                        ende_aktive += 1
 
         return {
             "sukses":         True,
             "perditesuara":   u_perditesuan,
             "ende_aktive":    ende_aktive,
+            "te_vdekura":     te_vdekura,
             "deshtuan":       deshtuan,
             "total_kontrolla": len(ndeshjet_pa_mbaruar),
         }
