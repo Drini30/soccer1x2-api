@@ -26,7 +26,7 @@ SELECT
   p.rezultati                                                           AS reali,
   (split_part(p.rezultati_sakt,'-',1)::int + split_part(p.rezultati_sakt,'-',2)::int) AS totali_yne,
   p.besueshmeria
-FROM parashikimet p
+FROM predictions p
 WHERE p.ndeshja ILIKE '%Rayo Vallecano%'
    OR p.ndeshja ILIKE '%Instituto%'
    OR p.ndeshja ILIKE '%Daejeon%'

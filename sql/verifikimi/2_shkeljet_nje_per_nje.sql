@@ -15,7 +15,7 @@ WITH b AS (
     NULLIF(regexp_replace(p.koef_2::text, '[^0-9.]', '', 'g'), '')::numeric AS k2,
     split_part(p.rezultati_sakt, '-', 1)::int AS g1,
     split_part(p.rezultati_sakt, '-', 2)::int AS g2
-  FROM parashikimet p
+  FROM predictions p
   WHERE p.data IN ('2026-09-15', '2026-09-16')
     AND p.rezultati_sakt ~ '^[0-9]+-[0-9]+$'
 ),

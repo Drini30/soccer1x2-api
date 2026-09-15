@@ -12,7 +12,7 @@ SELECT
   count(*) FILTER (WHERE tregjet IS NOT NULL)           AS me_tregje,
   count(*) FILTER (WHERE is_premium)                    AS premium,
   min(ora) AS e_para, max(ora) AS e_fundit
-FROM parashikimet
+FROM predictions
 WHERE data IN ('2026-09-14', '2026-09-15', '2026-09-16')
 GROUP BY data
 ORDER BY data;
