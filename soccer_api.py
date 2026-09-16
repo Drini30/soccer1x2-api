@@ -10779,3 +10779,19 @@ def krahaso_predictions(date: str = None, limit: int = 40):
         "shpjegim": "af = API-Football (Poisson, pa koeficiente). Krahaso af_fitues me yni_fitues.",
         "krahasimi": rezultatet
     }
+
+
+# ==========================================================================
+# MODULI I FINANCAVE PERSONALE  (/api/fin/* dhe /financat)
+# ==========================================================================
+# Produkt krejt tjeter nga parashikimet — ndan vetem procesin, Supabase-in dhe
+# deploy-in. Montohet ne menyre fail-safe: nese financat.py mungon ose ngre
+# gabim ne import, API-ja e parashikimeve nis njesoj sikur te mos ekzistonte.
+try:
+    import financat
+    app.include_router(financat.router)
+    app.include_router(financat.router_faqe)
+    print("✅ Moduli i financave u montua — /api/fin/* dhe /financat.")
+except Exception as _e_fin:
+    print(f"⚠️ Moduli i financave nuk u ngarkua ({_e_fin}) — "
+          f"parashikimet vazhdojne normalisht.")
