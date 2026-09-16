@@ -3620,16 +3620,25 @@ if (!gjuhaAktuale) {
                     return;
                 }
 
-                // Statistika e shpejtë (sa goditi)
-                let totEval = historiku.filter(n => n.goditi_1x2 !== null && n.goditi_1x2 !== undefined).length;
+                // Statistika e shpejtë (sa goditi) — TË GJITHA, dhe veçmas piket PPM.
+                // Historiku tregon tani çdo ndeshje të parashikuar, jo vetëm ato të shitura;
+                // pa këtë ndarje, norma e piketave PPM do të humbiste te mesatarja e përgjithshme.
+                const _vlere = n => n.goditi_1x2 !== null && n.goditi_1x2 !== undefined;
+                const _ppm   = n => n.is_premium === true;
+                let totEval = historiku.filter(_vlere).length;
                 let hit1x2 = historiku.filter(n => n.goditi_1x2).length;
                 let hitSkor = historiku.filter(n => n.goditi_skor).length;
                 let pct = totEval ? Math.round(hit1x2 * 100 / totEval) : 0;
-                
+                let pTot  = historiku.filter(n => _ppm(n) && _vlere(n)).length;
+                let pHit  = historiku.filter(n => _ppm(n) && n.goditi_1x2).length;
+                let pSkor = historiku.filter(n => _ppm(n) && n.goditi_skor).length;
+                let pPct  = pTot ? Math.round(pHit * 100 / pTot) : 0;
+
                 let h = `<div class="matches-area" style="width:100%; max-width:800px; margin:0 auto; padding:10px;">`;
                 h += `<h3 style="color:#f2cc60; margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:10px;">📊 ${ui[gjuhaAktuale].historyTab.toUpperCase()}</h3>`;
-                h += `<div style="color:#8ba898; font-size:12px; margin-bottom:15px;">1X2: <b style="color:#7ee08a;">${hit1x2}/${totEval}</b> (${pct}%) &nbsp;·&nbsp; 🎯 ${ui[gjuhaAktuale].prediction}: <b style="color:#f2cc60;">${hitSkor}</b></div>`;
-                
+                h += `<div style="color:#8ba898; font-size:12px; margin-bottom:6px;">1X2: <b style="color:#7ee08a;">${hit1x2}/${totEval}</b> (${pct}%) &nbsp;·&nbsp; 🎯 ${ui[gjuhaAktuale].prediction}: <b style="color:#f2cc60;">${hitSkor}</b></div>`;
+                if (pTot) h += `<div style="color:#8ba898; font-size:12px; margin-bottom:15px;"><span style="background:#1f6feb;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;">PPM</span> 1X2: <b style="color:#7ee08a;">${pHit}/${pTot}</b> (${pPct}%) &nbsp;·&nbsp; 🎯 <b style="color:#f2cc60;">${pSkor}</b></div>`;
+
                 historiku.forEach(n => {
                     let par = n.parashikimi || "—";
                     let ht = n.rezultati_ht || "—";
@@ -3643,8 +3652,13 @@ if (!gjuhaAktuale) {
                     let koefLine = n.koef_1 ? `1: ${n.koef_1} &nbsp; X: ${n.koef_x} &nbsp; 2: ${n.koef_2}` : "";
                     let info = (n.data||'') + (n.ora ? ' ' + n.ora : '') + (n.liga ? ' · ' + n.liga : '');
                     
+                    // Shenja e piketave qe u SHITEN si PPM — historiku tani permban gjithcka,
+                    // ndaj pa kete s'dallohen dot piket e publikuara nga te tjerat.
+                    let ppmTag = (n.is_premium === true)
+                        ? ` <span style="background:#1f6feb;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;">PPM</span>` : '';
+
                     h += `<div class="ndeshje-box" style="margin-bottom:15px;">
-                            <div style="font-weight:bold; color:#fff; font-size:14px; margin-bottom:5px;">${n.ndeshja}</div>
+                            <div style="font-weight:bold; color:#fff; font-size:14px; margin-bottom:5px;">${n.ndeshja}${ppmTag}</div>
                             <div style="color:#8ba898; font-size:11px; margin-bottom:6px;">🕐 ${info}</div>
                             ${koefLine ? `<div style="color:#58a6ff; font-size:12px; margin-bottom:6px;">${koefLine}</div>` : ''}
                             <div style="color:#c9d1d9; font-size:13px; margin-bottom:8px;">HT: <b>${ht}</b> &nbsp;·&nbsp; FT: <b style="color:#f2cc60;">${ft||'—'}</b></div>

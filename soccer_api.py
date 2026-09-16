@@ -130,7 +130,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
 # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
 # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
-BUILD = "2026-09-16-maja-e-vertete"
+BUILD = "2026-09-16-historiku-i-plote"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -8770,20 +8770,28 @@ def keep_alive_ping():
 # kontrollon te API-Sports dhe i përditëson me rezultatin final.
 
 @app.get("/api/arkiv")
-def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gjitha: int = 0):
+def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0,
+                 te_gjitha: int = 0, vetem_premium: int = 0):
     """Historiku PPM + eksport për kalibrim/trajnim.
-    Arkivi ruan ÇDO ndeshje të mbaruar, por historiku PPM tregon vetëm ato që u
-    PUBLIKUAN si premium/PPM. Filtrohet me flag-un ORIGJINAL is_premium:
-      • is_premium = True  -> u publikua (edhe 1-1 që s'është 'value bet') -> shfaqet
-      • is_premium = False -> s'doli kurrë premium                          -> nuk shfaqet
-      • is_premium = NULL  -> arkiv i vjetër pa flag -> rrëzohet te is_value (sjellja e vjetër)
-    Për eksport/backtest: ?te_gjitha=1 -> kthen çdo rresht të arkivuar."""
+
+    ÇFARË SHFAQET (ndryshuar 16/09/2026): ÇDO ndeshje e arkivuar, jo vetëm ato që
+    u publikuan si premium. Historiku është tani rekordi i plotë i modelit, jo
+    vitrina e asaj që u shit. Me `?vetem_premium=1` kthehet sjellja e vjetër.
+      • is_premium = True  -> u publikua si PPM (edhe 1-1 që s'është 'value bet')
+      • is_premium = False -> s'doli kurrë premium
+      • is_premium = NULL  -> arkiv i vjetër pa flag -> rrëzohet te is_value
+    Flag-u kthehet gjithsesi në çdo rresht, që faqja të dallojë piket e shitura.
+
+    RENDITJA: kronologji e vazhdueshme sipas (data, ora), më të rejat lart. Më parë
+    ishte `data.desc,ora.asc` — ditët zbritëse po orët ngjitëse brenda ditës, pra
+    lista kërcente një ditë prapa e pastaj ecte përpara brenda saj. Tani zbritëse
+    të dyja: 16/09 21:00 → 16/09 01:00 → 15/09 21:00, pa asnjë kërcim.
+
+    Për eksport/backtest: ?te_gjitha=1 (sinonim i parazgjedhjes, mbahet për pajtim)."""
     _lim = max(1, min(limit, 2000))
-    _filtro = bool(VALUE_FILTER_ON) and not te_gjitha
+    _filtro = bool(vetem_premium) and bool(VALUE_FILTER_ON) and not te_gjitha
     _fetch = min(_lim * 5, 2000) if _filtro else _lim
-    # `ora.asc` brenda dites: e njejta radhe si te kutia e Hash-it (/api/pf/list),
-    # ku ndeshjet rreshtohen sipas ores se fillimit. Ditet mbeten me te rejat lart.
-    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.asc&limit={_fetch}"
+    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.desc&limit={_fetch}"
     if liga.strip():
         q += f"&liga=eq.{requests.utils.quote(liga.strip(), safe='')}"
     if vetem_goditje:
@@ -8793,17 +8801,34 @@ def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gj
         rows = r.json() if r.status_code == 200 else []
     except Exception:
         return []
-    if _filtro and isinstance(rows, list):
+    if not isinstance(rows, list):
+        return []
+    if _filtro:
         def _shfaq(x):
             ip = x.get("is_premium")
             if ip is True:
                 return True
             if ip is False:
                 return False
-            # is_premium NULL (arkiv i vjetër) -> rrëzim te is_value (sjellja para këtij ndryshimi)
+            # is_premium NULL (arkiv i vjetër) -> rrëzim te is_value (sjellja e vjetër)
             return x.get("is_value") is not False
-        rows = [x for x in rows if _shfaq(x)][:_lim]
-    return rows
+        rows = [x for x in rows if _shfaq(x)]
+
+    # Rirenditje mbrojtëse në Python. `ora` është zakonisht "HH:MM" (ku renditja
+    # alfabetike përkon me atë kohore), por disa rreshta të vjetër e kanë "FT" —
+    # dhe "FT" alfabetikisht del PARA çdo ore, duke i hedhur lart pa arsye.
+    def _celes(x):
+        _o = str(x.get("ora") or "").strip()
+        _min = -1
+        if ":" in _o:
+            _h, _, _mm = _o.partition(":")
+            try:
+                _min = int(_h) * 60 + int(_mm[:2])
+            except Exception:
+                _min = -1          # "FT" ose çfarëdo tjetër -> në fund të ditës së vet
+        return (str(x.get("data") or ""), _min)
+    rows.sort(key=_celes, reverse=True)
+    return rows[:_lim]
 
 
 @app.get("/api/performanca")
