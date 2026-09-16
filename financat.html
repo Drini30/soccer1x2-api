@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="sq" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financat</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d9488'/%3E%3Cpath d='M8 22l5-7 4 3 7-9' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+/* ── Shenjat e ngjyrave ────────────────────────────────────────────────── */
+:root{
+  --bg:#fcfcfb; --siperfaqja:#ffffff; --siperfaqja-2:#f4f4f2; --vija:#e3e3df;
+  --bojë:#17171a; --bojë-2:#54545c; --bojë-3:#85858f;
+  --seria-1:#1d4ed8; --seria-2:#0d9488;
+  --kritik:#b91c1c; --paralajmerim:#b45309; --mire:#15803d; --info:#64748b;
+  --kritik-bg:#fef2f2; --paralajmerim-bg:#fffbeb; --mire-bg:#f0fdf4; --info-bg:#f8fafc;
+  --rreze:10px; --hije:0 1px 2px rgba(0,0,0,.05),0 1px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#131314; --siperfaqja:#1a1a19; --siperfaqja-2:#232324; --vija:#32323a;
+    --bojë:#f2f2f0; --bojë-2:#b4b4bc; --bojë-3:#85858f;
+    --seria-1:#4f8df9; --seria-2:#19a897;
+    --kritik:#f87171; --paralajmerim:#fbbf24; --mire:#4ade80; --info:#94a3b8;
+    --kritik-bg:#2a1414; --paralajmerim-bg:#291f0d; --mire-bg:#0f2417; --info-bg:#1c1f26;
+    --hije:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131314; --siperfaqja:#1a1a19; --siperfaqja-2:#232324; --vija:#32323a;
+  --bojë:#f2f2f0; --bojë-2:#b4b4bc; --bojë-3:#85858f;
+  --seria-1:#4f8df9; --seria-2:#19a897;
+  --kritik:#f87171; --paralajmerim:#fbbf24; --mire:#4ade80; --info:#94a3b8;
+  --kritik-bg:#2a1414; --paralajmerim-bg:#291f0d; --mire-bg:#0f2417; --info-bg:#1c1f26;
+  --hije:0 1px 2px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--bojë);
+  font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0 0 .4em;line-height:1.25;font-weight:600}
+h1{font-size:1.35rem} h2{font-size:1.05rem} h3{font-size:.95rem}
+a{color:var(--seria-1)}
+.mbajtes{max-width:1120px;margin:0 auto;padding:0 16px 64px}
+
+/* ── Shiriti i siperm ──────────────────────────────────────────────────── */
+header{position:sticky;top:0;z-index:20;background:var(--bg);
+  border-bottom:1px solid var(--vija)}
+.shiriti{max-width:1120px;margin:0 auto;padding:12px 16px;display:flex;
+  align-items:center;gap:12px;flex-wrap:wrap}
+.logo{font-weight:650;letter-spacing:-.02em;margin-right:auto;display:flex;
+  align-items:center;gap:8px}
+.pike-logo{width:9px;height:9px;border-radius:50%;background:var(--seria-2)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--vija);
+  background:var(--siperfaqja);color:var(--bojë);padding:7px 13px;transition:.15s}
+button:hover{background:var(--siperfaqja-2)}
+button.kryesor{background:var(--seria-1);border-color:var(--seria-1);color:#fff}
+button.kryesor:hover{filter:brightness(1.08)}
+button.vogel{padding:4px 9px;font-size:.82rem}
+button:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── Kartat ────────────────────────────────────────────────────────────── */
+.karte{background:var(--siperfaqja);border:1px solid var(--vija);
+  border-radius:var(--rreze);padding:18px;box-shadow:var(--hije);margin-bottom:16px}
+.rrjeta{display:grid;gap:16px}
+.rrjeta>*{min-width:0}
+@media(min-width:760px){.rrjeta.k2{grid-template-columns:1fr 1fr}
+  .rrjeta.k3{grid-template-columns:repeat(3,1fr)}}
+.pllaka{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+.pllake{background:var(--siperfaqja);border:1px solid var(--vija);
+  border-radius:var(--rreze);padding:14px 16px}
+.pllake .etikete{font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--bojë-3)}
+.pllake .vlera{font-size:1.5rem;font-weight:600;letter-spacing:-.02em;
+  margin-top:4px;font-variant-numeric:tabular-nums}
+.pllake .nen{font-size:.8rem;color:var(--bojë-2);margin-top:2px}
+.pozitiv{color:var(--mire)} .negativ{color:var(--kritik)}
+
+/* ── Skori ─────────────────────────────────────────────────────────────── */
+.skor-koke{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.skor-numer{font-size:2.6rem;font-weight:650;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums}
+.distinktiv{font-size:.78rem;padding:3px 10px;border-radius:999px;font-weight:600;
+  border:1px solid currentColor}
+.perberes{display:grid;grid-template-columns:1fr auto;gap:2px 10px;
+  padding:9px 0;border-bottom:1px solid var(--vija)}
+.perberes:last-child{border-bottom:0}
+.perberes .em{font-weight:500}
+.perberes .pi{font-variant-numeric:tabular-nums;color:var(--bojë-2);font-size:.9rem}
+.perberes .sh{grid-column:1/-1;font-size:.8rem;color:var(--bojë-3)}
+.shufer{grid-column:1/-1;height:5px;border-radius:3px;background:var(--siperfaqja-2);
+  overflow:hidden;margin-top:4px}
+.shufer i{display:block;height:100%;background:var(--seria-2);border-radius:3px}
+
+/* ── Alarmet ───────────────────────────────────────────────────────────── */
+.alarm{display:flex;gap:10px;padding:11px 13px;border-radius:9px;margin-bottom:8px;
+  border:1px solid var(--vija);align-items:flex-start}
+.alarm .ik{font-size:1rem;line-height:1.3}
+.alarm.kritik{background:var(--kritik-bg);border-color:var(--kritik)}
+.alarm.paralajmerim{background:var(--paralajmerim-bg);border-color:var(--paralajmerim)}
+.alarm.info{background:var(--info-bg)}
+.alarm .tt{font-weight:600;font-size:.92rem}
+.alarm .dd{font-size:.86rem;color:var(--bojë-2)}
+.alarm .vv{font-size:.82rem;color:var(--bojë-3);margin-top:3px;font-style:italic}
+
+/* ── Tabelat ───────────────────────────────────────────────────────────── */
+.tabele-mbeshtjelles{overflow-x:auto;max-width:100%;margin:0 -4px}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{text-align:left;font-weight:600;color:var(--bojë-3);font-size:.74rem;
+  text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;
+  border-bottom:1px solid var(--vija);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--vija);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ── Format ────────────────────────────────────────────────────────────── */
+label{display:block;font-size:.78rem;color:var(--bojë-2);margin-bottom:3px}
+input,select,textarea{font:inherit;width:100%;padding:8px 10px;border-radius:8px;
+  border:1px solid var(--vija);background:var(--bg);color:var(--bojë)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--seria-1);
+  outline-offset:-1px;border-color:transparent}
+.fusha{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  margin-bottom:12px}
+.skedat{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.skeda{padding:6px 12px;border-radius:999px;border:1px solid var(--vija);
+  background:var(--siperfaqja);font-size:.86rem;cursor:pointer}
+.skeda[aria-selected="true"]{background:var(--seria-1);border-color:var(--seria-1);
+  color:#fff;font-weight:500}
+
+/* ── Grafiku ───────────────────────────────────────────────────────────── */
+.grafik{position:relative}
+svg{display:block;width:100%;overflow:visible}
+.rrjete-vije{stroke:var(--vija);stroke-width:1}
+.bosht-teksti{fill:var(--bojë-3);font-size:11px}
+.keshille{position:absolute;pointer-events:none;background:var(--siperfaqja);
+  border:1px solid var(--vija);border-radius:8px;padding:8px 10px;font-size:.82rem;
+  box-shadow:var(--hije);opacity:0;transition:opacity .1s;white-space:nowrap;z-index:5}
+.keshille b{font-variant-numeric:tabular-nums}
+
+/* ── Te tjera ──────────────────────────────────────────────────────────── */
+.i-heshtur{color:var(--bojë-2);font-size:.88rem}
+.rresht{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ndarje{height:1px;background:var(--vija);margin:16px 0}
+.pergjigje{white-space:normal;line-height:1.65}
+.pergjigje h3{margin-top:18px;padding-bottom:5px;border-bottom:1px solid var(--vija)}
+.pergjigje ul{padding-left:20px} .pergjigje li{margin-bottom:5px}
+.pergjigje code{background:var(--siperfaqja-2);padding:1px 5px;border-radius:4px;
+  font-size:.86em}
+.pergjigje pre{background:var(--siperfaqja-2);padding:10px;border-radius:8px;
+  overflow-x:auto;font-size:.8rem}
+.burim{display:inline-block;font-size:.78rem;padding:3px 8px;margin:3px 4px 0 0;
+  border:1px solid var(--vija);border-radius:999px;color:var(--bojë-2);
+  text-decoration:none;max-width:320px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.hyrje-kuti{max-width:400px;margin:14vh auto;text-align:center}
+.fshihu{display:none!important}
+.ngarkim{display:inline-block;width:13px;height:13px;border:2px solid var(--vija);
+  border-top-color:var(--seria-1);border-radius:50%;animation:rrotullo .7s linear infinite;
+  vertical-align:-2px}
+@keyframes rrotullo{to{transform:rotate(360deg)}}
+.njoftim{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  background:var(--bojë);color:var(--bg);padding:10px 18px;border-radius:999px;
+  font-size:.86rem;z-index:50;box-shadow:var(--hije)}
+</style>
+</head>
+<body>
+
+<!-- ══ HYRJA ═══════════════════════════════════════════════════════════ -->
+<div id="hyrja" class="hyrje-kuti">
+  <h1>Financat</h1>
+  <p class="i-heshtur">Fut token-in e aksesit (FIN_TOKEN).</p>
+  <div class="karte">
+    <label for="token">Token</label>
+    <input id="token" type="password" autocomplete="current-password"
+           placeholder="••••••••" onkeydown="if(event.key==='Enter')hyr()">
+    <div style="margin-top:12px"><button class="kryesor" onclick="hyr()">Hyr</button></div>
+    <p id="gabimi-hyrjes" class="i-heshtur" style="color:var(--kritik)"></p>
+  </div>
+</div>
+
+<!-- ══ APLIKACIONI ═════════════════════════════════════════════════════ -->
+<div id="apja" class="fshihu">
+<header>
+  <div class="shiriti">
+    <div class="logo"><span class="pike-logo"></span>Financat</div>
+    <span id="statusi" class="i-heshtur"></span>
+    <button class="vogel" onclick="ndryshoTemen()" id="btn-teme">Tema</button>
+    <button class="vogel" onclick="ngarko()">Rifresko</button>
+    <button class="vogel" onclick="dil()">Dil</button>
+  </div>
+</header>
+
+<div class="mbajtes">
+  <div class="skedat" role="tablist" id="skedat"></div>
+
+  <!-- ── PANELI ── -->
+  <section id="pj-panel">
+    <div class="pllaka" id="pllakat"></div>
+    <div class="rrjeta k2" style="margin-top:16px">
+      <div class="karte">
+        <h2>Skori i sjelljes</h2>
+        <div class="skor-koke">
+          <span class="skor-numer" id="skor-numer">—</span>
+          <span class="i-heshtur">/ 100</span>
+          <span class="distinktiv" id="skor-nivel"></span>
+        </div>
+        <p class="i-heshtur" id="skor-shpjegim"></p>
+        <div id="skor-perberesit"></div>
+      </div>
+      <div class="karte">
+        <h2>Alarmet</h2>
+        <div id="alarmet"></div>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Bilanci i projektuar</h2>
+      <p class="i-heshtur" id="proj-nenteksti"></p>
+      <div class="grafik" id="grafik-bilanc"></div>
+    </div>
+
+    <div class="karte">
+      <h2>Rrjedha neto mujore</h2>
+      <p class="i-heshtur">Sa te mbetet cdo muaj pas shpenzimeve dhe kesteve.
+        Shufrat nen zero (te kuqe) jane muaj humbjeje.</p>
+      <div class="grafik" id="grafik-neto"></div>
+    </div>
+
+    <div class="rrjeta k2">
+      <div class="karte"><h2>Borxhet</h2><div id="tab-borxhe"></div>
+        <div id="strategjia"></div></div>
+      <div class="karte"><h2>Arketimet e pritura</h2><div id="tab-arketime"></div></div>
+    </div>
+
+    <div class="rrjeta k2">
+      <div class="karte"><h2>Investimet</h2><div id="tab-investime"></div></div>
+      <div class="karte"><h2>Objektivat</h2><div id="tab-objektiva"></div></div>
+    </div>
+  </section>
+
+  <!-- ── REGJISTRI ── -->
+  <section id="pj-regjistri" class="fshihu">
+    <div class="skedat" id="nen-skedat"></div>
+    <div class="karte">
+      <h2 id="reg-titulli"></h2>
+      <p class="i-heshtur" id="reg-ndihma"></p>
+      <div class="fusha" id="reg-fusha"></div>
+      <button class="kryesor" onclick="ruajRreshtin()">Shto</button>
+      <div class="ndarje"></div>
+      <div id="reg-tabela"></div>
+    </div>
+  </section>
+
+  <!-- ── SKENARI ── -->
+  <section id="pj-skenari" class="fshihu">
+    <div class="karte">
+      <h2>Po sikur?</h2>
+      <p class="i-heshtur">Shto nje shpenzim ose te ardhur hipotetike dhe shih
+        cfare i ndodh bilancit. Asgje nuk ruhet ne baze.</p>
+      <div class="fusha">
+        <div><label>Emri</label><input id="sk-emri" placeholder="Makine e re"></div>
+        <div><label>Shuma</label><input id="sk-shuma" type="number" step="0.01" value="1000"></div>
+        <div><label>Monedha</label><input id="sk-monedha" value="EUR"></div>
+        <div><label>Drejtimi</label><select id="sk-drejtimi">
+          <option value="dalje">Dalje (shpenzim)</option>
+          <option value="hyrje">Hyrje (te ardhur)</option></select></div>
+        <div><label>Frekuenca</label><select id="sk-frekuenca">
+          <option value="nje_here">Nje here</option><option value="mujore">Mujore</option>
+          <option value="javore">Javore</option><option value="vjetore">Vjetore</option>
+        </select></div>
+        <div><label>Data e fillimit</label><input id="sk-data" type="date"></div>
+      </div>
+      <button class="kryesor" onclick="provoSkenarin()">Llogarit</button>
+      <div id="skenari-dalja"></div>
+    </div>
+  </section>
+
+  <!-- ── KESHILLTARI ── -->
+  <section id="pj-keshilltari" class="fshihu">
+    <div class="karte">
+      <h2>Keshilltari</h2>
+      <p class="i-heshtur">Gjendja jote e llogaritur i dergohet Claude-it, i cili
+        kerkon ne internet per normat, cmimet dhe opsionet e sotme.
+        Numrat nuk i prek — vetem i interpreton.</p>
+      <label for="pyetja">Pyetja (opsionale)</label>
+      <textarea id="pyetja" rows="2"
+        placeholder="A ia vlen te shlyej kredine para afatit apo t'i investoj parat?"></textarea>
+      <div class="rresht" style="margin-top:10px">
+        <button class="kryesor" onclick="pyetKeshilltarin()">Analizo gjendjen</button>
+        <button onclick="skanoOpsionet()">Skano tregun</button>
+        <label class="rresht" style="margin:0;font-size:.82rem">
+          <input type="checkbox" id="internet" checked style="width:auto"> me internet</label>
+      </div>
+      <div id="keshilltari-dalja"></div>
+    </div>
+    <div class="karte">
+      <h2>Raportet e mepareshme</h2>
+      <div id="raportet"></div>
+    </div>
+  </section>
+</div>
+</div>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   GJENDJA
+   ═══════════════════════════════════════════════════════════════════════ */
+let TOKEN = localStorage.getItem('fin_token') || '';
+let PANEL = null;
+let LLOGARITE = [];
+let REG_AKTIV = 'transaksionet';
+let CMIMET_PROPOZUARA = [];
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function nr(x, shifra = 2){
+  if (x === null || x === undefined || isNaN(x)) return '—';
+  return Number(x).toLocaleString('de-DE',
+    {minimumFractionDigits: shifra, maximumFractionDigits: shifra});
+}
+function para(x, shifra = 0){
+  const m = PANEL ? PANEL.monedha_baze : '';
+  return nr(x, shifra) + (m ? ' ' + m : '');
+}
+function njofto(tekst, kohe = 2600){
+  const d = document.createElement('div');
+  d.className = 'njoftim'; d.textContent = tekst;
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), kohe);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   API
+   ═══════════════════════════════════════════════════════════════════════ */
+async function api(rruga, opsione = {}){
+  const p = await fetch('/api/fin' + rruga, {
+    method: opsione.metoda || 'GET',
+    headers: {'X-Fin-Token': TOKEN, 'Content-Type': 'application/json'},
+    body: opsione.trupi ? JSON.stringify(opsione.trupi) : undefined,
+  });
+  const teksti = await p.text();
+  let dalja; try { dalja = JSON.parse(teksti); } catch { dalja = {detail: teksti}; }
+  if (!p.ok) throw new Error(dalja.detail || ('Gabim ' + p.status));
+  return dalja;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HYRJA / TEMA
+   ═══════════════════════════════════════════════════════════════════════ */
+async function hyr(){
+  const t = $('#token').value.trim();
+  if (!t) return;
+  TOKEN = t;
+  try {
+    await api('/skor');
+    localStorage.setItem('fin_token', t);
+    $('#hyrja').classList.add('fshihu');
+    $('#apja').classList.remove('fshihu');
+    ngarko();
+  } catch (e) {
+    $('#gabimi-hyrjes').textContent = e.message;
+    TOKEN = '';
+  }
+}
+function dil(){
+  localStorage.removeItem('fin_token'); location.reload();
+}
+function ndryshoTemen(){
+  const tani = document.documentElement.getAttribute('data-theme');
+  const e_re = tani === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', e_re);
+  try { localStorage.setItem('fin_tema', e_re); } catch {}
+  if (PANEL) { vizatoGrafiket(); }
+}
+try {
+  const t = localStorage.getItem('fin_tema');
+  if (t) document.documentElement.setAttribute('data-theme', t);
+} catch {}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SKEDAT
+   ═══════════════════════════════════════════════════════════════════════ */
+const SKEDAT = [
+  ['panel', 'Paneli'], ['regjistri', 'Regjistri'],
+  ['skenari', 'Po sikur?'], ['keshilltari', 'Keshilltari'],
+];
+function ndertoSkedat(){
+  $('#skedat').innerHTML = SKEDAT.map(([id, em], i) =>
+    `<button class="skeda" role="tab" aria-selected="${i === 0}"
+       onclick="hapSkeden('${id}')">${em}</button>`).join('');
+}
+function hapSkeden(id){
+  SKEDAT.forEach(([s]) => $('#pj-' + s).classList.toggle('fshihu', s !== id));
+  $$('#skedat .skeda').forEach((b, i) =>
+    b.setAttribute('aria-selected', SKEDAT[i][0] === id));
+  if (id === 'keshilltari') ngarkoRaportet();
+  if (id === 'regjistri') hapRegjistrin(REG_AKTIV);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NGARKIMI I PANELIT
+   ═══════════════════════════════════════════════════════════════════════ */
+async function ngarko(){
+  $('#statusi').innerHTML = '<span class="ngarkim"></span>';
+  try {
+    PANEL = await api('/panel?muaj=12');
+    LLOGARITE = await api('/te-dhena/llogarite');
+    vizatoPanelin();
+    $('#statusi').textContent = 'Perditesuar ' +
+      new Date(PANEL.koha).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+  } catch (e) {
+    $('#statusi').innerHTML = `<span style="color:var(--kritik)">${esc(e.message)}</span>`;
+  }
+}
+
+function vizatoPanelin(){
+  const k = PANEL.kapaciteti, s = PANEL.skori, r = PANEL.rrjedha;
+  const shenjeKlas = v => v >= 0 ? 'pozitiv' : 'negativ';
+
+  $('#pllakat').innerHTML = [
+    ['Neto vlera', para(k.neto_vlera),
+     'llogari + investime + arketime − borxhe', shenjeKlas(k.neto_vlera)],
+    ['Likuiditet', para(k.likuiditet),
+     `rezerva e synuar ${para(k.rezerva_synim)}`, ''],
+    ['Rrjedha mujore', (k.rrjedha_neto_mujore >= 0 ? '+' : '') + para(k.rrjedha_neto_mujore),
+     `te ardhura ${para(r.te_ardhura_totale)}`, shenjeKlas(k.rrjedha_neto_mujore)],
+    ['Mbulimi', nr(s.muaj_mbulimi, 1) + ' muaj',
+     'sa rron pa asnje te ardhur', s.muaj_mbulimi >= 3 ? 'pozitiv' : 'negativ'],
+    ['Borxhi', para(PANEL.detyrimet.total_borxh),
+     `kestet ${para(PANEL.detyrimet.kestet_mujore)}/muaj`, ''],
+    ['Teprica e lire', para(k.teprica_e_lire),
+     k.rezerva_mungese > 0 ? `mungon rezerve ${para(k.rezerva_mungese)}` : 'rezerva e mbushur',
+     k.teprica_e_lire > 0 ? 'pozitiv' : ''],
+  ].map(([e, v, n, kl]) => `<div class="pllake"><div class="etikete">${e}</div>
+      <div class="vlera ${kl}">${v}</div><div class="nen">${n}</div></div>`).join('');
+
+  // ── Skori
+  $('#skor-numer').textContent = nr(s.totali, 1);
+  const niv = $('#skor-nivel');
+  niv.textContent = s.niveli;
+  niv.style.color = s.totali >= 70 ? 'var(--mire)'
+    : s.totali >= 50 ? 'var(--paralajmerim)' : 'var(--kritik)';
+  $('#skor-shpjegim').textContent =
+    `Kursim ${nr(s.norma_kursimit, 1)}% · DTI ${nr(s.dti, 1)}% · ` +
+    `shpenzim mujor ${para(s.shpenzim_mujor)}`;
+  $('#skor-perberesit').innerHTML = s.perberesit.map(p => `
+    <div class="perberes">
+      <span class="em">${esc(p.emri)}</span>
+      <span class="pi">${nr(p.pike, 1)} / ${p.maks}</span>
+      <div class="shufer"><i style="width:${Math.max(0, p.pike / p.maks * 100)}%"></i></div>
+      <span class="sh">${esc(p.vlera)} · synimi ${esc(p.synimi)} — ${esc(p.shpjegim)}</span>
+    </div>`).join('');
+
+  // ── Alarmet
+  const ikonat = {kritik: '●', paralajmerim: '▲', info: '○'};
+  $('#alarmet').innerHTML = PANEL.alarmet.length
+    ? PANEL.alarmet.map(a => `<div class="alarm ${a.niveli}">
+        <span class="ik" style="color:var(--${a.niveli === 'info' ? 'info' : a.niveli})"
+          aria-hidden="true">${ikonat[a.niveli]}</span>
+        <div><div class="tt">${esc(a.titulli)}</div>
+          <div class="dd">${esc(a.detaji)}</div>
+          ${a.veprimi ? `<div class="vv">→ ${esc(a.veprimi)}</div>` : ''}</div></div>`).join('')
+    : '<p class="i-heshtur">Asnje alarm. Gjithcka brenda parametrave.</p>';
+
+  // ── Projeksioni
+  const pr = PANEL.projeksioni;
+  $('#proj-nenteksti').textContent = pr.muaji_i_pare_negativ
+    ? `Kujdes: bilanci bie nen zero ne muajin ${pr.muaji_i_pare_negativ}. `
+      + `Pika me e ulet: ${para(pr.pika_me_e_ulet)}.`
+    : `Pas 12 muajsh: ${para(pr.bilanci_fundor)} · pika me e ulet ${para(pr.pika_me_e_ulet)}.`;
+  vizatoGrafiket();
+
+  // ── Tabelat
+  const d = PANEL.detyrimet;
+  $('#tab-borxhe').innerHTML = tabele(
+    ['Pala', 'Mbetur', 'Interes', 'Kesti', 'Afati'],
+    d.borxhe.map(b => [esc(b.pala), {n: nr(b.mbetur) + ' ' + b.monedha},
+      {n: nr(b.interesi_vjetor, 2) + '%'}, {n: nr(b.kesti_mujor_baze)},
+      b.afati ? (b.vonuar ? `<span style="color:var(--kritik)">${b.afati} · vonuar</span>`
+        : b.afati) : '—']), 'Asnje borxh.');
+  const st = PANEL.strategjia_borxhit;
+  $('#strategjia').innerHTML = st.ka_borxhe && st.orteku.muaj ? `
+    <div class="ndarje"></div>
+    <h3>Si t'i shlyesh</h3>
+    <p class="i-heshtur">Me ${para(st.shtesa_mujore)} shtese ne muaj:</p>
+    <table><tr><th>Metoda</th><th class="num">Muaj</th><th class="num">Interes</th></tr>
+      <tr><td>Orteku (interesi me i larte i pari)</td>
+        <td class="num">${st.orteku.muaj}</td><td class="num">${para(st.orteku.interes)}</td></tr>
+      <tr><td>Debolla (borxhi me i vogel i pari)</td>
+        <td class="num">${st.debolla.muaj}</td><td class="num">${para(st.debolla.interes)}</td></tr>
+    </table>
+    <p class="i-heshtur">${esc(st.rekomandimi)}${st.kursim_nga_orteku > 0
+      ? ' — kursen ' + para(st.kursim_nga_orteku) : ''}</p>` : '';
+
+  $('#tab-arketime').innerHTML = tabele(
+    ['Pala', 'Mbetur', 'Siguria', 'Afati'],
+    d.arketime.map(a => [esc(a.pala), {n: nr(a.mbetur) + ' ' + a.monedha},
+      {n: a.siguria + '%'},
+      a.afati ? (a.vonuar ? `<span style="color:var(--kritik)">${a.afati} · vonuar</span>`
+        : a.afati) : '—']),
+    'Asnje arketim i pritur.');
+  if (d.arketime.length)
+    $('#tab-arketime').innerHTML += `<p class="i-heshtur">Bruto ${para(d.arketime_bruto)}
+      → i peshuar me sigurine: <b>${para(d.arketime_neto)}</b></p>`;
+
+  const inv = PANEL.investimet;
+  $('#tab-investime').innerHTML = tabele(
+    ['Pozicioni', 'Vlera', 'Fitimi'],
+    inv.investimet.map(i => [
+      `${esc(i.emri)}${i.simboli ? ` <span class="i-heshtur">${esc(i.simboli)}</span>` : ''}`,
+      {n: nr(i.vlera_baze)},
+      {n: `<span class="${i.fitimi_baze >= 0 ? 'pozitiv' : 'negativ'}">`
+        + `${i.fitimi_baze >= 0 ? '+' : ''}${nr(i.fitimi_baze)} (${nr(i.fitimi_perqind, 1)}%)</span>`}]),
+    'Asnje investim i regjistruar.');
+  if (inv.investimet.length)
+    $('#tab-investime').innerHTML += `<p class="i-heshtur">Gjithsej ${para(inv.vlera_baze)}
+      · perqendrimi me i madh ${nr(inv.perqendrimi_max, 0)}% ne nje klase te vetme.</p>`;
+
+  $('#tab-objektiva').innerHTML = PANEL.objektivat.length
+    ? PANEL.objektivat.map(o => `<div class="perberes">
+        <span class="em">${esc(o.emri)}</span>
+        <span class="pi">${nr(o.aktuale)} / ${nr(o.synim)} ${o.monedha}</span>
+        <div class="shufer"><i style="width:${o.perqind}%"></i></div>
+        <span class="sh">${o.perqind}%${o.afati ? ` · afati ${o.afati}` : ''}${
+          o.kerkon_ne_muaj ? ` · kerkon ${para(o.kerkon_ne_muaj)}/muaj` : ''}</span>
+      </div>`).join('')
+    : '<p class="i-heshtur">Asnje objektiv.</p>';
+}
+
+function tabele(koka, rreshtat, bosh){
+  if (!rreshtat.length) return `<p class="i-heshtur">${bosh}</p>`;
+  return `<div class="tabele-mbeshtjelles"><table>
+    <tr>${koka.map((k, i) => `<th class="${i ? 'num' : ''}">${k}</th>`).join('')}</tr>
+    ${rreshtat.map(r => `<tr>${r.map(c =>
+      typeof c === 'object' && c !== null && 'n' in c
+        ? `<td class="num">${c.n}</td>` : `<td>${c}</td>`).join('')}</tr>`).join('')}
+  </table></div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   GRAFIKET — SVG i pastër, pa biblioteka
+   ═══════════════════════════════════════════════════════════════════════ */
+const NS = 'http://www.w3.org/2000/svg';
+function el(emri, atr = {}){
+  const n = document.createElementNS(NS, emri);
+  for (const [k, v] of Object.entries(atr)) n.setAttribute(k, v);
+  return n;
+}
+function stil(emri){
+  return getComputedStyle(document.documentElement).getPropertyValue(emri).trim();
+}
+function shkallaY(vmin, vmax, lart, poshte){
+  const gjeresia = (vmax - vmin) || 1;
+  return v => poshte - ((v - vmin) / gjeresia) * (poshte - lart);
+}
+function etiketatY(vmin, vmax, sa = 4){
+  const hapi = (vmax - vmin) / sa;
+  return Array.from({length: sa + 1}, (_, i) => vmin + hapi * i);
+}
+
+function vizatoGrafiket(){
+  vijaBilanci($('#grafik-bilanc'), PANEL.projeksioni.muajt);
+  shufraNeto($('#grafik-neto'), PANEL.projeksioni.muajt);
+}
+
+function kornize(mbajtes, lartesia = 230){
+  mbajtes.innerHTML = '';
+  const G = mbajtes.clientWidth || 640;
+  const svg = el('svg', {viewBox: `0 0 ${G} ${lartesia}`, height: lartesia,
+                         role: 'img'});
+  mbajtes.appendChild(svg);
+  const kesh = document.createElement('div');
+  kesh.className = 'keshille';
+  mbajtes.appendChild(kesh);
+  return {svg, kesh, G, L: lartesia, m: {l: 58, r: 14, t: 12, b: 26}};
+}
+
+function vijaBilanci(mbajtes, muajt){
+  if (!muajt.length) return;
+  const {svg, kesh, G, L, m} = kornize(mbajtes);
+  const vlerat = muajt.map(x => x.bilanci);
+  const vmax = Math.max(...vlerat, 0) * 1.08;
+  const vmin = Math.min(...vlerat, 0) * (Math.min(...vlerat) < 0 ? 1.15 : 1);
+  const y = shkallaY(vmin, vmax, m.t, L - m.b);
+  const x = i => m.l + (i / Math.max(1, muajt.length - 1)) * (G - m.l - m.r);
+  const ngjyra = stil('--seria-1'), vija = stil('--vija'), boje3 = stil('--bojë-3');
+
+  etiketatY(vmin, vmax).forEach(v => {                       // rrjeta e heshtur
+    svg.appendChild(el('line', {x1: m.l, x2: G - m.r, y1: y(v), y2: y(v),
+      stroke: vija, 'stroke-width': 1}));
+    const t = el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end',
+      class: 'bosht-teksti', fill: boje3});
+    t.textContent = Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0);
+    svg.appendChild(t);
+  });
+  if (vmin < 0) svg.appendChild(el('line', {x1: m.l, x2: G - m.r,
+    y1: y(0), y2: y(0), stroke: stil('--kritik'), 'stroke-width': 1.5,
+    'stroke-dasharray': '4 3'}));
+
+  const pika = muajt.map((mm, i) => [x(i), y(mm.bilanci)]);
+  svg.appendChild(el('path', {                                // sipërfaqja
+    d: `M${pika[0][0]},${y(Math.max(vmin, 0))} `
+      + pika.map(p => `L${p[0]},${p[1]}`).join(' ')
+      + ` L${pika[pika.length - 1][0]},${y(Math.max(vmin, 0))} Z`,
+    fill: ngjyra, opacity: .12}));
+  svg.appendChild(el('path', {                                // vija 2px
+    d: 'M' + pika.map(p => `${p[0]},${p[1]}`).join(' L'),
+    fill: 'none', stroke: ngjyra, 'stroke-width': 2,
+    'stroke-linejoin': 'round', 'stroke-linecap': 'round'}));
+
+  const f = pika[pika.length - 1];                            // etiketa e fundit
+  svg.appendChild(el('circle', {cx: f[0], cy: f[1], r: 4.5, fill: ngjyra,
+    stroke: stil('--siperfaqja'), 'stroke-width': 2}));
+  const et = el('text', {x: f[0], y: f[1] - 12, 'text-anchor': 'end',
+    class: 'bosht-teksti', fill: stil('--bojë'), 'font-weight': '600'});
+  et.textContent = nr(muajt[muajt.length - 1].bilanci, 0);
+  svg.appendChild(et);
+
+  muajt.forEach((mm, i) => {                                  // boshti X i rrallë
+    if (i % 3 !== 0 && i !== muajt.length - 1) return;
+    const t = el('text', {x: x(i), y: L - 6, 'text-anchor': 'middle',
+      class: 'bosht-teksti', fill: boje3});
+    t.textContent = mm.etiketa.slice(2);
+    svg.appendChild(t);
+  });
+
+  // Shtresa e hover-it: kryqëzim + këshillë
+  const kryq = el('line', {y1: m.t, y2: L - m.b, stroke: boje3,
+    'stroke-width': 1, opacity: 0});
+  const pk = el('circle', {r: 5, fill: ngjyra, stroke: stil('--siperfaqja'),
+    'stroke-width': 2, opacity: 0});
+  svg.appendChild(kryq); svg.appendChild(pk);
+  const mbulese = el('rect', {x: m.l, y: m.t, width: G - m.l - m.r,
+    height: L - m.t - m.b, fill: 'transparent'});
+  svg.appendChild(mbulese);
+  mbulese.addEventListener('mousemove', ev => {
+    const kuti = svg.getBoundingClientRect();
+    const px = (ev.clientX - kuti.left) / kuti.width * G;
+    let i = Math.round((px - m.l) / ((G - m.l - m.r) / Math.max(1, muajt.length - 1)));
+    i = Math.max(0, Math.min(muajt.length - 1, i));
+    const mm = muajt[i];
+    kryq.setAttribute('x1', x(i)); kryq.setAttribute('x2', x(i));
+    kryq.setAttribute('opacity', .45);
+    pk.setAttribute('cx', x(i)); pk.setAttribute('cy', y(mm.bilanci));
+    pk.setAttribute('opacity', 1);
+    kesh.innerHTML = `<b>${mm.etiketa}</b><br>Bilanci: <b>${para(mm.bilanci)}</b><br>
+      <span class="i-heshtur">hyrje ${nr(mm.hyrje, 0)} · dalje ${nr(mm.dalje, 0)}
+      · keste ${nr(mm.kestet, 0)}</span>`;
+    kesh.style.opacity = 1;
+    const kx = x(i) / G * kuti.width;
+    kesh.style.left = Math.min(Math.max(8, kx - 70), kuti.width - 190) + 'px';
+    kesh.style.top = '8px';
+  });
+  mbulese.addEventListener('mouseleave', () => {
+    kesh.style.opacity = 0; kryq.setAttribute('opacity', 0);
+    pk.setAttribute('opacity', 0);
+  });
+}
+
+function shufraNeto(mbajtes, muajt){
+  if (!muajt.length) return;
+  const {svg, kesh, G, L, m} = kornize(mbajtes, 180);
+  const vlerat = muajt.map(x => x.neto);
+  const vmax = Math.max(...vlerat, 0) * 1.1 || 1;
+  const vmin = Math.min(...vlerat, 0) * 1.1;
+  const y = shkallaY(vmin, vmax, m.t, L - m.b);
+  const gjeresia = (G - m.l - m.r) / muajt.length;
+  const gjer = Math.min(30, Math.max(6, gjeresia - 6));       // 2px+ hapesire
+  const pozitiv = stil('--seria-2'), negativ = stil('--kritik');
+
+  svg.appendChild(el('line', {x1: m.l, x2: G - m.r, y1: y(0), y2: y(0),
+    stroke: stil('--vija'), 'stroke-width': 1}));
+  etiketatY(vmin, vmax, 2).forEach(v => {
+    const t = el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end',
+      class: 'bosht-teksti', fill: stil('--bojë-3')});
+    t.textContent = Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0);
+    svg.appendChild(t);
+  });
+
+  muajt.forEach((mm, i) => {
+    const qx = m.l + i * gjeresia + (gjeresia - gjer) / 2;
+    const lart = Math.max(1.5, Math.abs(y(mm.neto) - y(0)));
+    const rr = Math.min(4, gjer / 2, lart);                   // skaji i te dhenave
+    const siper = mm.neto >= 0;
+    const y0 = y(0), y1 = siper ? y0 - lart : y0 + lart;
+    const shenja = siper ? 1 : -1;
+    const r = el('path', {fill: siper ? pozitiv : negativ, d:
+      `M${qx},${y0} L${qx},${y1 + rr * shenja} `
+      + `Q${qx},${y1} ${qx + rr},${y1} L${qx + gjer - rr},${y1} `
+      + `Q${qx + gjer},${y1} ${qx + gjer},${y1 + rr * shenja} L${qx + gjer},${y0} Z`});
+    r.addEventListener('mouseenter', () => {
+      kesh.innerHTML = `<b>${mm.etiketa}</b><br>Neto: <b>${para(mm.neto)}</b>`;
+      kesh.style.opacity = 1;
+      kesh.style.left = Math.min(qx / G * mbajtes.clientWidth, mbajtes.clientWidth - 150) + 'px';
+      kesh.style.top = '4px';
+    });
+    r.addEventListener('mouseleave', () => kesh.style.opacity = 0);
+    svg.appendChild(r);
+    if (i % 3 === 0 || i === muajt.length - 1){
+      const t = el('text', {x: qx + gjer / 2, y: L - 6, 'text-anchor': 'middle',
+        class: 'bosht-teksti', fill: stil('--bojë-3')});
+      t.textContent = mm.etiketa.slice(2);
+      svg.appendChild(t);
+    }
+  });
+}
+window.addEventListener('resize', () => { if (PANEL) vizatoGrafiket(); });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   REGJISTRI — formularët dhe tabelat e të dhënave
+   ═══════════════════════════════════════════════════════════════════════ */
+const sot = () => new Date().toISOString().slice(0, 10);
+const MONEDHA = {tip: 'text', param: 'EUR', eti: 'Monedha'};
+
+const REGJISTRI = {
+  transaksionet: {
+    titull: 'Transaksionet', ndihme: 'Cdo levizje reale parash. Shuma gjithmone pozitive — drejtimin e jep lloji.',
+    fusha: {
+      data: {tip: 'date', param: sot, eti: 'Data'},
+      lloji: {tip: 'select', opsione: [['dalje', 'Dalje'], ['hyrje', 'Hyrje'], ['transfer', 'Transfer']], eti: 'Lloji'},
+      shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
+      llogaria_id: {tip: 'llogari', eti: 'Llogaria'},
+      llogaria_dest_id: {tip: 'llogari', eti: 'Destinacioni (transfer)'},
+      kategoria: {tip: 'text', param: 'tjeter', eti: 'Kategoria'},
+      pershkrimi: {tip: 'text', eti: 'Pershkrimi'},
+    },
+    kolona: ['data', 'lloji', 'shuma', 'monedha', 'kategoria', 'pershkrimi'],
+  },
+  llogarite: {
+    titull: 'Llogarite', ndihme: 'Ku rri paraja. Bilanci fillestar eshte gjendja ne momentin qe e shton — transaksionet llogariten mbi te.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      lloji: {tip: 'select', opsione: [['bank', 'Banke'], ['cash', 'Cash'], ['kursim', 'Kursim'], ['kartekredit', 'Karte krediti'], ['investim', 'Investim'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
+      monedha: MONEDHA,
+      bilanci_fillestar: {tip: 'number', param: 0, eti: 'Bilanci fillestar'},
+      likuide: {tip: 'bool', param: true, eti: 'Likuide (numerohet ne rezerve)'},
+    },
+    kolona: ['emri', 'lloji', 'monedha', 'bilanci_fillestar', 'likuide'],
+  },
+  detyrimet: {
+    titull: 'Borxhe dhe arketime', ndihme: 'Borxh = un i detyrohem dikujt. Arketim = dikush m detyrohet mua; siguria thote sa % e asaj shume e pret vertet.',
+    fusha: {
+      lloji: {tip: 'select', opsione: [['borxh', 'Borxh (une detyrohem)'], ['arketim', 'Arketim (me detyrohen)']], eti: 'Lloji'},
+      pala: {tip: 'text', eti: 'Pala'},
+      shuma_totale: {tip: 'number', eti: 'Shuma totale'},
+      shuma_paguar: {tip: 'number', param: 0, eti: 'Paguar deri tani'},
+      monedha: MONEDHA,
+      interesi_vjetor: {tip: 'number', param: 0, eti: 'Interesi vjetor %'},
+      kesti_mujor: {tip: 'number', param: 0, eti: 'Kesti mujor'},
+      afati: {tip: 'date', eti: 'Afati'},
+      siguria: {tip: 'number', param: 100, eti: 'Siguria % (per arketimet)'},
+      prioriteti: {tip: 'number', param: 3, eti: 'Prioriteti 1-5'},
+      statusi: {tip: 'select', opsione: [['aktiv', 'Aktiv'], ['shlyer', 'Shlyer'], ['vonuar', 'Vonuar'], ['dyshimtar', 'Dyshimtar']], eti: 'Statusi'},
+      pershkrimi: {tip: 'text', eti: 'Pershkrimi'},
+    },
+    kolona: ['lloji', 'pala', 'shuma_totale', 'shuma_paguar', 'monedha', 'interesi_vjetor', 'kesti_mujor', 'afati', 'statusi'],
+  },
+  planet: {
+    titull: 'Planet', ndihme: 'Cdo gje qe e di se vjen: qira, sigurime, pushime, dasma, makine. Probabiliteti e zbut shumen per gjerat e pasigurta.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      drejtimi: {tip: 'select', opsione: [['dalje', 'Dalje'], ['hyrje', 'Hyrje']], eti: 'Drejtimi'},
+      shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
+      frekuenca: {tip: 'select', opsione: [['mujore', 'Mujore'], ['nje_here', 'Nje here'], ['javore', 'Javore'], ['dyjavore', 'Dyjavore'], ['tremujore', 'Tremujore'], ['vjetore', 'Vjetore']], eti: 'Frekuenca'},
+      data_fillimit: {tip: 'date', param: sot, eti: 'Fillon me'},
+      data_mbarimit: {tip: 'date', eti: 'Mbaron me'},
+      horizonti: {tip: 'select', opsione: [['urgjent', 'Urgjent (<1 muaj)'], ['afatshkurter', 'Afatshkurter (1-6m)'], ['afatmesem', 'Afatmesem (6-24m)'], ['afatgjate', 'Afatgjate (24m+)']], eti: 'Horizonti'},
+      domosdoshmeria: {tip: 'number', param: 3, eti: 'Domosdoshmeria 1-5'},
+      probabiliteti: {tip: 'number', param: 100, eti: 'Probabiliteti %'},
+      kategoria: {tip: 'text', param: 'tjeter', eti: 'Kategoria'},
+    },
+    kolona: ['emri', 'drejtimi', 'shuma', 'monedha', 'frekuenca', 'horizonti', 'domosdoshmeria', 'probabiliteti'],
+  },
+  'te-ardhurat': {
+    titull: 'Te ardhurat', ndihme: 'Burimet e rregullta. Oret mujore = 0 do te thote e ardhur pasive.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      lloji: {tip: 'select', opsione: [['page', 'Page'], ['freelance', 'Freelance'], ['qira', 'Qira'], ['biznes', 'Biznes'], ['dividend', 'Dividend'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
+      shuma_mujore: {tip: 'number', eti: 'Shuma mujore'}, monedha: MONEDHA,
+      siguria: {tip: 'number', param: 4, eti: 'Siguria 1-5'},
+      oret_mujore: {tip: 'number', param: 0, eti: 'Oret ne muaj'},
+    },
+    kolona: ['emri', 'lloji', 'shuma_mujore', 'monedha', 'siguria', 'oret_mujore'],
+  },
+  investimet: {
+    titull: 'Investimet', ndihme: 'Cmimi aktual perditesohet me dore ose nga skanimi i tregut te Keshilltari.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      lloji: {tip: 'select', opsione: [['etf', 'ETF'], ['aksion', 'Aksion'], ['krypto', 'Krypto'], ['prone', 'Prone'], ['biznes', 'Biznes'], ['depozite', 'Depozite'], ['obligacion', 'Obligacion'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
+      simboli: {tip: 'text', eti: 'Simboli (VWCE.DE)'},
+      sasia: {tip: 'number', eti: 'Sasia'},
+      cmimi_blerje: {tip: 'number', eti: 'Cmimi i blerjes'},
+      cmimi_aktual: {tip: 'number', eti: 'Cmimi aktual'}, monedha: MONEDHA,
+      data_blerje: {tip: 'date', eti: 'Data e blerjes'},
+      rreziku: {tip: 'number', param: 3, eti: 'Rreziku 1-5'},
+      kthimi_pritshem: {tip: 'number', param: 0, eti: 'Kthimi i pritshem %'},
+    },
+    kolona: ['emri', 'lloji', 'simboli', 'sasia', 'cmimi_blerje', 'cmimi_aktual', 'monedha', 'rreziku'],
+  },
+  objektivat: {
+    titull: 'Objektivat', ndihme: 'Ku dua te arrij dhe deri kur.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      lloji: {tip: 'select', opsione: [['rezerve', 'Rezerve'], ['blerje', 'Blerje'], ['investim', 'Investim'], ['shlyerje_borxhi', 'Shlyerje borxhi'], ['te_ardhura', 'Te ardhura'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
+      shuma_synim: {tip: 'number', eti: 'Synimi'},
+      shuma_aktuale: {tip: 'number', param: 0, eti: 'Arritur deri tani'},
+      monedha: MONEDHA,
+      afati: {tip: 'date', eti: 'Afati'},
+      prioriteti: {tip: 'number', param: 3, eti: 'Prioriteti 1-5'},
+    },
+    kolona: ['emri', 'lloji', 'shuma_synim', 'shuma_aktuale', 'monedha', 'afati'],
+  },
+};
+
+function ndertoNenSkedat(){
+  $('#nen-skedat').innerHTML = Object.entries(REGJISTRI).map(([id, k]) =>
+    `<button class="skeda" role="tab" aria-selected="${id === REG_AKTIV}"
+       onclick="hapRegjistrin('${id}')">${k.titull}</button>`).join('');
+}
+
+async function hapRegjistrin(id){
+  REG_AKTIV = id;
+  ndertoNenSkedat();
+  const k = REGJISTRI[id];
+  $('#reg-titulli').textContent = k.titull;
+  $('#reg-ndihma').textContent = k.ndihme;
+  $('#reg-fusha').innerHTML = Object.entries(k.fusha).map(([emri, f]) => {
+    const vid = `f-${id}-${emri}`;
+    const param = typeof f.param === 'function' ? f.param() : f.param;
+    if (f.tip === 'select')
+      return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">${
+        f.opsione.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></div>`;
+    if (f.tip === 'bool')
+      return `<div><label for="${vid}">${f.eti}</label>
+        <input id="${vid}" type="checkbox" ${param ? 'checked' : ''} style="width:auto"></div>`;
+    if (f.tip === 'llogari')
+      return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
+        <option value="">—</option>${LLOGARITE.map(l =>
+          `<option value="${l.id}">${esc(l.emri)} (${esc(l.monedha)})</option>`).join('')}</select></div>`;
+    const tip = f.tip === 'number' ? 'number' : f.tip === 'date' ? 'date' : 'text';
+    return `<div><label for="${vid}">${f.eti}</label><input id="${vid}" type="${tip}"
+      ${tip === 'number' ? 'step="any"' : ''} value="${param ?? ''}"></div>`;
+  }).join('');
+  ngarkoTabelen(id);
+}
+
+async function ngarkoTabelen(id){
+  const k = REGJISTRI[id];
+  $('#reg-tabela').innerHTML = '<span class="ngarkim"></span>';
+  try {
+    const rreshtat = await api('/te-dhena/' + id + '?kufi=200');
+    $('#reg-tabela').innerHTML = rreshtat.length ? `<div class="tabele-mbeshtjelles"><table>
+      <tr>${k.kolona.map(c => `<th>${esc(REGJISTRI[id].fusha[c]?.eti || c)}</th>`).join('')}<th></th></tr>
+      ${rreshtat.map(r => `<tr>${k.kolona.map(c => {
+        let v = r[c];
+        if (typeof v === 'boolean') v = v ? 'po' : 'jo';
+        return `<td>${esc(v ?? '—')}</td>`;
+      }).join('')}<td><button class="vogel" onclick="fshiRreshtin('${id}',${r.id})">Fshi</button></td></tr>`).join('')}
+    </table></div>` : '<p class="i-heshtur">Ende bosh.</p>';
+  } catch (e) {
+    $('#reg-tabela').innerHTML = `<p style="color:var(--kritik)">${esc(e.message)}</p>`;
+  }
+}
+
+async function ruajRreshtin(){
+  const id = REG_AKTIV, k = REGJISTRI[id], trupi = {};
+  for (const [emri, f] of Object.entries(k.fusha)){
+    const v = $(`#f-${id}-${emri}`);
+    if (!v) continue;
+    if (f.tip === 'bool') { trupi[emri] = v.checked; continue; }
+    const vlera = v.value.trim();
+    if (vlera === '') continue;
+    trupi[emri] = f.tip === 'number' ? Number(vlera)
+      : f.tip === 'llogari' ? Number(vlera) : vlera;
+  }
+  try {
+    await api('/te-dhena/' + id, {metoda: 'POST', trupi});
+    njofto('U shtua.');
+    ngarkoTabelen(id);
+    ngarko();
+  } catch (e) { njofto('Gabim: ' + e.message, 4000); }
+}
+
+async function fshiRreshtin(id, rreshtiId){
+  if (!confirm('Ta fshij kete rresht?')) return;
+  try {
+    await api(`/te-dhena/${id}/${rreshtiId}`, {metoda: 'DELETE'});
+    njofto('U fshi.');
+    ngarkoTabelen(id);
+    ngarko();
+  } catch (e) { njofto('Gabim: ' + e.message, 4000); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SKENARI
+   ═══════════════════════════════════════════════════════════════════════ */
+async function provoSkenarin(){
+  const dalja = $('#skenari-dalja');
+  dalja.innerHTML = '<p><span class="ngarkim"></span> Po llogaritet…</p>';
+  try {
+    const r = await api('/skenar', {metoda: 'POST', trupi: {
+      emri: $('#sk-emri').value || 'Skenar',
+      shuma: Number($('#sk-shuma').value || 0),
+      monedha: $('#sk-monedha').value || 'EUR',
+      drejtimi: $('#sk-drejtimi').value,
+      frekuenca: $('#sk-frekuenca').value,
+      data_fillimit: $('#sk-data').value || sot(),
+    }});
+    const n = r.ndryshimi;
+    dalja.innerHTML = `<div class="ndarje"></div>
+      <h3>${esc(r.verdikti)}</h3>
+      <div class="pllaka">
+        <div class="pllake"><div class="etikete">Bilanci pas 12 muajsh</div>
+          <div class="vlera">${para(r.pas.bilanci_fundor)}</div>
+          <div class="nen ${n.bilanci_fundor >= 0 ? 'pozitiv' : 'negativ'}">
+            ${n.bilanci_fundor >= 0 ? '+' : ''}${para(n.bilanci_fundor)} nga tani</div></div>
+        <div class="pllake"><div class="etikete">Pika me e ulet</div>
+          <div class="vlera">${para(r.pas.pika_me_e_ulet)}</div>
+          <div class="nen">para: ${para(r.para.pika_me_e_ulet)}</div></div>
+        <div class="pllake"><div class="etikete">Muaji i pare negativ</div>
+          <div class="vlera">${r.pas.muaji_i_pare_negativ || '—'}</div>
+          <div class="nen">para: ${r.para.muaji_i_pare_negativ || 'asnje'}</div></div>
+      </div>`;
+  } catch (e) { dalja.innerHTML = `<p style="color:var(--kritik)">${esc(e.message)}</p>`; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   KESHILLTARI
+   ═══════════════════════════════════════════════════════════════════════ */
+function markdown(t){
+  const rreshtat = esc(t).split('\n');
+  let html = '', neListe = false;
+  for (let r of rreshtat){
+    const m = r.match(/^(#{2,4})\s+(.*)$/);
+    if (m){ if (neListe){ html += '</ul>'; neListe = false; }
+      html += `<h3>${m[2]}</h3>`; continue; }
+    if (/^\s*[-*]\s+/.test(r)){
+      if (!neListe){ html += '<ul>'; neListe = true; }
+      html += `<li>${r.replace(/^\s*[-*]\s+/, '')}</li>`; continue;
+    }
+    if (neListe){ html += '</ul>'; neListe = false; }
+    if (r.trim() === '') continue;
+    html += `<p>${r}</p>`;
+  }
+  if (neListe) html += '</ul>';
+  return html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+             .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+function shfaqPergjigjen(r, mbajtes){
+  CMIMET_PROPOZUARA = r.propozime_cmimesh || [];
+  mbajtes.innerHTML = `<div class="ndarje"></div>
+    <div class="pergjigje">${markdown(r.pergjigja || '')}</div>
+    ${(r.burimet || []).length ? `<div style="margin-top:12px">
+      <div class="etikete i-heshtur">Burimet</div>
+      ${r.burimet.map(b => `<a class="burim" href="${esc(b.url)}" target="_blank"
+        rel="noopener noreferrer">${esc(b.titulli || b.url)}</a>`).join('')}</div>` : ''}
+    ${CMIMET_PROPOZUARA.length ? `<div class="ndarje"></div>
+      <h3>Cmime te propozuara</h3>
+      <table><tr><th>Pozicioni</th><th class="num">Cmimi</th></tr>
+      ${CMIMET_PROPOZUARA.map(c => `<tr><td>${esc(c.simboli || c.id)}</td>
+        <td class="num">${nr(c.cmimi, 4)} ${esc(c.monedha || '')}</td></tr>`).join('')}</table>
+      <button class="kryesor" style="margin-top:10px" onclick="aplikoCmimet()">
+        Zbato keto cmime</button>` : ''}
+    <p class="i-heshtur" style="margin-top:14px">${esc(r.modeli || '')}${
+      r.tokena ? ` · ${r.tokena.hyrje}→${r.tokena.dalje} tokena` : ''}</p>`;
+}
+
+async function pyetKeshilltarin(){
+  const dalja = $('#keshilltari-dalja');
+  dalja.innerHTML = '<p><span class="ngarkim"></span> Po analizohet gjendja dhe po kerkohet ne internet — mund te zgjase nje minute.</p>';
+  try {
+    shfaqPergjigjen(await api('/keshilltari', {metoda: 'POST', trupi: {
+      pyetja: $('#pyetja').value, internet: $('#internet').checked}}), dalja);
+    ngarkoRaportet();
+  } catch (e) { dalja.innerHTML = `<p style="color:var(--kritik)">${esc(e.message)}</p>`; }
+}
+
+async function skanoOpsionet(){
+  const dalja = $('#keshilltari-dalja');
+  dalja.innerHTML = '<p><span class="ngarkim"></span> Po skanohet tregu per pozicionet dhe borxhet e tua…</p>';
+  try {
+    shfaqPergjigjen(await api('/skano-opsionet', {metoda: 'POST',
+      trupi: {fokusi: 'gjithcka'}}), dalja);
+    ngarkoRaportet();
+  } catch (e) { dalja.innerHTML = `<p style="color:var(--kritik)">${esc(e.message)}</p>`; }
+}
+
+async function aplikoCmimet(){
+  try {
+    const r = await api('/apliko-cmimet', {metoda: 'POST',
+      trupi: {cmimet: CMIMET_PROPOZUARA}});
+    njofto(`U perditesuan ${r.gjithsej} pozicione.`);
+    ngarko();
+  } catch (e) { njofto('Gabim: ' + e.message, 4000); }
+}
+
+async function ngarkoRaportet(){
+  try {
+    const rr = await api('/raportet?kufi=10');
+    $('#raportet').innerHTML = rr.length ? rr.map(r => `
+      <details style="margin-bottom:8px">
+        <summary style="cursor:pointer">
+          <b>${esc(r.lloji)}</b> · ${new Date(r.krijuar_me).toLocaleString('de-DE')}
+          ${r.pyetja ? ' — ' + esc(r.pyetja.slice(0, 60)) : ''}</summary>
+        <div class="pergjigje">${markdown(r.pergjigja || '')}</div>
+      </details>`).join('') : '<p class="i-heshtur">Ende asnje raport.</p>';
+  } catch (e) { $('#raportet').innerHTML = `<p class="i-heshtur">${esc(e.message)}</p>`; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NISJA
+   ═══════════════════════════════════════════════════════════════════════ */
+ndertoSkedat();
+ndertoNenSkedat();
+$('#sk-data').value = sot();
+if (TOKEN){
+  $('#hyrja').classList.add('fshihu');
+  $('#apja').classList.remove('fshihu');
+  ngarko();
+}
+</script>
+</body>
+</html>

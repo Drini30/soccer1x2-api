@@ -7,3 +7,4 @@ joblib
 numpy
 scipy
 pandas
+anthropic
