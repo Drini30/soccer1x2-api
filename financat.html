@@ -657,9 +657,7 @@ function hapPagesen(indeksi){
   const n = (PANEL.njoftimet || [])[indeksi];
   if (!n) return;
   const v = n.veprimi;
-  const opsionet = LLOGARITE.map(l =>
-    `<option value="${l.id}" ${String(l.id) === String(v.llogaria_id) ? 'selected' : ''}
-     >${esc(l.emri)} (${esc(l.monedha)})</option>`).join('');
+  const opsionet = opsionetELlogarive(v.llogaria_id);
   const kutia = document.createElement('div');
   kutia.className = 'mbulese';
   kutia.id = 'mbulesa';
@@ -700,7 +698,7 @@ async function ruajPagesen(indeksi){
       lloji: v.lloji, burimi_id: v.burimi_id, shuma,
       monedha: $('#pg-monedha').value.trim() || v.monedha,
       data: $('#pg-data').value || v.data,
-      llogaria_id: Number($('#pg-llogaria').value) || null,
+      llogaria_id: await zgjidhLlogarine($('#pg-llogaria').value),
       kategoria: v.kategoria, pershkrimi: v.emri,
     }});
     mbyllModalin();
@@ -892,6 +890,8 @@ window.addEventListener('resize', () => { if (PANEL) vizatoGrafiket(); });
    REGJISTRI — formularët dhe tabelat e të dhënave
    ═══════════════════════════════════════════════════════════════════════ */
 const sot = () => new Date().toISOString().slice(0, 10);
+const MUAJT_EMRA = ['Janar', 'Shkurt', 'Mars', 'Prill', 'Maj', 'Qershor',
+  'Korrik', 'Gusht', 'Shtator', 'Tetor', 'Nentor', 'Dhjetor'];
 const MONEDHA = {tip: 'text', param: 'EUR', eti: 'Monedha'};
 
 const REGJISTRI = {
@@ -937,8 +937,48 @@ const REGJISTRI = {
     },
     kolona: ['lloji', 'pala', 'shuma_totale', 'shuma_paguar', 'monedha', 'interesi_vjetor', 'kesti_mujor', 'afati', 'statusi'],
   },
+  'shpenzime-mujore': {
+    titull: 'Shpenzime mujore fikse', tabela: 'planet',
+    filtra: {frekuenca: 'mujore', drejtimi: 'dalje'},
+    fikse: {frekuenca: 'mujore', drejtimi: 'dalje', horizonti: 'urgjent',
+            probabiliteti: 100},
+    ndihme: 'Qeraja, kredia, interneti, telefoni, kopshti — cdo gje qe ikën ' +
+            'cdo muaj. Dita e pageses ndez njoftimin ne panel.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      kategoria: {tip: 'select', opsione: [['qeraja','Qeraja'],['kredia','Kredia'],['interneti','Interneti'],['telefoni','Telefoni'],['energjia','Energjia elektrike'],['uji','Uji'],['kopshti','Kopshti i femijeve'],['shkolla','Shkolla'],['transporti','Transporti'],['ushqimi','Ushqimi'],['abonime','Abonime'],['tjeter','Tjeter']], eti: 'Kategoria'},
+      shuma: {tip: 'number', eti: 'Shuma mujore'}, monedha: MONEDHA,
+      dita_pageses: {tip: 'dite', eti: 'Dita e pageses'},
+      llogaria_id: {tip: 'llogari', eti: 'Paguhet nga'},
+      domosdoshmeria: {tip: 'number', param: 1, eti: 'Domosdoshmeria 1-5'},
+      data_mbarimit: {tip: 'date', eti: 'Mbaron me (opsionale)'},
+      shenime: {tip: 'text', eti: 'Shenime'},
+    },
+    kolona: ['emri', 'kategoria', 'shuma', 'monedha', 'dita_pageses',
+             'domosdoshmeria'],
+  },
+  'shpenzime-vjetore': {
+    titull: 'Shpenzime vjetore fikse', tabela: 'planet',
+    filtra: {frekuenca: 'vjetore', drejtimi: 'dalje'},
+    fikse: {frekuenca: 'vjetore', drejtimi: 'dalje', horizonti: 'afatmesem',
+            probabiliteti: 100},
+    ndihme: 'Taksat, siguracionet, kontrolli teknik — nje here ne vit. ' +
+            'Muaji i pageses percakton kur te vije njoftimi.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      kategoria: {tip: 'select', opsione: [['taksa_toke','Taksa e tokes'],['taksa_shtepie','Taksa e shtepise'],['taksa_makine','Taksa e makines'],['siguracion_makine','Siguracioni i makines'],['siguracion_shendeti','Siguracioni shendetesor'],['kontroll_teknik','Kontrolli teknik'],['licenca','Licenca / tarifa'],['pushime','Pushimet'],['tjeter','Tjeter']], eti: 'Kategoria'},
+      shuma: {tip: 'number', eti: 'Shuma vjetore'}, monedha: MONEDHA,
+      muaji_pageses: {tip: 'select', opsione: [['1','Janar'],['2','Shkurt'],['3','Mars'],['4','Prill'],['5','Maj'],['6','Qershor'],['7','Korrik'],['8','Gusht'],['9','Shtator'],['10','Tetor'],['11','Nentor'],['12','Dhjetor']], eti: 'Muaji i pageses'},
+      dita_pageses: {tip: 'dite', eti: 'Dita e pageses'},
+      llogaria_id: {tip: 'llogari', eti: 'Paguhet nga'},
+      domosdoshmeria: {tip: 'number', param: 2, eti: 'Domosdoshmeria 1-5'},
+      shenime: {tip: 'text', eti: 'Shenime'},
+    },
+    kolona: ['emri', 'kategoria', 'shuma', 'monedha', 'muaji_pageses',
+             'dita_pageses', 'domosdoshmeria'],
+  },
   planet: {
-    titull: 'Planet', ndihme: 'Cdo gje qe e di se vjen: qira, sigurime, pushime, dasma, makine. Probabiliteti e zbut shumen per gjerat e pasigurta.',
+    titull: 'Plane te tjera', ndihme: 'Cdo gje qe e di se vjen: qira, sigurime, pushime, dasma, makine. Probabiliteti e zbut shumen per gjerat e pasigurta.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
       drejtimi: {tip: 'select', opsione: [['dalje', 'Dalje'], ['hyrje', 'Hyrje']], eti: 'Drejtimi'},
@@ -961,8 +1001,9 @@ const REGJISTRI = {
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
       lloji: {tip: 'select', opsione: [['page', 'Page'], ['freelance', 'Freelance'], ['qira', 'Qira'], ['biznes', 'Biznes'], ['dividend', 'Dividend'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
-      shuma_mujore: {tip: 'number', eti: 'Shuma mujore'}, monedha: MONEDHA,
-      dita_pageses: {tip: 'number', eti: 'Dita e pageses (1-31)'},
+      shuma_mujore: {tip: 'number', eti: 'Shuma mujore (bosh nese ndryshon)'},
+      monedha: MONEDHA,
+      dita_pageses: {tip: 'dite', eti: 'Dita e pageses'},
       shuma_e_ndryshueshme: {tip: 'bool', param: false,
         eti: 'Shuma ndryshon cdo muaj (freelance)'},
       llogaria_id: {tip: 'llogari', eti: 'Bie ne llogarine'},
@@ -1002,6 +1043,23 @@ const REGJISTRI = {
   },
 };
 
+/* Lista e llogarive + "Kesh". Nese s'ke hapur kurre nje llogari cash, ajo
+   krijohet ne çastin qe e zgjedh — nuk ke pse ta parapergatitesh. */
+function opsionetELlogarive(zgjedhur){
+  const ka_kesh = LLOGARITE.some(l => l.lloji === 'cash');
+  return LLOGARITE.map(l =>
+    `<option value="${l.id}" ${String(l.id) === String(zgjedhur) ? 'selected' : ''}
+     >${esc(l.emri)} (${esc(l.monedha)})</option>`).join('')
+    + (ka_kesh ? '' : '<option value="__kesh__">Kesh (para ne dore)</option>');
+}
+
+async function zgjidhLlogarine(vlera){
+  if (vlera !== '__kesh__') return Number(vlera) || null;
+  const kesh = await api('/llogaria-kesh', {metoda: 'POST'});
+  LLOGARITE = await api('/te-dhena/llogarite');
+  return kesh.id;
+}
+
 function ndertoNenSkedat(){
   $('#nen-skedat').innerHTML = Object.entries(REGJISTRI).map(([id, k]) =>
     `<button class="skeda" role="tab" aria-selected="${id === REG_AKTIV}"
@@ -1026,8 +1084,13 @@ async function hapRegjistrin(id){
         <input id="${vid}" type="checkbox" ${param ? 'checked' : ''} style="width:auto"></div>`;
     if (f.tip === 'llogari')
       return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
-        <option value="">—</option>${LLOGARITE.map(l =>
-          `<option value="${l.id}">${esc(l.emri)} (${esc(l.monedha)})</option>`).join('')}</select></div>`;
+        <option value="">—</option>${opsionetELlogarive()}</select></div>`;
+    if (f.tip === 'dite')
+      return `<div><label for="${vid}">${f.eti}</label>
+        <input id="${vid}" type="text" inputmode="numeric" placeholder="18 ose 18-20"
+               value="${param ?? ''}">
+        <span class="i-heshtur" style="font-size:.74rem">dita e muajit, ose
+          nje interval nese luhatet</span></div>`;
     const tip = f.tip === 'number' ? 'number' : f.tip === 'date' ? 'date' : 'text';
     return `<div><label for="${vid}">${f.eti}</label><input id="${vid}" type="${tip}"
       ${tip === 'number' ? 'step="any"' : ''} value="${param ?? ''}"></div>`;
@@ -1053,6 +1116,10 @@ function redakto(id, rreshtiId){
     if (!v) continue;
     const vlera = rresht[emri];
     if (f.tip === 'bool') v.checked = !!vlera;
+    else if (f.tip === 'dite'){
+      const fund = rresht[emri + '_fund'];
+      v.value = vlera ? (fund ? `${vlera}-${fund}` : String(vlera)) : '';
+    }
     else if (f.tip === 'date') v.value = vlera ? String(vlera).slice(0, 10) : '';
     else v.value = (vlera === null || vlera === undefined) ? '' : vlera;
   }
@@ -1065,16 +1132,22 @@ function anuloRedaktimin(){
   hapRegjistrin(REG_AKTIV);
 }
 
+function tabelaE(id){ return REGJISTRI[id].tabela || id; }
+
 async function ngarkoTabelen(id){
   const k = REGJISTRI[id];
   $('#reg-tabela').innerHTML = '<span class="ngarkim"></span>';
+  const filtra = new URLSearchParams({kufi: '200', ...(k.filtra || {})});
   try {
-    const rreshtat = await api('/te-dhena/' + id + '?kufi=200');
+    const rreshtat = await api(`/te-dhena/${tabelaE(id)}?${filtra}`);
     REG_RRESHTAT = rreshtat;
     $('#reg-tabela').innerHTML = rreshtat.length ? `<div class="tabele-mbeshtjelles"><table>
       <tr>${k.kolona.map(c => `<th>${esc(REGJISTRI[id].fusha[c]?.eti || c)}</th>`).join('')}<th></th></tr>
       ${rreshtat.map(r => `<tr>${k.kolona.map(c => {
         let v = r[c];
+        if (c === 'dita_pageses' && v && r.dita_pageses_fund)
+          v = `${v}-${r.dita_pageses_fund}`;
+        if (c === 'muaji_pageses' && v) v = MUAJT_EMRA[Number(v) - 1] || v;
         if (typeof v === 'boolean') v = v ? 'po' : 'jo';
         return `<td>${esc(v ?? '—')}</td>`;
       }).join('')}<td class="num" style="white-space:nowrap">
@@ -1097,28 +1170,63 @@ async function ruajRreshtin(){
     // Gjate ndryshimit, nje fushe e zbrazur do te thote "hiqe vleren" —
     // gjate shtimit do te thote "lere parazgjedhjen e bazes".
     if (vlera === ''){ if (po_ndryshon) trupi[emri] = null; continue; }
-    trupi[emri] = (f.tip === 'number' || f.tip === 'llogari')
-      ? Number(vlera) : vlera;
+    if (f.tip === 'llogari'){
+      try { trupi[emri] = await zgjidhLlogarine(vlera); }
+      catch (e) { njofto('Gabim: ' + e.message, 4000); return; }
+      continue;
+    }
+    if (f.tip === 'dite'){
+      // "18-20" do te thote "paguhem diku mes 18-es dhe 20-es". Nje fushe
+      // numerike do ta hidhte poshte ne heshtje; ketu ruhet si dy kufij.
+      const m = vlera.match(/^\s*(\d{1,2})\s*(?:[-–—]\s*(\d{1,2}))?\s*$/);
+      if (!m){
+        njofto(`"${f.eti}": shkruaj nje dite (18) ose nje interval (18-20).`, 5000);
+        v.focus(); return;
+      }
+      const nga = Number(m[1]), deri = m[2] ? Number(m[2]) : null;
+      if (nga < 1 || nga > 31 || (deri !== null && (deri < nga || deri > 31))){
+        njofto(`"${f.eti}": ditet duhen mes 1 dhe 31, dhe e dyta jo me e vogel.`, 5000);
+        v.focus(); return;
+      }
+      trupi[emri] = nga;
+      trupi[emri + '_fund'] = deri;
+      continue;
+    }
+    if (f.tip === 'number'){
+      // Nje shkrim si "18-20" e le fushen 'number' te zbrazet ne shfletues dhe
+      // dikur shkonte si null ne baze. Tani ndalohet ketu, me emrin e fushes.
+      const numri = Number(vlera);
+      if (!isFinite(numri)){
+        njofto(`"${f.eti}" pret nje numer te vetem, jo "${vlera}".`, 5000);
+        v.focus(); return;
+      }
+      trupi[emri] = numri;
+      continue;
+    }
+    trupi[emri] = vlera;
   }
+  // Vlerat qe e percaktojne pamjen (frekuenca, drejtimi) nuk shfaqen si fusha
+  // — dhe pikerisht prandaj vendosen ketu, qe rreshti te mos dale jashte saj.
+  Object.assign(trupi, k.fikse || {});
   try {
     if (po_ndryshon){
-      await api(`/te-dhena/${id}/${REG_REDAKTIM}`, {metoda: 'PATCH', trupi});
+      await api(`/te-dhena/${tabelaE(id)}/${REG_REDAKTIM}`, {metoda: 'PATCH', trupi});
       njofto('Ndryshimet u ruajten.');
       REG_REDAKTIM = null;
       hapRegjistrin(id);
     } else {
-      await api('/te-dhena/' + id, {metoda: 'POST', trupi});
+      await api('/te-dhena/' + tabelaE(id), {metoda: 'POST', trupi});
       njofto('U shtua.');
       ngarkoTabelen(id);
     }
     ngarko();
-  } catch (e) { njofto('Gabim: ' + e.message, 4000); }
+  } catch (e) { njofto('Gabim: ' + e.message, 5000); }
 }
 
 async function fshiRreshtin(id, rreshtiId){
   if (!confirm('Ta fshij kete rresht?')) return;
   try {
-    await api(`/te-dhena/${id}/${rreshtiId}`, {metoda: 'DELETE'});
+    await api(`/te-dhena/${tabelaE(id)}/${rreshtiId}`, {metoda: 'DELETE'});
     njofto('U fshi.');
     ngarkoTabelen(id);
     ngarko();
