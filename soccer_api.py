@@ -130,7 +130,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
 # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
 # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
-BUILD = "2026-09-15-vula"
+BUILD = "2026-09-16-historiku-i-plote"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -4067,13 +4067,53 @@ except Exception:
 #
 # DHE S'KTHEHET MBRAPSHT: hash-i PF eshte zotim publik, nuk hiqet dot pas krijimit.
 #
-# RREGULLI: kuota e nje dite shpenzohet vetem kur grupi i kandidateve te asaj dite
-# ka arritur kete prag — pra kur gjenerimi i saj ka mbaruar. Dita e SOTME perjashtohet
-# gjithmone: grupi i saj eshte perfunduar dje, s'ka me cfare te vije.
+# ⚠️ RREGULLIMI I PARE (PPM_MIN_KANDIDATE=30) ISHTE I GABUAR NE DY MENYRA.
+#
+# (a) PREMISA E RREME. Komenti i tij thoshte: "Dita e SOTME perjashtohet gjithmone:
+#     grupi i saj eshte perfunduar dje". Nuk eshte e vertete. Dje, kur kjo dite
+#     ishte 'neser', pragu 30 e SHTYU krejt (nje e merkure ka ~23 ndeshje, kurre 30).
+#     Pra dita nis BOSH ne mesnate dhe mbushet gjate dites — dhe pikerisht per
+#     sot porta ishte e hapur pa asnje kusht. E mbrojta te vetmen dite qe s'kishte
+#     nevoje dhe e lashe te zbuluar ate qe kishte.
+#
+# (b) PRAGU ABSOLUT ESHTE MATESI I GABUAR. 30 kandidate jane te zakonshem ne fundjave
+#     (~70 ndeshje) dhe te pamundur mes jave (23-24). Nje numer fiks s'thote dot
+#     nese gjenerimi i nje dite ka mbaruar.
+#
+# PROVA (16 shtator, i mekur, 23 ndeshje):
+#     premium: Barcelona-Racing   vendi 11 (koef  9.17)
+#              Leverkusen-Celje   vendi 22 (koef 10.32)
+#     jashte:  Hapoel-Dinamo      vendi  9 (koef  9.11)
+#              Al-Nahda-Al Taawon vendi 10 (koef  9.14)
+#     Te kater ende pa nisur ne te njejten mbremje — pra s'ishte ceshtje kohe.
+#     Vendi 22 u shit, vendi 9 jo. Kush erdhi i pari e mori vendin.
+#
+# MATESI I DUHUR eshte RAPORTI, jo numri: dita eshte gati kur thuajse cdo rresht i
+# saj e ka koeficientin e llogaritur. Vetë-kalibrohet — 21/23 mes jave dhe 66/70 ne
+# fundjave e kalojne te dyja, pa asnje numer magjik.
 try:
-    PPM_MIN_KANDIDATE = int(os.environ.get("PPM_MIN_KANDIDATE", "30").strip() or 30)
+    PPM_GATI_RAPORT = float(os.environ.get("PPM_GATI_RAPORT", "0.90").strip() or 0.90)
 except Exception:
-    PPM_MIN_KANDIDATE = 30
+    PPM_GATI_RAPORT = 0.90
+
+
+def _numri_i_dites(datat):
+    """Sa rreshta ka fare secila dite ne baze, pavaresisht statusit apo koef-it.
+    Emeruesi i matesit te gatishmerise: nese gjithe rreshtat e nje dite e kane
+    koeficientin, gjenerimi i asaj dite ka mbaruar."""
+    out = {d: 0 for d in datat}
+    try:
+        _r = requests.get(
+            f"{SUPABASE_URL_PREDS}?select=data&data=in.({','.join(datat)})&limit=1000",
+            headers=SUPABASE_SERVICE_HEADERS, timeout=8)
+        if _r.status_code == 200:
+            for _x in (_r.json() or []):
+                _d = str(_x.get("data") or "")
+                if _d in out:
+                    out[_d] += 1
+    except Exception:
+        pass   # pa numer -> gatishmeria del False -> kuota ruhet. Deshtim i sigurt.
+    return out
 
 
 def _kuota_premium_e_mbetur(datat):
@@ -4109,9 +4149,16 @@ def _gjenero_pf():
         # `data.asc` u hoq nga renditja: me të, ndeshjet e sotme e thithnin krejt
         # limitin dhe nesërmja mbetej pa asnjë. Limiti u ngrit që të vijnë të gjithë
         # kandidatët; prerja bëhet më poshtë, në Python.
+        # ⚠️ FILTRI `statusi` U HOQ ME QELLIM nga POOL-i I RENDITJES.
+        # Me te, ndeshjet e mbaruara dilnin nga grupi ndersa dita ecte — pra maja
+        # rillogaritej mbi nje grup qe tkurrej, dhe nje ndeshje mediokre behej
+        # "e para e te mbeturave" dhe merrte nje vend premium. Nje ndeshje qe ka
+        # luajtur e ka zene rendin e saj; nuk zhduket nga renditja.
+        # Statusi merret si fushe dhe perdoret me poshte per te vendosur nese nje
+        # ndeshje mund ende te SHITET — gje tjeter nga nese numerohet ne renditje.
         r = requests.get(
-            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,ora,data,rezultati_sakt,koef_rez_sakt,ekipi_1_id,ekipi_2_id,is_premium,is_value"
-            f"&data=in.({dt_sot},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}&statusi=not.in.({fund})"
+            f"{SUPABASE_URL_PREDS}?select=id,ndeshja,liga_emri,ora,data,statusi,rezultati_sakt,koef_rez_sakt,ekipi_1_id,ekipi_2_id,is_premium,is_value"
+            f"&data=in.({dt_sot},{dt_neser})&dist_gola=not.is.null&rezultati_sakt=not.is.null{_vfilt}"
             f"&koef_rez_sakt=not.is.null&limit=300",
             headers=SUPABASE_SERVICE_HEADERS, timeout=10)
         rows = r.json() if r.status_code == 200 else []
@@ -4138,38 +4185,65 @@ def _gjenero_pf():
 
     if PPM_MAKS_DITE > 0 and rows:
         _mbetur = _kuota_premium_e_mbetur([dt_sot, dt_neser])
+        _fundi = set(fund.split(","))
 
-        # Sa kandidatë ka secila ditë NË KËTË CIKËL. Nëse nesërmja s'e ka arritur
-        # ende pragun, gjenerimi i saj s'ka mbaruar: kuota e saj lihet e paprekur
-        # dhe mbushet në një thirrje të mëvonshme, kur grupi të jetë i plotë.
+        # ── GATISHMERIA: a ka mbaruar gjenerimi i kesaj dite? ─────────────────
+        # Raporti kandidate-me-koef / rreshta-gjithsej. Zbatohet per TE DYJA ditet:
+        # edhe e sotmja nis bosh ne mesnate dhe mbushet gjate dites (shih shenimin
+        # te PPM_GATI_RAPORT). Nje dite e pagatshme nuk e shpenzon kuoten — e ruan.
         _grupi = {}
         for _p in rows:
             _d = str(_p.get("data") or "")
             _grupi[_d] = _grupi.get(_d, 0) + 1
-        _lejohet = {
-            _d: (_d == dt_sot) or (_grupi.get(_d, 0) >= PPM_MIN_KANDIDATE)
-            for _d in (dt_sot, dt_neser)
-        }
-        for _d, _ok in _lejohet.items():
-            if not _ok:
-                print(f"⏳ PPM: {_d} shtyhet — vetëm {_grupi.get(_d, 0)} kandidatë "
-                      f"(duhen {PPM_MIN_KANDIDATE}); kuota ruhet për grupin e plotë")
+        _total = _numri_i_dites([dt_sot, dt_neser])
+        _lejohet = {}
+        for _d in (dt_sot, dt_neser):
+            _t = _total.get(_d, 0)
+            _k = _grupi.get(_d, 0)
+            _lejohet[_d] = bool(_t) and _k >= PPM_GATI_RAPORT * _t
+            if not _lejohet[_d]:
+                print(f"⏳ PPM: {_d} shtyhet — {_k}/{_t} kandidatë me koef "
+                      f"(duhet ≥{PPM_GATI_RAPORT:.0%}); kuota ruhet për grupin e plotë")
 
-        _zgjedhur, _lene, _shtyre = [], 0, 0
+        # ── MAJA E VERTETE E DITES, mbi grupin e PLOTE ────────────────────────
+        # Vendi i nje ndeshjeje caktohet nje here, mbi te gjithe diten. Asgje jashte
+        # majes s'behet premium — as kur maja ka nisur te luaje dhe kuota ka mbetur
+        # bosh. Nje vend i palejuar mbetet bosh; nuk i kalon nje ndeshjeje me te keqe.
+        _vendi = {}
         for _p in rows:
             _d = str(_p.get("data") or "")
+            _vendi[_d] = _vendi.get(_d, 0) + 1
+            _p["_vendi_dites"] = _vendi[_d]
+
+        _zgjedhur, _lene, _shtyre, _mbyllur = [], 0, 0, 0
+        for _p in rows:
+            _d = str(_p.get("data") or "")
+            _mbaruar = str(_p.get("statusi") or "").strip().upper() in _fundi
             if _p.get("is_premium"):
-                _zgjedhur.append(_p)          # tashmë premium — vazhdon, pa prekur kuotën
-            elif not _lejohet.get(_d, False):
-                _shtyre += 1                  # dita s'është gati; as s'zgjidhet, as s'humbet
+                # Tashme premium: vazhdon pa prekur kuoten, po vetem nese ka ende kuptim
+                # ta shohe klienti. Te mbaruarat numerohen ne renditje, jo ne publikim.
+                if not _mbaruar:
+                    _zgjedhur.append(_p)
+                continue
+            # Gatishmeria kontrollohet E PARA me qellim: mbi nje grup te pjesshem,
+            # "vendi 11" s'ka kuptim — ai vend mund te jete i peti kur dita te mbushet.
+            # Pa kete rend, logu do te raportonte "jashte majes" per ndeshje qe thjesht
+            # s'jane vleresuar ende.
+            if not _lejohet.get(_d, False):
+                _shtyre += 1                  # dita s'eshte gati; as s'zgjidhet, as s'humbet
+            elif _p["_vendi_dites"] > PPM_MAKS_DITE:
+                _lene += 1                    # jashte majes — s'behet kurre premium
+            elif _mbaruar:
+                _mbyllur += 1                 # ishte ne maje po nisi — vendi mbetet bosh
             elif _mbetur.get(_d, 0) > 0:
                 _mbetur[_d] -= 1
                 _zgjedhur.append(_p)
             else:
                 _lene += 1
-        if _lene or _shtyre:
+        if _lene or _shtyre or _mbyllur:
             print(f"🎯 PPM: {len(_zgjedhur)} brenda kuotës ({PPM_MAKS_DITE}/ditë), "
-                  f"{_lene} jashtë si më pak të sigurta, {_shtyre} të shtyra për grup të plotë")
+                  f"{_lene} jashtë majës, {_shtyre} të shtyra për grup të plotë, "
+                  f"{_mbyllur} në majë por të nisura")
         rows = _zgjedhur
     else:
         # PPM_MAKS_DITE=0 -> filtri i fikur. Kthehet kufiri i vjetër prej 60, që
@@ -8629,7 +8703,7 @@ def api_status(request: Request, kalim: str = None):
             "WINNER_BURIMI":  int(_konf("WINNER_BURIMI", WINNER_BURIMI_TREG)),
             "WINNER_PRAG":    _konf("WINNER_PRAG", WINNER_PRAG),
             "WINNER_PRAG_TREG": _konf("WINNER_PRAG_TREG", WINNER_PRAG_TREG),
-            "PPM_MIN_KANDIDATE": PPM_MIN_KANDIDATE,
+            "PPM_GATI_RAPORT": PPM_GATI_RAPORT,
             "PPM_DRITARE_DITE": PPM_DRITARE_DITE,
             "PPM_REFRESH_MIN_SEK": PPM_REFRESH_MIN_SEK,
             "INJURY_PEN_PER": INJURY_PEN_PER,
@@ -8696,20 +8770,28 @@ def keep_alive_ping():
 # kontrollon te API-Sports dhe i përditëson me rezultatin final.
 
 @app.get("/api/arkiv")
-def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gjitha: int = 0):
+def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0,
+                 te_gjitha: int = 0, vetem_premium: int = 0):
     """Historiku PPM + eksport për kalibrim/trajnim.
-    Arkivi ruan ÇDO ndeshje të mbaruar, por historiku PPM tregon vetëm ato që u
-    PUBLIKUAN si premium/PPM. Filtrohet me flag-un ORIGJINAL is_premium:
-      • is_premium = True  -> u publikua (edhe 1-1 që s'është 'value bet') -> shfaqet
-      • is_premium = False -> s'doli kurrë premium                          -> nuk shfaqet
-      • is_premium = NULL  -> arkiv i vjetër pa flag -> rrëzohet te is_value (sjellja e vjetër)
-    Për eksport/backtest: ?te_gjitha=1 -> kthen çdo rresht të arkivuar."""
+
+    ÇFARË SHFAQET (ndryshuar 16/09/2026): ÇDO ndeshje e arkivuar, jo vetëm ato që
+    u publikuan si premium. Historiku është tani rekordi i plotë i modelit, jo
+    vitrina e asaj që u shit. Me `?vetem_premium=1` kthehet sjellja e vjetër.
+      • is_premium = True  -> u publikua si PPM (edhe 1-1 që s'është 'value bet')
+      • is_premium = False -> s'doli kurrë premium
+      • is_premium = NULL  -> arkiv i vjetër pa flag -> rrëzohet te is_value
+    Flag-u kthehet gjithsesi në çdo rresht, që faqja të dallojë piket e shitura.
+
+    RENDITJA: kronologji e vazhdueshme sipas (data, ora), më të rejat lart. Më parë
+    ishte `data.desc,ora.asc` — ditët zbritëse po orët ngjitëse brenda ditës, pra
+    lista kërcente një ditë prapa e pastaj ecte përpara brenda saj. Tani zbritëse
+    të dyja: 16/09 21:00 → 16/09 01:00 → 15/09 21:00, pa asnjë kërcim.
+
+    Për eksport/backtest: ?te_gjitha=1 (sinonim i parazgjedhjes, mbahet për pajtim)."""
     _lim = max(1, min(limit, 2000))
-    _filtro = bool(VALUE_FILTER_ON) and not te_gjitha
+    _filtro = bool(vetem_premium) and bool(VALUE_FILTER_ON) and not te_gjitha
     _fetch = min(_lim * 5, 2000) if _filtro else _lim
-    # `ora.asc` brenda dites: e njejta radhe si te kutia e Hash-it (/api/pf/list),
-    # ku ndeshjet rreshtohen sipas ores se fillimit. Ditet mbeten me te rejat lart.
-    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.asc&limit={_fetch}"
+    q = f"{ARKIV_URL}?select=*&order=data.desc,ora.desc&limit={_fetch}"
     if liga.strip():
         q += f"&liga=eq.{requests.utils.quote(liga.strip(), safe='')}"
     if vetem_goditje:
@@ -8719,17 +8801,34 @@ def lexo_arkivin(limit: int = 200, liga: str = "", vetem_goditje: int = 0, te_gj
         rows = r.json() if r.status_code == 200 else []
     except Exception:
         return []
-    if _filtro and isinstance(rows, list):
+    if not isinstance(rows, list):
+        return []
+    if _filtro:
         def _shfaq(x):
             ip = x.get("is_premium")
             if ip is True:
                 return True
             if ip is False:
                 return False
-            # is_premium NULL (arkiv i vjetër) -> rrëzim te is_value (sjellja para këtij ndryshimi)
+            # is_premium NULL (arkiv i vjetër) -> rrëzim te is_value (sjellja e vjetër)
             return x.get("is_value") is not False
-        rows = [x for x in rows if _shfaq(x)][:_lim]
-    return rows
+        rows = [x for x in rows if _shfaq(x)]
+
+    # Rirenditje mbrojtëse në Python. `ora` është zakonisht "HH:MM" (ku renditja
+    # alfabetike përkon me atë kohore), por disa rreshta të vjetër e kanë "FT" —
+    # dhe "FT" alfabetikisht del PARA çdo ore, duke i hedhur lart pa arsye.
+    def _celes(x):
+        _o = str(x.get("ora") or "").strip()
+        _min = -1
+        if ":" in _o:
+            _h, _, _mm = _o.partition(":")
+            try:
+                _min = int(_h) * 60 + int(_mm[:2])
+            except Exception:
+                _min = -1          # "FT" ose çfarëdo tjetër -> në fund të ditës së vet
+        return (str(x.get("data") or ""), _min)
+    rows.sort(key=_celes, reverse=True)
+    return rows[:_lim]
 
 
 @app.get("/api/performanca")
