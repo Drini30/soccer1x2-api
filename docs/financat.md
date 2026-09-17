@@ -104,6 +104,13 @@ Ne regjistri ka dy pamje te vecanta mbi te njejten tabele `fin_planet`:
   kontrolli teknik. Ruhen me `frekuenca = vjetore` dhe kerkojne
   `muaji_pageses`: pa te, nje shpenzim vjetor s'ka kur te kujtohet.
 
+Krahas tyre, **Shpenzime ditore** eshte nje pamje mbi `fin_transaksionet`
+(vetem daljet) me kategori te gatshme — ushqime, karburant, kafe, veshje,
+farmaci. Keto jane shpenzimet e ndryshueshme, dhe pikerisht ato formojne
+"bazen" e shpenzimit mujor dhe qendrueshmerine ne skor.
+
+Cdo liste kategorish ka "+ Shkruaj vete": asnje liste s'i mbulon te gjitha.
+
 Nuk eshte tabele e trete — jane filtra mbi te njejten strukture, ndaj
 projeksioni dhe shpenzimi mujor i pritshem i marrin parasysh njesoj.
 
@@ -111,6 +118,23 @@ projeksioni dhe shpenzimi mujor i pritshem i marrin parasysh njesoj.
 `dita_pageses` + `dita_pageses_fund` shkruhen ne nje fushe te vetme:
 `18` ose `18-20`. Vonesa numerohet nga dita e **fundit** e dritares — perndryshe
 nje page qe pritet mes 18-es dhe 20-es do te dilte "e vonuar" me 19.
+
+### Shkallet 1-5 — nga cila ane nisin
+Numri ruhet ne baze, por ne ekran del me emrin e vet. Kahjet:
+
+| Fusha | 1 do te thote | 5 do te thote |
+|---|---|---|
+| `prioriteti` (borxhe, objektiva) | **jetik**, nuk shtyhet dot | shtyhet pa pasoje |
+| `domosdoshmeria` (plane, shpenzime) | **e domosdoshme** (buke, qira) | luks i paster |
+| `siguria` (te ardhurat) | shume e pasigurt | **e garantuar** (kontrate) |
+| `rreziku` (investimet) | **shume i sigurt** (depozite) | spekulativ |
+
+Dy te parat nisin nga 1 sepse "prioriteti 1" eshte menyra e zakonshme e te
+thenit "i pari ne rradhe". Dy te fundit nisin nga 5 sepse aty numri i larte
+matet si cilesi — siguri me shume, rrezik me shume.
+
+`siguria` te detyrimet eshte gje tjeter: perqindje 0-100, sa nga ai arketim
+e pret vertet.
 
 ### Njoftimet e pagesave
 Nje pagese e perseritshme (page, qira, kest freelance) njihet **e kryer** kur

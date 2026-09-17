@@ -114,7 +114,7 @@ def monedha_kanonike(m: Optional[str]) -> str:
 
 # Sa here ne muaj ndodh nje frekuence.
 HERE_NE_MUAJ = {
-    "nje_here": 0.0, "javore": 52 / 12, "dyjavore": 26 / 12,
+    "nje_here": 0.0, "ditore": 365 / 12, "javore": 52 / 12, "dyjavore": 26 / 12,
     "mujore": 1.0, "tremujore": 1 / 3, "vjetore": 1 / 12,
 }
 
