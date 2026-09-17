@@ -14,10 +14,14 @@ te vetin. Nese moduli deshton, API-ja e parashikimeve nis njesoj.
 ## 1. Ngritja
 
 ### a) Baza e te dhenave
-Hap SQL Editor te Supabase dhe ekzekuto `financat_skema.sql`. Krijon 9 tabela
-(`fin_*`), indekset dhe cilesimet fillestare. RLS ndizet pa asnje policy:
-celesi `anon` nuk lexon dot asgje — vetem backend-i, me service key, shkruan
-dhe lexon.
+Hap SQL Editor te Supabase dhe ekzekuto, me kete radhe:
+
+1. `financat_skema.sql` — 9 tabelat (`fin_*`), indekset, cilesimet fillestare.
+2. `financat_migrim_2.sql` — datat e pagesave, lidhja e transaksionit me
+   burimin e te ardhurave, kursi i LEK-ut. I sigurt te ri-ekzekutohet.
+
+RLS ndizet pa asnje policy: celesi `anon` nuk lexon dot asgje — vetem
+backend-i, me service key, shkruan dhe lexon.
 
 ### b) Variablat e mjedisit (Render → Environment)
 
@@ -41,10 +45,14 @@ Ndarja eshte e rrepte: **numrat i nxjerr kodi, jo modeli gjuhesor.** Claude
 merr numra te gatshem dhe sjell vetem ate qe kodi nuk e di — normat e sotme,
 cmimet, opsionet e tregut.
 
-### Balanca
+### Balanca dhe monedhat
 `bilanci_fillestar + hyrjet − daljet ± transferet`, per cdo llogari, ne
 monedhen e saj; totalet kthehen ne monedhen baze me kurset e `fin_cilesimet`.
 Nje monedhe pa kurs numerohet 1:1 **dhe sinjalizohet si alarm** — nuk fshihet.
+
+`LEK`, `LEKE`, `LEKË` dhe `L` njihen si e njejta monedhe me kodin standard
+`ALL`. Monedha baze ndryshohet nga Menu → Cilesimet; kurset rillogariten vete
+ndaj saj (nese 1 LEK ishte 0.0102 EUR, kalimi ne LEK e ben 1 EUR = 98.04 LEK).
 
 ### Shpenzimi mujor i pritshem
 ```
@@ -85,6 +93,22 @@ Sa peshe mban vertet: teprica e lire mbi rezerven, rrjedha neto mujore, dhe
 kesti maksimal i nje detyrimi te ri (60% e rrjedhes neto, dhe njekohesisht
 DTI total ≤35% — kthehet edhe cili nga te dy kufijte po te ndalon).
 
+### Njoftimet e pagesave
+Nje pagese e perseritshme (page, qira, kest freelance) njihet **e kryer** kur
+ekziston nje transaksion i lidhur me ate burim (`te_ardhura_id` ose
+`plani_id`) brenda atij muaji. Pa ate lidhje sistemi s'do ta dinte dot nese
+pagesa u shenua apo jo.
+
+Rregullat:
+- Njoftimi shfaqet tre dite para dates, jo me heret — me heret eshte zhurme.
+- Kontrollohen dy muaj (ai rrjedhes dhe ai i shkuar), qe nje page e harruar
+  ne fund te muajit te mos zhduket nga ekrani me 1 te muajit tjeter.
+- Nuk pyetet kurre per nje muaj kur burimi ende s'ekzistonte (`krijuar_me`).
+- `shuma_e_ndryshueshme = true` (tipike per freelance) → njoftimi te pyet
+  "sa more kete muaj?" dhe e le shumen bosh. Ne te kundert e propozon vete.
+- Klikimi i njoftimit hap formularin e gatshem; ruajtja krijon transaksionin
+  dhe njoftimi hesht.
+
 ### Strategjia e borxhit
 Krahason **ortekun** (interesi me i larte i pari) me **debollen** (borxhi me i
 vogel i pari), me te njejten shume shtese, dhe kthen muajt deri ne shlyerje dhe
@@ -101,6 +125,8 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `GET /financat` | Faqja |
 | `GET /api/fin/panel?muaj=12` | Gjithcka ne nje thirrje |
 | `GET /api/fin/skor` · `/alarmet` · `/projeksion` | Pjese te vecanta |
+| `GET /api/fin/njoftimet` | Pagesat e pritshme qe s'jane shenuar |
+| `POST /api/fin/regjistro-pagese` | Mbyll nje njoftim duke krijuar transaksionin |
 | `POST /api/fin/skenar` | "Po sikur?" — rillogarit pa e prekur bazen |
 | `GET/POST /api/fin/te-dhena/{tabela}` | Lexo / shto |
 | `PATCH/DELETE /api/fin/te-dhena/{tabela}/{id}` | Ndrysho / fshi |
@@ -140,8 +166,8 @@ tu dhe sjell fakte tregu me burim; vendimin e merr ti.
 
 - **Futje me dore.** Nuk lidhet me banka (PSD2/open banking); s'ka API bankare
   shqiptare qe ta beje kete pa licence institucioni pagesash.
-- **Kurset jane statike** te `fin_cilesimet`. Perditesohen me dore ose me nje
-  skanim; nuk terhiqen automatikisht.
+- **Kurset jane statike** te `fin_cilesimet`. Ndryshohen nga Menu → Cilesimet
+  ose nga nje skanim; nuk terhiqen automatikisht nga tregu.
 - **Nje perdorues.** Kolona `user_id` ekziston kudo; kalimi ne shume perdorues
   eshte ndryshim auth-i (token → sesion i lidhur me `users`) plus policy RLS,
   jo migrim te dhenash.

@@ -136,6 +136,38 @@ svg{display:block;width:100%;overflow:visible}
   box-shadow:var(--hije);opacity:0;transition:opacity .1s;white-space:nowrap;z-index:5}
 .keshille b{font-variant-numeric:tabular-nums}
 
+/* ── Menuja ────────────────────────────────────────────────────────────── */
+.menu-mbajtes{position:relative}
+.menu{position:absolute;right:0;top:calc(100% + 6px);min-width:210px;
+  background:var(--siperfaqja);border:1px solid var(--vija);border-radius:10px;
+  box-shadow:0 4px 20px rgba(0,0,0,.14);padding:6px;z-index:40}
+.menu button,.menu a{display:block;width:100%;text-align:left;border:0;
+  background:none;padding:9px 11px;border-radius:7px;font-size:.9rem;
+  color:var(--bojë);text-decoration:none;cursor:pointer}
+.menu button:hover,.menu a:hover{background:var(--siperfaqja-2)}
+.menu hr{border:0;border-top:1px solid var(--vija);margin:5px 2px}
+.menu .rrezik{color:var(--kritik)}
+
+/* ── Njoftimet ─────────────────────────────────────────────────────────── */
+.njoftim-rr{display:flex;gap:12px;align-items:flex-start;padding:12px 13px;
+  border:1px solid var(--vija);border-radius:10px;margin-bottom:8px;
+  background:var(--siperfaqja);cursor:pointer;text-align:left;width:100%;
+  transition:.15s}
+.njoftim-rr:hover{background:var(--siperfaqja-2);border-color:var(--seria-2)}
+.njoftim-rr.vonuar{border-color:var(--paralajmerim);background:var(--paralajmerim-bg)}
+.njoftim-rr .ik{font-size:1.15rem;line-height:1.2}
+.njoftim-rr .tt{display:block;font-weight:600;font-size:.92rem;color:var(--bojë)}
+.njoftim-rr .dd{display:block;font-size:.85rem;color:var(--bojë-2);margin-top:2px}
+.njoftim-rr .cta{margin-left:auto;align-self:center;font-size:.82rem;
+  font-weight:600;color:var(--seria-1);white-space:nowrap}
+
+/* ── Modali ────────────────────────────────────────────────────────────── */
+.mbulese{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;
+  display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:var(--siperfaqja);border:1px solid var(--vija);
+  border-radius:14px;padding:20px;max-width:440px;width:100%;
+  box-shadow:0 10px 40px rgba(0,0,0,.3)}
+
 /* ── Te tjera ──────────────────────────────────────────────────────────── */
 .i-heshtur{color:var(--bojë-2);font-size:.88rem}
 .rresht{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -185,7 +217,17 @@ svg{display:block;width:100%;overflow:visible}
     <span id="statusi" class="i-heshtur"></span>
     <button class="vogel" onclick="ndryshoTemen()" id="btn-teme">Tema</button>
     <button class="vogel" onclick="ngarko()">Rifresko</button>
-    <button class="vogel" onclick="dil()">Dil</button>
+    <div class="menu-mbajtes">
+      <button class="vogel" id="btn-menu" aria-haspopup="true" aria-expanded="false"
+              onclick="ndrysheMenune(event)">Menu ▾</button>
+      <div class="menu fshihu" id="menu">
+        <button onclick="hapSkeden('cilesimet')">Cilesimet</button>
+        <button onclick="hapSkeden('keshilltari')">Keshilltari dhe raportet</button>
+        <button onclick="hapSkeden('skenari')">Po sikur?</button>
+        <hr>
+        <button class="rrezik" onclick="dil()">Dil</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -195,6 +237,12 @@ svg{display:block;width:100%;overflow:visible}
   <!-- ── PANELI ── -->
   <section id="pj-panel">
     <div class="pllaka" id="pllakat"></div>
+    <div class="karte fshihu" id="karta-njoftimeve" style="margin-top:16px">
+      <h2>Njoftime</h2>
+      <p class="i-heshtur">Pagesa te pritshme qe s'jane shenuar ende. Klikoje
+        njoftimin per ta regjistruar me nje hap.</p>
+      <div id="njoftimet"></div>
+    </div>
     <div class="rrjeta k2" style="margin-top:16px">
       <div class="karte">
         <h2>Skori i sjelljes</h2>
@@ -244,7 +292,11 @@ svg{display:block;width:100%;overflow:visible}
       <h2 id="reg-titulli"></h2>
       <p class="i-heshtur" id="reg-ndihma"></p>
       <div class="fusha" id="reg-fusha"></div>
-      <button class="kryesor" onclick="ruajRreshtin()">Shto</button>
+      <div class="rresht">
+        <button class="kryesor" id="btn-ruaj" onclick="ruajRreshtin()">Shto</button>
+        <button id="btn-anulo" class="fshihu" onclick="anuloRedaktimin()">Anulo</button>
+        <span id="reg-statusi" class="i-heshtur"></span>
+      </div>
       <div class="ndarje"></div>
       <div id="reg-tabela"></div>
     </div>
@@ -271,6 +323,38 @@ svg{display:block;width:100%;overflow:visible}
       </div>
       <button class="kryesor" onclick="provoSkenarin()">Llogarit</button>
       <div id="skenari-dalja"></div>
+    </div>
+  </section>
+
+  <!-- ── CILESIMET ── -->
+  <section id="pj-cilesimet" class="fshihu">
+    <div class="karte">
+      <h2>Cilesimet</h2>
+      <p class="i-heshtur">Monedha baze eshte ajo ne te cilen shfaqen te gjitha
+        totalet e panelit. Ndryshimi i saj i rillogarit vete kurset.</p>
+      <div class="fusha">
+        <div><label for="ci-monedha">Monedha baze</label>
+          <input id="ci-monedha" placeholder="LEK"></div>
+        <div><label for="ci-rezerva">Rezerva e synuar (muaj)</label>
+          <input id="ci-rezerva" type="number" step="0.5" min="0"></div>
+        <div><label for="ci-kursim">Synimi i kursimit (%)</label>
+          <input id="ci-kursim" type="number" step="1" min="0" max="100"></div>
+        <div><label for="ci-dite">Paralajmerim per afatet (dite)</label>
+          <input id="ci-dite" type="number" step="1" min="1"></div>
+      </div>
+      <button class="kryesor" onclick="ruajCilesimet()">Ruaj cilesimet</button>
+
+      <div class="ndarje"></div>
+      <h3>Kurset e kembimit</h3>
+      <p class="i-heshtur" id="ci-shpjegim-kurseve"></p>
+      <div id="ci-kurset"></div>
+      <div class="fusha" style="margin-top:12px">
+        <div><label for="ci-kod">Monedha e re</label>
+          <input id="ci-kod" placeholder="GBP" maxlength="6"></div>
+        <div><label for="ci-vlera">Sa ben 1 njesi e saj</label>
+          <input id="ci-vlera" type="number" step="any" placeholder="1.17"></div>
+      </div>
+      <button onclick="shtoKurs()">Shto monedhen</button>
     </div>
   </section>
 
@@ -307,6 +391,8 @@ let TOKEN = localStorage.getItem('fin_token') || '';
 let PANEL = null;
 let LLOGARITE = [];
 let REG_AKTIV = 'transaksionet';
+let REG_REDAKTIM = null;      // id-ja e rreshtit qe po ndryshohet, ose null
+let REG_RRESHTAT = [];
 let CMIMET_PROPOZUARA = [];
 
 const $ = s => document.querySelector(s);
@@ -385,18 +471,41 @@ const SKEDAT = [
   ['panel', 'Paneli'], ['regjistri', 'Regjistri'],
   ['skenari', 'Po sikur?'], ['keshilltari', 'Keshilltari'],
 ];
+// Cilesimet nuk kane skede — hapen nga menuja.
+const PJESET = [...SKEDAT.map(([id]) => id), 'cilesimet'];
+
 function ndertoSkedat(){
   $('#skedat').innerHTML = SKEDAT.map(([id, em], i) =>
     `<button class="skeda" role="tab" aria-selected="${i === 0}"
        onclick="hapSkeden('${id}')">${em}</button>`).join('');
 }
 function hapSkeden(id){
-  SKEDAT.forEach(([s]) => $('#pj-' + s).classList.toggle('fshihu', s !== id));
+  PJESET.forEach(p => $('#pj-' + p).classList.toggle('fshihu', p !== id));
   $$('#skedat .skeda').forEach((b, i) =>
     b.setAttribute('aria-selected', SKEDAT[i][0] === id));
+  mbyllMenune();
+  window.scrollTo({top: 0, behavior: 'smooth'});
   if (id === 'keshilltari') ngarkoRaportet();
   if (id === 'regjistri') hapRegjistrin(REG_AKTIV);
+  if (id === 'cilesimet') hapCilesimet();
 }
+
+/* ── Menuja ─────────────────────────────────────────────────────────── */
+function ndrysheMenune(ev){
+  ev?.stopPropagation();
+  const m = $('#menu'), hapur = m.classList.toggle('fshihu');
+  $('#btn-menu').setAttribute('aria-expanded', String(!hapur));
+}
+function mbyllMenune(){
+  $('#menu').classList.add('fshihu');
+  $('#btn-menu').setAttribute('aria-expanded', 'false');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.menu-mbajtes')) mbyllMenune();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ mbyllMenune(); mbyllModalin(); }
+});
 
 /* ═══════════════════════════════════════════════════════════════════════
    NGARKIMI I PANELIT
@@ -451,6 +560,9 @@ function vizatoPanelin(){
       <div class="shufer"><i style="width:${Math.max(0, p.pike / p.maks * 100)}%"></i></div>
       <span class="sh">${esc(p.vlera)} · synimi ${esc(p.synimi)} — ${esc(p.shpjegim)}</span>
     </div>`).join('');
+
+  // ── Njoftimet (pagesa qe presin te shenohen)
+  vizatoNjoftimet(PANEL.njoftimet || []);
 
   // ── Alarmet
   const ikonat = {kritik: '●', paralajmerim: '▲', info: '○'};
@@ -526,6 +638,75 @@ function vizatoPanelin(){
           o.kerkon_ne_muaj ? ` · kerkon ${para(o.kerkon_ne_muaj)}/muaj` : ''}</span>
       </div>`).join('')
     : '<p class="i-heshtur">Asnje objektiv.</p>';
+}
+
+function vizatoNjoftimet(lista){
+  $('#karta-njoftimeve').classList.toggle('fshihu', !lista.length);
+  if (!lista.length) return;
+  $('#njoftimet').innerHTML = lista.map((n, i) => `
+    <button class="njoftim-rr ${n.niveli}" onclick="hapPagesen(${i})">
+      <span class="ik" aria-hidden="true">${n.drejtimi === 'hyrje' ? '\u2193' : '\u2191'}</span>
+      <span><span class="tt">${esc(n.titulli)}</span>
+        <span class="dd">${esc(n.detaji)}</span></span>
+      <span class="cta">${esc(n.veprimi.etiketa)} \u2192</span>
+    </button>`).join('');
+}
+
+/* ── Modali i pageses ─────────────────────────────────────────────────── */
+function hapPagesen(indeksi){
+  const n = (PANEL.njoftimet || [])[indeksi];
+  if (!n) return;
+  const v = n.veprimi;
+  const opsionet = LLOGARITE.map(l =>
+    `<option value="${l.id}" ${String(l.id) === String(v.llogaria_id) ? 'selected' : ''}
+     >${esc(l.emri)} (${esc(l.monedha)})</option>`).join('');
+  const kutia = document.createElement('div');
+  kutia.className = 'mbulese';
+  kutia.id = 'mbulesa';
+  kutia.onclick = e => { if (e.target === kutia) mbyllModalin(); };
+  kutia.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+    <h2>${esc(n.titulli)}</h2>
+    <p class="i-heshtur">${esc(n.detaji)}</p>
+    <div class="fusha">
+      <div><label for="pg-shuma">Shuma</label>
+        <input id="pg-shuma" type="number" step="any" value="${v.shuma ?? ''}"
+               placeholder="sa more" autofocus></div>
+      <div><label for="pg-monedha">Monedha</label>
+        <input id="pg-monedha" value="${esc(v.monedha)}"></div>
+      <div><label for="pg-data">Data</label>
+        <input id="pg-data" type="date" value="${esc(v.data)}"></div>
+      <div><label for="pg-llogaria">Llogaria</label>
+        <select id="pg-llogaria"><option value="">—</option>${opsionet}</select></div>
+    </div>
+    <div class="rresht">
+      <button class="kryesor" onclick="ruajPagesen(${indeksi})">Ruaj pagesen</button>
+      <button onclick="mbyllModalin()">Anulo</button>
+    </div>
+    <p id="pg-gabimi" class="i-heshtur" style="color:var(--kritik)"></p>
+  </div>`;
+  document.body.appendChild(kutia);
+  setTimeout(() => $('#pg-shuma')?.focus(), 30);
+}
+function mbyllModalin(){ $('#mbulesa')?.remove(); }
+
+async function ruajPagesen(indeksi){
+  const n = (PANEL.njoftimet || [])[indeksi], v = n.veprimi;
+  const shuma = Number($('#pg-shuma').value);
+  if (!shuma || shuma <= 0){
+    $('#pg-gabimi').textContent = 'Fut nje shume me te madhe se zero.'; return;
+  }
+  try {
+    await api('/regjistro-pagese', {metoda: 'POST', trupi: {
+      lloji: v.lloji, burimi_id: v.burimi_id, shuma,
+      monedha: $('#pg-monedha').value.trim() || v.monedha,
+      data: $('#pg-data').value || v.data,
+      llogaria_id: Number($('#pg-llogaria').value) || null,
+      kategoria: v.kategoria, pershkrimi: v.emri,
+    }});
+    mbyllModalin();
+    njofto('Pagesa u shenua.');
+    ngarko();
+  } catch (e) { $('#pg-gabimi').textContent = e.message; }
 }
 
 function tabele(koka, rreshtat, bosh){
@@ -766,11 +947,14 @@ const REGJISTRI = {
       data_fillimit: {tip: 'date', param: sot, eti: 'Fillon me'},
       data_mbarimit: {tip: 'date', eti: 'Mbaron me'},
       horizonti: {tip: 'select', opsione: [['urgjent', 'Urgjent (<1 muaj)'], ['afatshkurter', 'Afatshkurter (1-6m)'], ['afatmesem', 'Afatmesem (6-24m)'], ['afatgjate', 'Afatgjate (24m+)']], eti: 'Horizonti'},
+      dita_pageses: {tip: 'number', eti: 'Dita e pageses (1-31)'},
+      llogaria_id: {tip: 'llogari', eti: 'Paguhet nga llogaria'},
       domosdoshmeria: {tip: 'number', param: 3, eti: 'Domosdoshmeria 1-5'},
       probabiliteti: {tip: 'number', param: 100, eti: 'Probabiliteti %'},
       kategoria: {tip: 'text', param: 'tjeter', eti: 'Kategoria'},
     },
-    kolona: ['emri', 'drejtimi', 'shuma', 'monedha', 'frekuenca', 'horizonti', 'domosdoshmeria', 'probabiliteti'],
+    kolona: ['emri', 'drejtimi', 'shuma', 'monedha', 'frekuenca', 'dita_pageses',
+             'horizonti', 'domosdoshmeria'],
   },
   'te-ardhurat': {
     titull: 'Te ardhurat', ndihme: 'Burimet e rregullta. Oret mujore = 0 do te thote e ardhur pasive.',
@@ -778,10 +962,15 @@ const REGJISTRI = {
       emri: {tip: 'text', eti: 'Emri'},
       lloji: {tip: 'select', opsione: [['page', 'Page'], ['freelance', 'Freelance'], ['qira', 'Qira'], ['biznes', 'Biznes'], ['dividend', 'Dividend'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
       shuma_mujore: {tip: 'number', eti: 'Shuma mujore'}, monedha: MONEDHA,
+      dita_pageses: {tip: 'number', eti: 'Dita e pageses (1-31)'},
+      shuma_e_ndryshueshme: {tip: 'bool', param: false,
+        eti: 'Shuma ndryshon cdo muaj (freelance)'},
+      llogaria_id: {tip: 'llogari', eti: 'Bie ne llogarine'},
       siguria: {tip: 'number', param: 4, eti: 'Siguria 1-5'},
       oret_mujore: {tip: 'number', param: 0, eti: 'Oret ne muaj'},
     },
-    kolona: ['emri', 'lloji', 'shuma_mujore', 'monedha', 'siguria', 'oret_mujore'],
+    kolona: ['emri', 'lloji', 'shuma_mujore', 'monedha', 'dita_pageses',
+             'shuma_e_ndryshueshme', 'siguria'],
   },
   investimet: {
     titull: 'Investimet', ndihme: 'Cmimi aktual perditesohet me dore ose nga skanimi i tregut te Keshilltari.',
@@ -821,6 +1010,7 @@ function ndertoNenSkedat(){
 
 async function hapRegjistrin(id){
   REG_AKTIV = id;
+  REG_REDAKTIM = null;
   ndertoNenSkedat();
   const k = REGJISTRI[id];
   $('#reg-titulli').textContent = k.titull;
@@ -842,7 +1032,37 @@ async function hapRegjistrin(id){
     return `<div><label for="${vid}">${f.eti}</label><input id="${vid}" type="${tip}"
       ${tip === 'number' ? 'step="any"' : ''} value="${param ?? ''}"></div>`;
   }).join('');
+  perditesoModenE();
   ngarkoTabelen(id);
+}
+
+/* ── Shtim vs ndryshim ────────────────────────────────────────────────── */
+function perditesoModenE(){
+  const po = REG_REDAKTIM !== null;
+  $('#btn-ruaj').textContent = po ? 'Ruaj ndryshimet' : 'Shto';
+  $('#btn-anulo').classList.toggle('fshihu', !po);
+  $('#reg-statusi').textContent = po ? `po ndryshohet rreshti #${REG_REDAKTIM}` : '';
+}
+
+function redakto(id, rreshtiId){
+  const rresht = REG_RRESHTAT.find(r => String(r.id) === String(rreshtiId));
+  if (!rresht) return;
+  REG_REDAKTIM = rresht.id;
+  for (const [emri, f] of Object.entries(REGJISTRI[id].fusha)){
+    const v = $(`#f-${id}-${emri}`);
+    if (!v) continue;
+    const vlera = rresht[emri];
+    if (f.tip === 'bool') v.checked = !!vlera;
+    else if (f.tip === 'date') v.value = vlera ? String(vlera).slice(0, 10) : '';
+    else v.value = (vlera === null || vlera === undefined) ? '' : vlera;
+  }
+  perditesoModenE();
+  $('#reg-fusha').scrollIntoView({behavior: 'smooth', block: 'center'});
+}
+
+function anuloRedaktimin(){
+  REG_REDAKTIM = null;
+  hapRegjistrin(REG_AKTIV);
 }
 
 async function ngarkoTabelen(id){
@@ -850,13 +1070,16 @@ async function ngarkoTabelen(id){
   $('#reg-tabela').innerHTML = '<span class="ngarkim"></span>';
   try {
     const rreshtat = await api('/te-dhena/' + id + '?kufi=200');
+    REG_RRESHTAT = rreshtat;
     $('#reg-tabela').innerHTML = rreshtat.length ? `<div class="tabele-mbeshtjelles"><table>
       <tr>${k.kolona.map(c => `<th>${esc(REGJISTRI[id].fusha[c]?.eti || c)}</th>`).join('')}<th></th></tr>
       ${rreshtat.map(r => `<tr>${k.kolona.map(c => {
         let v = r[c];
         if (typeof v === 'boolean') v = v ? 'po' : 'jo';
         return `<td>${esc(v ?? '—')}</td>`;
-      }).join('')}<td><button class="vogel" onclick="fshiRreshtin('${id}',${r.id})">Fshi</button></td></tr>`).join('')}
+      }).join('')}<td class="num" style="white-space:nowrap">
+        <button class="vogel" onclick="redakto('${id}',${r.id})">Ndrysho</button>
+        <button class="vogel" onclick="fshiRreshtin('${id}',${r.id})">Fshi</button></td></tr>`).join('')}
     </table></div>` : '<p class="i-heshtur">Ende bosh.</p>';
   } catch (e) {
     $('#reg-tabela').innerHTML = `<p style="color:var(--kritik)">${esc(e.message)}</p>`;
@@ -865,19 +1088,29 @@ async function ngarkoTabelen(id){
 
 async function ruajRreshtin(){
   const id = REG_AKTIV, k = REGJISTRI[id], trupi = {};
+  const po_ndryshon = REG_REDAKTIM !== null;
   for (const [emri, f] of Object.entries(k.fusha)){
     const v = $(`#f-${id}-${emri}`);
     if (!v) continue;
     if (f.tip === 'bool') { trupi[emri] = v.checked; continue; }
     const vlera = v.value.trim();
-    if (vlera === '') continue;
-    trupi[emri] = f.tip === 'number' ? Number(vlera)
-      : f.tip === 'llogari' ? Number(vlera) : vlera;
+    // Gjate ndryshimit, nje fushe e zbrazur do te thote "hiqe vleren" —
+    // gjate shtimit do te thote "lere parazgjedhjen e bazes".
+    if (vlera === ''){ if (po_ndryshon) trupi[emri] = null; continue; }
+    trupi[emri] = (f.tip === 'number' || f.tip === 'llogari')
+      ? Number(vlera) : vlera;
   }
   try {
-    await api('/te-dhena/' + id, {metoda: 'POST', trupi});
-    njofto('U shtua.');
-    ngarkoTabelen(id);
+    if (po_ndryshon){
+      await api(`/te-dhena/${id}/${REG_REDAKTIM}`, {metoda: 'PATCH', trupi});
+      njofto('Ndryshimet u ruajten.');
+      REG_REDAKTIM = null;
+      hapRegjistrin(id);
+    } else {
+      await api('/te-dhena/' + id, {metoda: 'POST', trupi});
+      njofto('U shtua.');
+      ngarkoTabelen(id);
+    }
     ngarko();
   } catch (e) { njofto('Gabim: ' + e.message, 4000); }
 }
@@ -1007,6 +1240,90 @@ async function ngarkoRaportet(){
         <div class="pergjigje">${markdown(r.pergjigja || '')}</div>
       </details>`).join('') : '<p class="i-heshtur">Ende asnje raport.</p>';
   } catch (e) { $('#raportet').innerHTML = `<p class="i-heshtur">${esc(e.message)}</p>`; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CILESIMET
+   ═══════════════════════════════════════════════════════════════════════ */
+let CILESIMET = null;
+
+async function hapCilesimet(){
+  try {
+    CILESIMET = await api('/cilesimet');
+    $('#ci-monedha').value = CILESIMET.monedha_baze || 'EUR';
+    $('#ci-rezerva').value = CILESIMET.rezerva_muaj ?? 3;
+    $('#ci-kursim').value  = CILESIMET.synimi_kursimit ?? 20;
+    $('#ci-dite').value    = CILESIMET.paralajmerim_dite ?? 14;
+    vizatoKurset();
+  } catch (e) { njofto('Gabim: ' + e.message, 4000); }
+}
+
+function vizatoKurset(){
+  const baza = CILESIMET.monedha_baze;
+  const shembull = baza === 'EUR' ? 'LEK' : 'EUR';
+  $('#ci-shpjegim-kurseve').textContent =
+    `Sa ${baza} ben nje njesi e secilës monedhe. Nese 1 ${shembull} eshte ` +
+    `sa 98 ${baza}, atehere te ${shembull} shkruan 98. LEK dhe ALL jane e ` +
+    `njejta monedhe — mjafton njera prej tyre.`;
+  const rreshtat = Object.entries(CILESIMET.kurset || {})
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  $('#ci-kurset').innerHTML = `<div class="tabele-mbeshtjelles"><table>
+    <tr><th>Monedha</th><th class="num">1 njesi = … ${esc(baza)}</th><th></th></tr>
+    ${rreshtat.map(([kodi, vlera]) => `<tr>
+      <td><b>${esc(kodi)}</b>${kodi === baza ? ' <span class="i-heshtur">(baza)</span>' : ''}</td>
+      <td class="num"><input type="number" step="any" value="${vlera}"
+          style="max-width:150px;text-align:right"
+          ${kodi === baza ? 'disabled' : ''}
+          onchange="CILESIMET.kurset['${kodi}']=Number(this.value)"></td>
+      <td class="num">${kodi === baza ? '' :
+        `<button class="vogel" onclick="hiqKurs('${kodi}')">Hiq</button>`}</td>
+    </tr>`).join('')}
+  </table></div>
+  <button class="kryesor" style="margin-top:10px" onclick="ruajKurset()">Ruaj kurset</button>`;
+}
+
+function shtoKurs(){
+  const kodi = $('#ci-kod').value.trim().toUpperCase();
+  const vlera = Number($('#ci-vlera').value);
+  if (!kodi || !vlera || vlera <= 0){
+    njofto('Duhen kodi i monedhes dhe nje kurs me te madh se zero.', 3500); return;
+  }
+  CILESIMET.kurset[kodi] = vlera;
+  $('#ci-kod').value = ''; $('#ci-vlera').value = '';
+  vizatoKurset();
+}
+
+function hiqKurs(kodi){
+  delete CILESIMET.kurset[kodi];
+  vizatoKurset();
+}
+
+async function ruajKurset(){
+  try {
+    CILESIMET = await api('/cilesimet', {metoda: 'PATCH',
+      trupi: {kurset: CILESIMET.kurset}});
+    njofto('Kurset u ruajten.');
+    vizatoKurset();
+    ngarko();
+  } catch (e) { njofto('Gabim: ' + e.message, 4500); }
+}
+
+async function ruajCilesimet(){
+  const baza_re = $('#ci-monedha').value.trim().toUpperCase();
+  const trupi = {
+    rezerva_muaj: Number($('#ci-rezerva').value) || 3,
+    synimi_kursimit: Number($('#ci-kursim').value) || 20,
+    paralajmerim_dite: Number($('#ci-dite').value) || 14,
+  };
+  // Monedha baze dergohet vetem kur ndryshon vertet: serveri i rillogarit
+  // kurset ndaj saj, dhe s'ka kuptim ta bejme ate pune pa nevoje.
+  if (baza_re && baza_re !== CILESIMET.monedha_baze) trupi.monedha_baze = baza_re;
+  try {
+    CILESIMET = await api('/cilesimet', {metoda: 'PATCH', trupi});
+    njofto('Cilesimet u ruajten.');
+    hapCilesimet();
+    ngarko();
+  } catch (e) { njofto('Gabim: ' + e.message, 5000); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

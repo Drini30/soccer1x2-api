@@ -70,15 +70,16 @@ FUSHAT = {
                   "likuide", "aktiv", "shenime"},
     "transaksionet": {"data", "llogaria_id", "lloji", "shuma", "monedha",
                       "kategoria", "pershkrimi", "detyrimi_id", "plani_id",
-                      "llogaria_dest_id", "etiketa"},
+                      "te_ardhura_id", "llogaria_dest_id", "etiketa"},
     "detyrimet": {"lloji", "pala", "pershkrimi", "shuma_totale", "shuma_paguar",
                   "monedha", "interesi_vjetor", "kesti_mujor", "afati",
                   "prioriteti", "statusi", "siguria"},
     "planet": {"emri", "drejtimi", "shuma", "monedha", "kategoria", "frekuenca",
                "data_fillimit", "data_mbarimit", "horizonti", "domosdoshmeria",
-               "probabiliteti", "aktiv", "shenime"},
+               "probabiliteti", "aktiv", "shenime", "dita_pageses", "llogaria_id"},
     "te-ardhurat": {"emri", "lloji", "shuma_mujore", "monedha", "siguria",
-                    "oret_mujore", "aktiv"},
+                    "oret_mujore", "aktiv", "dita_pageses",
+                    "shuma_e_ndryshueshme", "llogaria_id"},
     "investimet": {"emri", "lloji", "simboli", "sasia", "cmimi_blerje",
                    "cmimi_aktual", "monedha", "data_blerje", "rreziku",
                    "kthimi_pritshem", "aktiv", "shenime", "perditesuar_me"},
@@ -94,6 +95,21 @@ CILESIMET_PARAZGJEDHUR = {
     "synimi_kursimit": 20,
     "paralajmerim_dite": 14,
 }
+
+# 'LEK' eshte emri i perditshem i monedhes qe standardi e quan 'ALL'. Kush e
+# shkruan LEK-un nuk duhet te dale me nje kolone te panjohur qe numerohet 1:1
+# me euron. Kanonizimi behet vetem per kerkimin e kursit — teksti qe shkruan
+# perdoruesi ruhet dhe shfaqet ashtu si eshte.
+SINONIMET_E_MONEDHAVE = {
+    "LEK": "ALL", "LEKE": "ALL", "LEKË": "ALL", "L": "ALL",
+    "EURO": "EUR", "€": "EUR", "$": "USD", "USD$": "USD", "DOLLAR": "USD",
+}
+
+
+def monedha_kanonike(m: Optional[str]) -> str:
+    e = (m or "").strip().upper()
+    return SINONIMET_E_MONEDHAVE.get(e, e)
+
 
 # Sa here ne muaj ndodh nje frekuence.
 HERE_NE_MUAJ = {
@@ -211,21 +227,25 @@ def lexo_cilesimet() -> Dict[str, Any]:
     kurset = c.get("kurset") or {}
     if not isinstance(kurset, dict) or not kurset:
         kurset = dict(CILESIMET_PARAZGJEDHUR["kurset"])
-    # Monedha baze eshte gjithmone 1 ndaj vetes.
-    kurset[str(c.get("monedha_baze") or "EUR")] = 1.0
-    c["kurset"] = {str(k).upper(): _num(v, 0.0) for k, v in kurset.items()}
+    # Monedha baze ruhet ashtu si e shkroi perdoruesi (LEK mbetet LEK ne ekran),
+    # por kurset indeksohen me kodin kanonik.
+    c["monedha_baze"] = str(c.get("monedha_baze") or "EUR").strip().upper()
+    c["kurset"] = {monedha_kanonike(k): _num(v, 0.0) for k, v in kurset.items()}
+    c["kurset"][monedha_kanonike(c["monedha_baze"])] = 1.0   # 1 ndaj vetes
     return c
 
 
 def kthe(shuma: Any, monedha: Optional[str], cilesimet: Dict[str, Any]) -> float:
     """Konverton ne monedhen baze. Monedhe e panjohur → trajtohet 1:1 dhe
     raportohet ne alarme, jo e fshire ne heshtje."""
-    kurset = cilesimet["kurset"]
-    m = (monedha or cilesimet.get("monedha_baze") or "EUR").upper()
-    kursi = kurset.get(m)
-    if kursi is None or kursi <= 0:
-        kursi = 1.0
-    return _num(shuma) * kursi
+    return _num(shuma) * kursi_i(cilesimet, monedha)
+
+
+def kursi_i(cilesimet: Dict[str, Any], monedha: Optional[str]) -> float:
+    """Sa njesi te monedhes baze ben 1 njesi e kesaj monedhe."""
+    m = monedha_kanonike(monedha) or monedha_kanonike(cilesimet.get("monedha_baze"))
+    kursi = cilesimet["kurset"].get(m)
+    return kursi if (kursi and kursi > 0) else 1.0
 
 
 # ==========================================================================
@@ -260,7 +280,7 @@ def llogarit_bilancet(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
             lid = int(lid)
             # Transaksioni mund te jete ne monedhe tjeter nga llogaria:
             # kalo ne baze, pastaj ne monedhen e llogarise.
-            kursi_ll = c["kurset"].get(monedhat[lid], 1.0) or 1.0
+            kursi_ll = kursi_i(c, monedhat[lid])
             ne_llogari = kthe(shuma, mon, c) / kursi_ll
             if lloji == "hyrje":
                 levizja[lid] += ne_llogari
@@ -270,7 +290,7 @@ def llogarit_bilancet(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
             dest = t.get("llogaria_dest_id")
             if dest is not None and int(dest) in levizja:
                 dest = int(dest)
-                kursi_d = c["kurset"].get(monedhat[dest], 1.0) or 1.0
+                kursi_d = kursi_i(c, monedhat[dest])
                 levizja[dest] += kthe(shuma, mon, c) / kursi_d
 
     rreshtat, likuiditet, total = [], 0.0, 0.0
@@ -846,17 +866,141 @@ def gjenero_alarme(c: Dict[str, Any], g: Dict[str, Any], bil: Dict[str, Any],
     monedhat_e_panjohura = set()
     for tabela in ("llogarite", "detyrimet", "planet", "investimet", "te_ardhurat"):
         for rr in g.get(tabela, []):
-            m = (rr.get("monedha") or "").upper()
-            if m and m not in c["kurset"]:
+            m = (rr.get("monedha") or "").strip().upper()
+            if m and monedha_kanonike(m) not in c["kurset"]:
                 monedhat_e_panjohura.add(m)
     if monedhat_e_panjohura:
         shto("paralajmerim", "Monedha pa kurs kembimi",
              f"{', '.join(sorted(monedhat_e_panjohura))} — jane numeruar 1:1 me "
              f"{c['monedha_baze']}.",
-             "Shto kursin te fin_cilesimet → kurset.")
+             "Menu → Cilesimet → Kurset e kembimit.")
 
     rendi = {"kritik": 0, "paralajmerim": 1, "info": 2}
     return sorted(a, key=lambda x: rendi.get(x["niveli"], 3))
+
+
+def _dita_e_muajit(dita: int, viti: int, muaji: int) -> date:
+    """Dita e kerkuar e muajit, e kapur te dita e fundit (31 shkurt -> 28/29)."""
+    return date(viti, muaji, min(max(1, dita), calendar.monthrange(viti, muaji)[1]))
+
+
+def gjenero_njoftimet(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
+    """Pagesat e pritshme qe ende s'jane regjistruar.
+
+    Nje pagese e perseritshme (page, qira, kest freelance) njihet e kryer kur
+    ekziston nje transaksion i lidhur me ate burim brenda atij muaji. Prandaj
+    kontrollohen dy muaj: ai rrjedhes dhe ai i shkuar — nje page e harruar ne
+    fund te muajit te kaluar nuk duhet te zhduket nga ekrani me 1 te muajit.
+
+    Kthen edhe 'veprimin': cfare duhet plotesuar dhe me cfare vlerash, qe faqja
+    ta hape formularin gati te mbushur me nje klikim.
+    """
+    sot = date.today()
+    njoftime: List[dict] = []
+
+    periudhat = [(sot.year, sot.month)]
+    if sot.month == 1:
+        periudhat.append((sot.year - 1, 12))
+    else:
+        periudhat.append((sot.year, sot.month - 1))
+
+    def u_regjistrua(fusha: str, burimi_id: int, viti: int, muaji: int) -> bool:
+        for t in g["transaksionet"]:
+            vlera = t.get(fusha)
+            if vlera is None:
+                continue
+            try:
+                if int(vlera) != int(burimi_id):
+                    continue
+            except (TypeError, ValueError):
+                continue
+            d = _dat(t.get("data"))
+            if d and d.year == viti and d.month == muaji:
+                return True
+        return False
+
+    def shto(burimi: dict, fusha: str, drejtimi: str, viti: int, muaji: int,
+             emri: str, monedha: str, shuma: float, e_ndryshueshme: bool,
+             tabela: str, kategoria: str):
+        dita = int(_num(burimi.get("dita_pageses"), 0))
+        if dita <= 0:
+            return
+        data_pritur = _dita_e_muajit(dita, viti, muaji)
+        # Tre dite perpara mjaftojne: me heret eshte zhurme, jo kujtese.
+        if (data_pritur - sot).days > 3:
+            return
+        # Mos pyet per nje pagese te nje muaji kur burimi ende s'ekzistonte —
+        # perndryshe cdo burim i sapo shtuar do te kerkonte menjehere nje
+        # "pagese te munguar" te muajit te shkuar.
+        krijuar = _dat(burimi.get("krijuar_me"))
+        if krijuar and krijuar > data_pritur:
+            return
+        if u_regjistrua(fusha, burimi["id"], viti, muaji):
+            return
+        vonesa = (sot - data_pritur).days
+        niveli = "vonuar" if vonesa > 1 else "pritet"
+        muaji_emer = f"{viti:04d}-{muaji:02d}"
+
+        if drejtimi == "hyrje" and e_ndryshueshme:
+            titulli = f"{emri} — sa more kete muaj?"
+            detaji = (f"Pagesa e {muaji_emer} pritej me {data_pritur.isoformat()}. "
+                      f"Shuma ndryshon sipas punes, prandaj s'e plotesoj dot une.")
+        elif drejtimi == "hyrje":
+            titulli = f"{emri} — konfirmo pagesen"
+            detaji = (f"Pritej me {data_pritur.isoformat()}, zakonisht "
+                      f"{shuma:,.0f} {monedha}.".replace(",", "."))
+        else:
+            titulli = f"{emri} — pagesa e {muaji_emer}"
+            detaji = (f"Duhet paguar me {data_pritur.isoformat()}: "
+                      f"{shuma:,.0f} {monedha}.".replace(",", "."))
+        if vonesa > 1:
+            detaji += f" Kane kaluar {vonesa} dite pa u shenuar."
+
+        njoftime.append({
+            "id": f"{tabela}-{burimi['id']}-{muaji_emer}",
+            "niveli": niveli,
+            "drejtimi": drejtimi,
+            "titulli": titulli,
+            "detaji": detaji,
+            "data_pritur": data_pritur.isoformat(),
+            "dite_vonese": max(0, vonesa),
+            "veprimi": {
+                "etiketa": ("Shto shumen" if e_ndryshueshme else
+                            "Konfirmo" if drejtimi == "hyrje" else "Shenoje pagesen"),
+                "lloji": "te_ardhura" if drejtimi == "hyrje" else "plan",
+                "burimi_id": burimi["id"],
+                "emri": emri,
+                "monedha": monedha,
+                "shuma": None if e_ndryshueshme else shuma,
+                "data": min(sot, data_pritur).isoformat(),
+                "llogaria_id": burimi.get("llogaria_id"),
+                "kategoria": kategoria,
+            },
+        })
+
+    for a in g["te_ardhurat"]:
+        for viti, muaji in periudhat:
+            shto(a, "te_ardhura_id", "hyrje", viti, muaji,
+                 a.get("emri") or "Te ardhur", (a.get("monedha") or c["monedha_baze"]).upper(),
+                 _num(a.get("shuma_mujore")), bool(a.get("shuma_e_ndryshueshme")),
+                 "te-ardhurat", a.get("lloji") or "page")
+
+    for pl in g["planet"]:
+        if (pl.get("frekuenca") or "mujore").lower() != "mujore":
+            continue                     # njoftimet mujore vetem per ato mujore
+        mbarimi = _dat(pl.get("data_mbarimit"))
+        if mbarimi and mbarimi < sot:
+            continue
+        fillimi = _dat(pl.get("data_fillimit"))
+        for viti, muaji in periudhat:
+            if fillimi and _dita_e_muajit(31, viti, muaji) < fillimi:
+                continue
+            shto(pl, "plani_id", (pl.get("drejtimi") or "dalje"), viti, muaji,
+                 pl.get("emri") or "Plan", (pl.get("monedha") or c["monedha_baze"]).upper(),
+                 _num(pl.get("shuma")), False, "planet", pl.get("kategoria") or "tjeter")
+
+    rendi = {"vonuar": 0, "pritet": 1}
+    return sorted(njoftime, key=lambda n: (rendi.get(n["niveli"], 2), n["data_pritur"]))
 
 
 def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
@@ -872,6 +1016,7 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     kap = llogarit_kapacitetin(c, bil, rrj, det, inv, skor)
     strat = strategji_borxhi(det, kap)
     alarme = gjenero_alarme(c, g, bil, rrj, det, inv, proj, kap, skor)
+    njoftime = gjenero_njoftimet(g, c)
 
     sot = date.today()
     objektiva = []
@@ -899,7 +1044,8 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "cilesimet": c,
         "bilancet": bil, "rrjedha": rrj, "detyrimet": det, "investimet": inv,
         "projeksioni": proj, "skori": skor, "kapaciteti": kap,
-        "strategjia_borxhit": strat, "alarmet": alarme, "objektivat": objektiva,
+        "strategjia_borxhit": strat, "alarmet": alarme, "njoftimet": njoftime,
+        "objektivat": objektiva,
         "planet": g["planet"], "te_ardhurat": g["te_ardhurat"],
     }
 
@@ -1201,6 +1347,22 @@ def ndrysho_cilesimet(trupi: dict = Body(...),
     pa_njohur = set(trupi) - lejuar
     if pa_njohur:
         raise HTTPException(400, f"Celesa te panjohur: {', '.join(sorted(pa_njohur))}")
+
+    trupi = dict(trupi)
+    # Kalimi nga EUR ne LEK s'duhet te kerkoje rishkrimin e tabeles se kurseve
+    # me dore: kurset e reja dalin duke i pjesetuar te vjetrat me kursin e
+    # monedhes se re baze. 1 EUR = 0.0102 -> 1 LEK, pra 1 EUR = 98.04 LEK.
+    if "monedha_baze" in trupi and "kurset" not in trupi:
+        e_vjetra = lexo_cilesimet()
+        e_re = monedha_kanonike(str(trupi["monedha_baze"]))
+        kursi_ri = e_vjetra["kurset"].get(e_re)
+        if not kursi_ri or kursi_ri <= 0:
+            raise HTTPException(400,
+                f"Nuk di kursin e '{trupi['monedha_baze']}'. Shtoje me pare te "
+                f"kurset, ose dergo 'kurset' bashke me 'monedha_baze'.")
+        trupi["kurset"] = {k: round(v / kursi_ri, 8)
+                           for k, v in e_vjetra["kurset"].items()}
+
     for celes, vlera in trupi.items():
         _sb("fin_cilesimet", "post",
             trupi={"celes": celes, "vlera": vlera,
@@ -1231,6 +1393,66 @@ def skori(_: Optional[str] = Header(None, alias="X-Fin-Token")):
 def alarmet(_: Optional[str] = Header(None, alias="X-Fin-Token")):
     kerko_token(_)
     return {"alarmet": ndertoj_panelin(12)["alarmet"]}
+
+
+@router.get("/njoftimet")
+def njoftimet(_: Optional[str] = Header(None, alias="X-Fin-Token")):
+    kerko_token(_)
+    c = lexo_cilesimet()
+    return {"njoftimet": gjenero_njoftimet(mbledh_gjendjen(), c)}
+
+
+@router.post("/regjistro-pagese")
+def regjistro_pagese(trupi: dict = Body(...),
+                     _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Mbyll nje njoftim duke krijuar transaksionin perkates.
+
+    Trupi: {lloji: "te_ardhura"|"plan", burimi_id, shuma, data,
+            monedha, llogaria_id, pershkrimi}
+
+    Transaksioni ruan lidhjen me burimin (te_ardhura_id / plani_id) — pikerisht
+    ajo lidhje ben qe njoftimi te mos shfaqet me kete muaj, dhe njekohesisht e
+    mban shumen jashte 'bazes' se shpenzimeve qe te mos numerohet dy here.
+    """
+    kerko_token(_)
+    lloji = (trupi.get("lloji") or "").strip()
+    if lloji not in ("te_ardhura", "plan"):
+        raise HTTPException(400, "lloji duhet 'te_ardhura' ose 'plan'.")
+    try:
+        burimi_id = int(trupi.get("burimi_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "burimi_id mungon ose s'eshte numer.")
+    shuma = _num(trupi.get("shuma"))
+    if shuma <= 0:
+        raise HTTPException(400, "Shuma duhet me e madhe se zero.")
+
+    c = lexo_cilesimet()
+    tabela = "fin_te_ardhurat" if lloji == "te_ardhura" else "fin_planet"
+    burimet = _lexo(tabela, {"id": f"eq.{burimi_id}"})
+    if not burimet:
+        raise HTTPException(404, f"Burimi {burimi_id} nuk u gjet ne {tabela}.")
+    burimi = burimet[0]
+
+    drejtimi = ("hyrje" if lloji == "te_ardhura"
+                else (burimi.get("drejtimi") or "dalje"))
+    rresht = {
+        "user_id": USER_ID,
+        "data": trupi.get("data") or date.today().isoformat(),
+        "lloji": drejtimi,
+        "shuma": shuma,
+        "monedha": (trupi.get("monedha") or burimi.get("monedha")
+                    or c["monedha_baze"]).strip().upper(),
+        "kategoria": (trupi.get("kategoria") or burimi.get("lloji")
+                      or burimi.get("kategoria") or "tjeter"),
+        "pershkrimi": trupi.get("pershkrimi") or burimi.get("emri"),
+        "llogaria_id": trupi.get("llogaria_id") or burimi.get("llogaria_id"),
+    }
+    rresht["te_ardhura_id" if lloji == "te_ardhura" else "plani_id"] = burimi_id
+
+    dalja = _sb("fin_transaksionet", "post", trupi=rresht,
+                prefer="return=representation")
+    return {"transaksioni": dalja[0] if isinstance(dalja, list) and dalja else dalja,
+            "njoftimet": gjenero_njoftimet(mbledh_gjendjen(), c)}
 
 
 @router.get("/projeksion")
