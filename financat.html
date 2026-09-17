@@ -892,7 +892,24 @@ window.addEventListener('resize', () => { if (PANEL) vizatoGrafiket(); });
 const sot = () => new Date().toISOString().slice(0, 10);
 const MUAJT_EMRA = ['Janar', 'Shkurt', 'Mars', 'Prill', 'Maj', 'Qershor',
   'Korrik', 'Gusht', 'Shtator', 'Tetor', 'Nentor', 'Dhjetor'];
-const MONEDHA = {tip: 'text', param: 'EUR', eti: 'Monedha'};
+// Monedha parazgjedhur eshte ajo e panelit — jo 'EUR' e ngurte.
+const MONEDHA = {tip: 'text', param: () => (PANEL?.monedha_baze || 'EUR'),
+                 eti: 'Monedha'};
+
+// Shkallet 1-5 shkruheshin si numra te thate dhe askush s'e mbante mend nga
+// cila ane nis. Tani numri mbetet ne baze, por ne ekran ka emrin e vet.
+const PRIORITETI = {tip: 'select', param: 3, eti: 'Prioriteti', opsione: [
+  ['1', '1 — Jetik (nuk shtyhet dot)'], ['2', '2 — I larte'],
+  ['3', '3 — Mesatar'], ['4', '4 — I ulet'], ['5', '5 — Shtyhet pa pasoje']]};
+const DOMOSDOSHMERIA = {tip: 'select', param: 3, eti: 'Domosdoshmeria', opsione: [
+  ['1', '1 — E domosdoshme (buke, qira)'], ['2', '2 — Shume e nevojshme'],
+  ['3', '3 — E nevojshme'], ['4', '4 — Deshire'], ['5', '5 — Luks i paster']]};
+const SIGURIA_TE_ARDHURAVE = {tip: 'select', param: 4, eti: 'Siguria', opsione: [
+  ['5', '5 — E garantuar (kontrate)'], ['4', '4 — Shume e sigurt'],
+  ['3', '3 — Mesatare'], ['2', '2 — E pasigurt'], ['1', '1 — Shume e pasigurt']]};
+const RREZIKU = {tip: 'select', param: 3, eti: 'Rreziku', opsione: [
+  ['1', '1 — Shume i sigurt (depozite)'], ['2', '2 — I ulet'],
+  ['3', '3 — Mesatar'], ['4', '4 — I larte'], ['5', '5 — Spekulativ']]};
 
 const REGJISTRI = {
   transaksionet: {
@@ -930,12 +947,28 @@ const REGJISTRI = {
       interesi_vjetor: {tip: 'number', param: 0, eti: 'Interesi vjetor %'},
       kesti_mujor: {tip: 'number', param: 0, eti: 'Kesti mujor'},
       afati: {tip: 'date', eti: 'Afati'},
-      siguria: {tip: 'number', param: 100, eti: 'Siguria % (per arketimet)'},
-      prioriteti: {tip: 'number', param: 3, eti: 'Prioriteti 1-5'},
+      siguria: {tip: 'number', param: 100,
+                eti: 'Sa % e pret vertet (vetem per arketimet)'},
+      prioriteti: PRIORITETI,
       statusi: {tip: 'select', opsione: [['aktiv', 'Aktiv'], ['shlyer', 'Shlyer'], ['vonuar', 'Vonuar'], ['dyshimtar', 'Dyshimtar']], eti: 'Statusi'},
       pershkrimi: {tip: 'text', eti: 'Pershkrimi'},
     },
     kolona: ['lloji', 'pala', 'shuma_totale', 'shuma_paguar', 'monedha', 'interesi_vjetor', 'kesti_mujor', 'afati', 'statusi'],
+  },
+  'shpenzime-ditore': {
+    titull: 'Shpenzime ditore', tabela: 'transaksionet',
+    filtra: {lloji: 'dalje'}, fikse: {lloji: 'dalje'},
+    ndihme: 'Cfare ike sot: ushqime, karburant, kafe, veshje. Keto jane ' +
+            'shpenzimet e ndryshueshme — pikerisht ato qe formojne "bazen" e ' +
+            'shpenzimit mujor dhe qendrueshmerine ne skor.',
+    fusha: {
+      data: {tip: 'date', param: sot, eti: 'Data'},
+      kategoria: {tip: 'kategori', opsione: [['ushqime','Ushqime'],['karburant','Karburant'],['kafe','Kafe / dreka'],['veshje','Veshje'],['farmaci','Farmaci / shendet'],['transport','Transport'],['argetim','Argetim'],['higjiene','Higjiene / shtepiake'],['shtepia','Shtepia'],['dhurata','Dhurata'],['femijet','Femijet'],['cigare','Duhan / pije'],['tjeter','Tjeter']], eti: 'Kategoria'},
+      shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
+      llogaria_id: {tip: 'llogari', eti: 'Paguar nga'},
+      pershkrimi: {tip: 'text', eti: 'Pershkrimi (opsional)'},
+    },
+    kolona: ['data', 'kategoria', 'shuma', 'monedha', 'pershkrimi'],
   },
   'shpenzime-mujore': {
     titull: 'Shpenzime mujore fikse', tabela: 'planet',
@@ -946,11 +979,11 @@ const REGJISTRI = {
             'cdo muaj. Dita e pageses ndez njoftimin ne panel.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
-      kategoria: {tip: 'select', opsione: [['qeraja','Qeraja'],['kredia','Kredia'],['interneti','Interneti'],['telefoni','Telefoni'],['energjia','Energjia elektrike'],['uji','Uji'],['kopshti','Kopshti i femijeve'],['shkolla','Shkolla'],['transporti','Transporti'],['ushqimi','Ushqimi'],['abonime','Abonime'],['tjeter','Tjeter']], eti: 'Kategoria'},
+      kategoria: {tip: 'kategori', opsione: [['qeraja','Qeraja'],['kredia','Kredia'],['interneti','Interneti'],['telefoni','Telefoni'],['energjia','Energjia elektrike'],['uji','Uji'],['kopshti','Kopshti i femijeve'],['shkolla','Shkolla'],['transporti','Transporti'],['ushqimi','Ushqimi'],['abonime','Abonime'],['tjeter','Tjeter']], eti: 'Kategoria'},
       shuma: {tip: 'number', eti: 'Shuma mujore'}, monedha: MONEDHA,
       dita_pageses: {tip: 'dite', eti: 'Dita e pageses'},
       llogaria_id: {tip: 'llogari', eti: 'Paguhet nga'},
-      domosdoshmeria: {tip: 'number', param: 1, eti: 'Domosdoshmeria 1-5'},
+      domosdoshmeria: {...DOMOSDOSHMERIA, param: 1},
       data_mbarimit: {tip: 'date', eti: 'Mbaron me (opsionale)'},
       shenime: {tip: 'text', eti: 'Shenime'},
     },
@@ -966,12 +999,12 @@ const REGJISTRI = {
             'Muaji i pageses percakton kur te vije njoftimi.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
-      kategoria: {tip: 'select', opsione: [['taksa_toke','Taksa e tokes'],['taksa_shtepie','Taksa e shtepise'],['taksa_makine','Taksa e makines'],['siguracion_makine','Siguracioni i makines'],['siguracion_shendeti','Siguracioni shendetesor'],['kontroll_teknik','Kontrolli teknik'],['licenca','Licenca / tarifa'],['pushime','Pushimet'],['tjeter','Tjeter']], eti: 'Kategoria'},
+      kategoria: {tip: 'kategori', opsione: [['taksa_toke','Taksa e tokes'],['taksa_shtepie','Taksa e shtepise'],['taksa_makine','Taksa e makines'],['siguracion_makine','Siguracioni i makines'],['siguracion_shendeti','Siguracioni shendetesor'],['kontroll_teknik','Kontrolli teknik'],['licenca','Licenca / tarifa'],['pushime','Pushimet'],['tjeter','Tjeter']], eti: 'Kategoria'},
       shuma: {tip: 'number', eti: 'Shuma vjetore'}, monedha: MONEDHA,
       muaji_pageses: {tip: 'select', opsione: [['1','Janar'],['2','Shkurt'],['3','Mars'],['4','Prill'],['5','Maj'],['6','Qershor'],['7','Korrik'],['8','Gusht'],['9','Shtator'],['10','Tetor'],['11','Nentor'],['12','Dhjetor']], eti: 'Muaji i pageses'},
       dita_pageses: {tip: 'dite', eti: 'Dita e pageses'},
       llogaria_id: {tip: 'llogari', eti: 'Paguhet nga'},
-      domosdoshmeria: {tip: 'number', param: 2, eti: 'Domosdoshmeria 1-5'},
+      domosdoshmeria: {...DOMOSDOSHMERIA, param: 2},
       shenime: {tip: 'text', eti: 'Shenime'},
     },
     kolona: ['emri', 'kategoria', 'shuma', 'monedha', 'muaji_pageses',
@@ -983,14 +1016,14 @@ const REGJISTRI = {
       emri: {tip: 'text', eti: 'Emri'},
       drejtimi: {tip: 'select', opsione: [['dalje', 'Dalje'], ['hyrje', 'Hyrje']], eti: 'Drejtimi'},
       shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
-      frekuenca: {tip: 'select', opsione: [['mujore', 'Mujore'], ['nje_here', 'Nje here'], ['javore', 'Javore'], ['dyjavore', 'Dyjavore'], ['tremujore', 'Tremujore'], ['vjetore', 'Vjetore']], eti: 'Frekuenca'},
+      frekuenca: {tip: 'select', opsione: [['mujore', 'Mujore'], ['nje_here', 'Nje here'], ['ditore', 'Ditore'], ['javore', 'Javore'], ['dyjavore', 'Dyjavore'], ['tremujore', 'Tremujore'], ['vjetore', 'Vjetore']], eti: 'Frekuenca'},
       data_fillimit: {tip: 'date', param: sot, eti: 'Fillon me'},
       data_mbarimit: {tip: 'date', eti: 'Mbaron me'},
       horizonti: {tip: 'select', opsione: [['urgjent', 'Urgjent (<1 muaj)'], ['afatshkurter', 'Afatshkurter (1-6m)'], ['afatmesem', 'Afatmesem (6-24m)'], ['afatgjate', 'Afatgjate (24m+)']], eti: 'Horizonti'},
       dita_pageses: {tip: 'number', eti: 'Dita e pageses (1-31)'},
       llogaria_id: {tip: 'llogari', eti: 'Paguhet nga llogaria'},
-      domosdoshmeria: {tip: 'number', param: 3, eti: 'Domosdoshmeria 1-5'},
-      probabiliteti: {tip: 'number', param: 100, eti: 'Probabiliteti %'},
+      domosdoshmeria: DOMOSDOSHMERIA,
+      probabiliteti: {tip: 'number', param: 100, eti: 'Sa % gjasa ka te ndodhe'},
       kategoria: {tip: 'text', param: 'tjeter', eti: 'Kategoria'},
     },
     kolona: ['emri', 'drejtimi', 'shuma', 'monedha', 'frekuenca', 'dita_pageses',
@@ -1007,8 +1040,9 @@ const REGJISTRI = {
       shuma_e_ndryshueshme: {tip: 'bool', param: false,
         eti: 'Shuma ndryshon cdo muaj (freelance)'},
       llogaria_id: {tip: 'llogari', eti: 'Bie ne llogarine'},
-      siguria: {tip: 'number', param: 4, eti: 'Siguria 1-5'},
-      oret_mujore: {tip: 'number', param: 0, eti: 'Oret ne muaj'},
+      siguria: SIGURIA_TE_ARDHURAVE,
+      oret_mujore: {tip: 'number', param: 0,
+                    eti: 'Oret ne muaj (0 = e ardhur pasive)'},
     },
     kolona: ['emri', 'lloji', 'shuma_mujore', 'monedha', 'dita_pageses',
              'shuma_e_ndryshueshme', 'siguria'],
@@ -1023,7 +1057,7 @@ const REGJISTRI = {
       cmimi_blerje: {tip: 'number', eti: 'Cmimi i blerjes'},
       cmimi_aktual: {tip: 'number', eti: 'Cmimi aktual'}, monedha: MONEDHA,
       data_blerje: {tip: 'date', eti: 'Data e blerjes'},
-      rreziku: {tip: 'number', param: 3, eti: 'Rreziku 1-5'},
+      rreziku: RREZIKU,
       kthimi_pritshem: {tip: 'number', param: 0, eti: 'Kthimi i pritshem %'},
     },
     kolona: ['emri', 'lloji', 'simboli', 'sasia', 'cmimi_blerje', 'cmimi_aktual', 'monedha', 'rreziku'],
@@ -1037,7 +1071,7 @@ const REGJISTRI = {
       shuma_aktuale: {tip: 'number', param: 0, eti: 'Arritur deri tani'},
       monedha: MONEDHA,
       afati: {tip: 'date', eti: 'Afati'},
-      prioriteti: {tip: 'number', param: 3, eti: 'Prioriteti 1-5'},
+      prioriteti: PRIORITETI,
     },
     kolona: ['emri', 'lloji', 'shuma_synim', 'shuma_aktuale', 'monedha', 'afati'],
   },
@@ -1078,13 +1112,22 @@ async function hapRegjistrin(id){
     const param = typeof f.param === 'function' ? f.param() : f.param;
     if (f.tip === 'select')
       return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">${
-        f.opsione.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></div>`;
+        f.opsione.map(([v, t]) =>
+          `<option value="${v}" ${String(v) === String(param ?? '') ? 'selected' : ''}
+           >${t}</option>`).join('')}</select></div>`;
     if (f.tip === 'bool')
       return `<div><label for="${vid}">${f.eti}</label>
         <input id="${vid}" type="checkbox" ${param ? 'checked' : ''} style="width:auto"></div>`;
     if (f.tip === 'llogari')
       return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
         <option value="">—</option>${opsionetELlogarive()}</select></div>`;
+    if (f.tip === 'kategori')
+      return `<div><label for="${vid}">${f.eti}</label>
+        <select id="${vid}" onchange="kategoriaNdryshoi('${vid}')">${
+          f.opsione.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')
+        }<option value="__vet__">+ Shkruaj vete…</option></select>
+        <input id="${vid}-vet" class="fshihu" style="margin-top:6px"
+               placeholder="emri i kategorise sate"></div>`;
     if (f.tip === 'dite')
       return `<div><label for="${vid}">${f.eti}</label>
         <input id="${vid}" type="text" inputmode="numeric" placeholder="18 ose 18-20"
@@ -1097,6 +1140,15 @@ async function hapRegjistrin(id){
   }).join('');
   perditesoModenE();
   ngarkoTabelen(id);
+}
+
+/* Kategoria: lista e gatshme mbulon rastet e zakonshme, por asnje liste
+   s'i mbulon te gjitha — prandaj "Shkruaj vete" hap nje fushe te lire. */
+function kategoriaNdryshoi(vid){
+  const zgjedhur = document.getElementById(vid).value === '__vet__';
+  const kutia = document.getElementById(vid + '-vet');
+  kutia.classList.toggle('fshihu', !zgjedhur);
+  if (zgjedhur) kutia.focus();
 }
 
 /* ── Shtim vs ndryshim ────────────────────────────────────────────────── */
@@ -1115,7 +1167,14 @@ function redakto(id, rreshtiId){
     const v = $(`#f-${id}-${emri}`);
     if (!v) continue;
     const vlera = rresht[emri];
-    if (f.tip === 'bool') v.checked = !!vlera;
+    if (f.tip === 'kategori'){
+      const ne_liste = f.opsione.some(([kodi]) => kodi === vlera);
+      v.value = ne_liste ? vlera : '__vet__';
+      const kutia = $(`#f-${id}-${emri}-vet`);
+      kutia.value = ne_liste ? '' : (vlera || '');
+      kutia.classList.toggle('fshihu', ne_liste);
+    }
+    else if (f.tip === 'bool') v.checked = !!vlera;
     else if (f.tip === 'dite'){
       const fund = rresht[emri + '_fund'];
       v.value = vlera ? (fund ? `${vlera}-${fund}` : String(vlera)) : '';
@@ -1175,6 +1234,18 @@ async function ruajRreshtin(){
       catch (e) { njofto('Gabim: ' + e.message, 4000); return; }
       continue;
     }
+    if (f.tip === 'kategori'){
+      let kat = v.value;
+      if (kat === '__vet__'){
+        kat = ($(`#f-${id}-${emri}-vet`).value || '').trim().toLowerCase();
+        if (!kat){
+          njofto('Shkruaj emrin e kategorise, ose zgjidh nje nga lista.', 4000);
+          $(`#f-${id}-${emri}-vet`).focus(); return;
+        }
+      }
+      trupi[emri] = kat;
+      continue;
+    }
     if (f.tip === 'dite'){
       // "18-20" do te thote "paguhem diku mes 18-es dhe 20-es". Nje fushe
       // numerike do ta hidhte poshte ne heshtje; ketu ruhet si dy kufij.
@@ -1217,7 +1288,9 @@ async function ruajRreshtin(){
     } else {
       await api('/te-dhena/' + tabelaE(id), {metoda: 'POST', trupi});
       njofto('U shtua.');
-      ngarkoTabelen(id);
+      // Formulari rindertohet nga e para: pa kete, fushat e mbetura te
+      // plotesuara e bejne te lehte shtimin e nje dublikate pa e kuptuar.
+      hapRegjistrin(id);
     }
     ngarko();
   } catch (e) { njofto('Gabim: ' + e.message, 5000); }
