@@ -19,6 +19,8 @@ Hap SQL Editor te Supabase dhe ekzekuto, me kete radhe:
 1. `financat_skema.sql` — 9 tabelat (`fin_*`), indekset, cilesimet fillestare.
 2. `financat_migrim_2.sql` — datat e pagesave, lidhja e transaksionit me
    burimin e te ardhurave, kursi i LEK-ut. I sigurt te ri-ekzekutohet.
+3. `financat_migrim_3.sql` — shuma mujore behet opsionale, dritarja e dates
+   ("18-20"), muaji i shpenzimeve vjetore, llogaria "Kesh".
 
 RLS ndizet pa asnje policy: celesi `anon` nuk lexon dot asgje — vetem
 backend-i, me service key, shkruan dhe lexon.
@@ -93,6 +95,23 @@ Sa peshe mban vertet: teprica e lire mbi rezerven, rrjedha neto mujore, dhe
 kesti maksimal i nje detyrimi te ri (60% e rrjedhes neto, dhe njekohesisht
 DTI total ≤35% — kthehet edhe cili nga te dy kufijte po te ndalon).
 
+### Shpenzimet fikse
+Ne regjistri ka dy pamje te vecanta mbi te njejten tabele `fin_planet`:
+
+- **Shpenzime mujore fikse** — qeraja, kredia, interneti, telefoni, kopshti.
+  Ruhen me `frekuenca = mujore`, `drejtimi = dalje`.
+- **Shpenzime vjetore fikse** — taksa e tokes/shtepise/makines, siguracionet,
+  kontrolli teknik. Ruhen me `frekuenca = vjetore` dhe kerkojne
+  `muaji_pageses`: pa te, nje shpenzim vjetor s'ka kur te kujtohet.
+
+Nuk eshte tabele e trete — jane filtra mbi te njejten strukture, ndaj
+projeksioni dhe shpenzimi mujor i pritshem i marrin parasysh njesoj.
+
+### Dita e pageses mund te jete nje dritare
+`dita_pageses` + `dita_pageses_fund` shkruhen ne nje fushe te vetme:
+`18` ose `18-20`. Vonesa numerohet nga dita e **fundit** e dritares — perndryshe
+nje page qe pritet mes 18-es dhe 20-es do te dilte "e vonuar" me 19.
+
 ### Njoftimet e pagesave
 Nje pagese e perseritshme (page, qira, kest freelance) njihet **e kryer** kur
 ekziston nje transaksion i lidhur me ate burim (`te_ardhura_id` ose
@@ -106,6 +125,9 @@ Rregullat:
 - Nuk pyetet kurre per nje muaj kur burimi ende s'ekzistonte (`krijuar_me`).
 - `shuma_e_ndryshueshme = true` (tipike per freelance) → njoftimi te pyet
   "sa more kete muaj?" dhe e le shumen bosh. Ne te kundert e propozon vete.
+- Nje burim me `shuma_mujore` bosh nuk numerohet zero: vlera nxirret nga
+  mesatarja e muajve me pagese te shenuar (6 muajt e fundit), dhe njoftimi e
+  tregon ate mesatare si orientim pa e mbushur fushen.
 - Klikimi i njoftimit hap formularin e gatshem; ruajtja krijon transaksionin
   dhe njoftimi hesht.
 
@@ -126,6 +148,7 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `GET /api/fin/panel?muaj=12` | Gjithcka ne nje thirrje |
 | `GET /api/fin/skor` · `/alarmet` · `/projeksion` | Pjese te vecanta |
 | `GET /api/fin/njoftimet` | Pagesat e pritshme qe s'jane shenuar |
+| `POST /api/fin/llogaria-kesh` | Kthen llogarine "para ne dore", duke e krijuar nese mungon |
 | `POST /api/fin/regjistro-pagese` | Mbyll nje njoftim duke krijuar transaksionin |
 | `POST /api/fin/skenar` | "Po sikur?" — rillogarit pa e prekur bazen |
 | `GET/POST /api/fin/te-dhena/{tabela}` | Lexo / shto |
@@ -138,7 +161,8 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `GET /api/fin/shendeti` | Pa token; vetem gjendja e konfigurimit |
 
 Tabelat: `llogarite`, `transaksionet`, `detyrimet`, `planet`, `te-ardhurat`,
-`investimet`, `objektivat`, `raportet` (vetem lexim).
+`investimet`, `objektivat`, `raportet` (vetem lexim). Listimi pranon filtrat
+`frekuenca`, `drejtimi`, `lloji` — mbi ta ndertohen pamjet e shpenzimeve fikse.
 
 Shkrimi filtrohet me liste te bardhe fushash — `id`, `user_id` dhe
 `krijuar_me` nuk vendosen dot nga jashte, dhe cdo PATCH/DELETE kufizohet me

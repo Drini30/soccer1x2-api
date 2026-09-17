@@ -76,7 +76,8 @@ FUSHAT = {
                   "prioriteti", "statusi", "siguria"},
     "planet": {"emri", "drejtimi", "shuma", "monedha", "kategoria", "frekuenca",
                "data_fillimit", "data_mbarimit", "horizonti", "domosdoshmeria",
-               "probabiliteti", "aktiv", "shenime", "dita_pageses", "llogaria_id"},
+               "probabiliteti", "aktiv", "shenime", "dita_pageses",
+               "dita_pageses_fund", "muaji_pageses", "llogaria_id"},
     "te-ardhurat": {"emri", "lloji", "shuma_mujore", "monedha", "siguria",
                     "oret_mujore", "aktiv", "dita_pageses",
                     "shuma_e_ndryshueshme", "llogaria_id"},
@@ -264,6 +265,62 @@ def mbledh_gjendjen() -> Dict[str, Any]:
     }
 
 
+def vleresoj_te_ardhurat(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[int, dict]:
+    """Sa sjell çdo burim ne muaj, ne monedhen baze.
+
+    Nje e ardhur freelance s'ka shume fikse — kolona lihet bosh me qellim.
+    Ne ate rast shifra nxirret nga pagesat e vertetuara te atij burimi
+    (mesatarja e muajve me pagese, brenda 6 muajve te fundit). Keshtu
+    projeksioni nuk e trajton nje burim te vertete si zero, dhe as nuk
+    hamendeson nje shume qe s'ka ndodhur kurre.
+    """
+    sot = date.today()
+    sipas_burimit: Dict[int, Dict[str, float]] = {}
+    for t in g["transaksionet"]:
+        bid = t.get("te_ardhura_id")
+        if bid is None:
+            continue
+        d = _dat(t.get("data"))
+        if not d or (sot - d).days > 190 or d > sot:
+            continue
+        try:
+            bid = int(bid)
+        except (TypeError, ValueError):
+            continue
+        muaji = f"{d.year:04d}-{d.month:02d}"
+        sipas_burimit.setdefault(bid, {})
+        sipas_burimit[bid][muaji] = (sipas_burimit[bid].get(muaji, 0.0)
+                                     + kthe(t.get("shuma"), t.get("monedha"), c))
+
+    dalja: Dict[int, dict] = {}
+    for a in g["te_ardhurat"]:
+        try:
+            aid = int(a.get("id"))
+        except (TypeError, ValueError):
+            continue
+        deklaruar = a.get("shuma_mujore")
+        if deklaruar is not None and _num(deklaruar) > 0:
+            dalja[aid] = {
+                "mujore_baze": kthe(deklaruar, a.get("monedha"), c),
+                "burimi": "deklaruar", "pagesa": 0,
+                "shpjegim": "shuma e deklaruar",
+            }
+            continue
+        muajt = sipas_burimit.get(aid, {})
+        if muajt:
+            mesatarja = statistics.fmean(muajt.values())
+            dalja[aid] = {
+                "mujore_baze": mesatarja, "burimi": "historik",
+                "pagesa": len(muajt),
+                "shpjegim": f"mesatarja e {len(muajt)} pagesave te fundit",
+            }
+        else:
+            dalja[aid] = {"mujore_baze": 0.0, "burimi": "pa_te_dhena",
+                          "pagesa": 0,
+                          "shpjegim": "pa shume te deklaruar dhe pa pagesa te shenuara"}
+    return dalja
+
+
 def llogarit_bilancet(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
     """Balanca per llogari + totalet ne monedhen baze."""
     bazat = {int(l["id"]): _num(l.get("bilanci_fillestar")) for l in g["llogarite"]}
@@ -351,8 +408,8 @@ def llogarit_rrjedhen(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
     if len(daljet) >= 3 and statistics.fmean(daljet) > 0:
         paqendrueshmeria = statistics.pstdev(daljet) / statistics.fmean(daljet)
 
-    te_ardhurat_deklaruara = sum(
-        kthe(a.get("shuma_mujore"), a.get("monedha"), c) for a in g["te_ardhurat"])
+    vleresimet = vleresoj_te_ardhurat(g, c)
+    te_ardhurat_deklaruara = sum(v["mujore_baze"] for v in vleresimet.values())
     hyrje_historike = _mes("hyrje")
 
     # Planet e perseritshme, te kthyera ne kosto mujore ekuivalente.
@@ -637,13 +694,13 @@ def skor_sjelljeje(c: Dict[str, Any], bil: Dict[str, Any], rrj: Dict[str, Any],
     })
 
     # 6) Struktura e te ardhurave (10 pike) — diversifikim + pjese pasive.
-    burimet = [kthe(a.get("shuma_mujore"), a.get("monedha"), c)
-               for a in g["te_ardhurat"] if _num(a.get("shuma_mujore")) > 0]
+    vleresimet = vleresoj_te_ardhurat(g, c)
+    burimet = [v["mujore_baze"] for v in vleresimet.values() if v["mujore_baze"] > 0]
     total_b = sum(burimet)
     if total_b > 0:
         pjesa_me_e_madhe = max(burimet) / total_b
         diversiteti = _kufizo((1 - pjesa_me_e_madhe) / 0.5)      # 2+ burime te barabarta → plot
-        pasive = sum(kthe(a.get("shuma_mujore"), a.get("monedha"), c)
+        pasive = sum(vleresimet.get(int(a["id"]), {}).get("mujore_baze", 0.0)
                      for a in g["te_ardhurat"] if _num(a.get("oret_mujore")) <= 0)
         pjesa_pasive = _kufizo((pasive / total_b) / 0.3)
         p6 = 10 * (0.6 * diversiteti + 0.4 * pjesa_pasive)
@@ -885,17 +942,18 @@ def _dita_e_muajit(dita: int, viti: int, muaji: int) -> date:
 
 
 def gjenero_njoftimet(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
-    """Pagesat e pritshme qe ende s'jane regjistruar.
+    """Pagesat e pritshme qe ende s'jane shenuar.
 
-    Nje pagese e perseritshme (page, qira, kest freelance) njihet e kryer kur
-    ekziston nje transaksion i lidhur me ate burim brenda atij muaji. Prandaj
-    kontrollohen dy muaj: ai rrjedhes dhe ai i shkuar — nje page e harruar ne
-    fund te muajit te kaluar nuk duhet te zhduket nga ekrani me 1 te muajit.
+    Nje pagese e perseritshme njihet e kryer kur ekziston nje transaksion i
+    lidhur me ate burim (te_ardhura_id / plani_id) brenda asaj periudhe.
 
-    Kthen edhe 'veprimin': cfare duhet plotesuar dhe me cfare vlerash, qe faqja
-    ta hape formularin gati te mbushur me nje klikim.
+    Data mund te jete nje dritare, jo nje dite e vetme: "paguhem mes 18-20"
+    shkruhet me dita_pageses=18 dhe dita_pageses_fund=20. Vonesa fillon te
+    numerohet nga dita e fundit e dritares, jo nga e para — perndryshe do te
+    thoshte "vonuar" per nje pagese qe ende s'ka arritur afatin.
     """
     sot = date.today()
+    vleresimet = vleresoj_te_ardhurat(g, c)
     njoftime: List[dict] = []
 
     periudhat = [(sot.year, sot.month)]
@@ -920,39 +978,46 @@ def gjenero_njoftimet(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
         return False
 
     def shto(burimi: dict, fusha: str, drejtimi: str, viti: int, muaji: int,
-             emri: str, monedha: str, shuma: float, e_ndryshueshme: bool,
-             tabela: str, kategoria: str):
+             emri: str, monedha: str, shuma: Optional[float], e_ndryshueshme: bool,
+             tabela: str, kategoria: str, shtese: str = ""):
         dita = int(_num(burimi.get("dita_pageses"), 0))
         if dita <= 0:
             return
-        data_pritur = _dita_e_muajit(dita, viti, muaji)
+        fillimi_d = _dita_e_muajit(dita, viti, muaji)
+        dita_fund = int(_num(burimi.get("dita_pageses_fund"), 0))
+        fundi_d = (_dita_e_muajit(dita_fund, viti, muaji)
+                   if dita_fund >= dita else fillimi_d)
+
         # Tre dite perpara mjaftojne: me heret eshte zhurme, jo kujtese.
-        if (data_pritur - sot).days > 3:
+        if (fillimi_d - sot).days > 3:
             return
-        # Mos pyet per nje pagese te nje muaji kur burimi ende s'ekzistonte —
-        # perndryshe cdo burim i sapo shtuar do te kerkonte menjehere nje
-        # "pagese te munguar" te muajit te shkuar.
+        # Mos pyet per nje periudhe kur burimi ende s'ekzistonte.
         krijuar = _dat(burimi.get("krijuar_me"))
-        if krijuar and krijuar > data_pritur:
+        if krijuar and krijuar > fundi_d:
             return
         if u_regjistrua(fusha, burimi["id"], viti, muaji):
             return
-        vonesa = (sot - data_pritur).days
+
+        vonesa = (sot - fundi_d).days
         niveli = "vonuar" if vonesa > 1 else "pritet"
         muaji_emer = f"{viti:04d}-{muaji:02d}"
+        kur = (f"mes {fillimi_d.day} dhe {fundi_d.day} te {muaji_emer}"
+               if fundi_d != fillimi_d else f"me {fillimi_d.isoformat()}")
+
+        shuma_teksti = f"{_num(shuma):,.0f}".replace(",", ".")
 
         if drejtimi == "hyrje" and e_ndryshueshme:
             titulli = f"{emri} — sa more kete muaj?"
-            detaji = (f"Pagesa e {muaji_emer} pritej me {data_pritur.isoformat()}. "
-                      f"Shuma ndryshon sipas punes, prandaj s'e plotesoj dot une.")
+            detaji = (f"Pagesa e {muaji_emer} pritej {kur}. Shuma ndryshon "
+                      f"sipas punes, prandaj s'e plotesoj dot une.")
+            if shtese:
+                detaji += f" {shtese}"
         elif drejtimi == "hyrje":
+            detaji = f"Pritej {kur}, zakonisht {shuma_teksti} {monedha}."
             titulli = f"{emri} — konfirmo pagesen"
-            detaji = (f"Pritej me {data_pritur.isoformat()}, zakonisht "
-                      f"{shuma:,.0f} {monedha}.".replace(",", "."))
         else:
             titulli = f"{emri} — pagesa e {muaji_emer}"
-            detaji = (f"Duhet paguar me {data_pritur.isoformat()}: "
-                      f"{shuma:,.0f} {monedha}.".replace(",", "."))
+            detaji = f"Duhet paguar {kur}: {shuma_teksti} {monedha}."
         if vonesa > 1:
             detaji += f" Kane kaluar {vonesa} dite pa u shenuar."
 
@@ -962,7 +1027,8 @@ def gjenero_njoftimet(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
             "drejtimi": drejtimi,
             "titulli": titulli,
             "detaji": detaji,
-            "data_pritur": data_pritur.isoformat(),
+            "data_pritur": fillimi_d.isoformat(),
+            "data_fundit": fundi_d.isoformat(),
             "dite_vonese": max(0, vonesa),
             "veprimi": {
                 "etiketa": ("Shto shumen" if e_ndryshueshme else
@@ -972,32 +1038,55 @@ def gjenero_njoftimet(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
                 "emri": emri,
                 "monedha": monedha,
                 "shuma": None if e_ndryshueshme else shuma,
-                "data": min(sot, data_pritur).isoformat(),
+                "data": min(sot, fundi_d).isoformat(),
                 "llogaria_id": burimi.get("llogaria_id"),
                 "kategoria": kategoria,
             },
         })
 
+    # ── Te ardhurat ──────────────────────────────────────────────────────
     for a in g["te_ardhurat"]:
+        if not a.get("aktiv", True):
+            continue
+        e_ndryshueshme = bool(a.get("shuma_e_ndryshueshme"))
+        v = vleresimet.get(int(a["id"]), {})
+        shuma = _num(a.get("shuma_mujore"))
+        shtese = ""
+        if e_ndryshueshme and v.get("burimi") == "historik":
+            kursi = kursi_i(c, a.get("monedha")) or 1.0
+            mesatarja_teksti = f"{v['mujore_baze'] / kursi:,.0f}".replace(",", ".")
+            shtese = (f"Mesatarja e {v['pagesa']} pagesave te fundit: "
+                      f"{mesatarja_teksti} "
+                      f"{(a.get('monedha') or c['monedha_baze']).upper()}.")
         for viti, muaji in periudhat:
             shto(a, "te_ardhura_id", "hyrje", viti, muaji,
-                 a.get("emri") or "Te ardhur", (a.get("monedha") or c["monedha_baze"]).upper(),
-                 _num(a.get("shuma_mujore")), bool(a.get("shuma_e_ndryshueshme")),
-                 "te-ardhurat", a.get("lloji") or "page")
+                 a.get("emri") or "Te ardhur",
+                 (a.get("monedha") or c["monedha_baze"]).upper(),
+                 shuma, e_ndryshueshme, "te-ardhurat",
+                 a.get("lloji") or "page", shtese)
 
+    # ── Planet: mujore cdo muaj, vjetore vetem ne muajin e vet ───────────
     for pl in g["planet"]:
-        if (pl.get("frekuenca") or "mujore").lower() != "mujore":
-            continue                     # njoftimet mujore vetem per ato mujore
+        frek = (pl.get("frekuenca") or "mujore").lower()
+        if frek not in ("mujore", "vjetore"):
+            continue
         mbarimi = _dat(pl.get("data_mbarimit"))
         if mbarimi and mbarimi < sot:
             continue
         fillimi = _dat(pl.get("data_fillimit"))
+        muaji_i_caktuar = int(_num(pl.get("muaji_pageses"), 0))
         for viti, muaji in periudhat:
+            if frek == "vjetore":
+                # Pa muaj te caktuar nje shpenzim vjetor s'ka kur te kujtohet.
+                if muaji_i_caktuar < 1 or muaji != muaji_i_caktuar:
+                    continue
             if fillimi and _dita_e_muajit(31, viti, muaji) < fillimi:
                 continue
             shto(pl, "plani_id", (pl.get("drejtimi") or "dalje"), viti, muaji,
-                 pl.get("emri") or "Plan", (pl.get("monedha") or c["monedha_baze"]).upper(),
-                 _num(pl.get("shuma")), False, "planet", pl.get("kategoria") or "tjeter")
+                 pl.get("emri") or "Plan",
+                 (pl.get("monedha") or c["monedha_baze"]).upper(),
+                 _num(pl.get("shuma")), False, "planet",
+                 pl.get("kategoria") or "tjeter")
 
     rendi = {"vonuar": 0, "pritet": 1}
     return sorted(njoftime, key=lambda n: (rendi.get(n["niveli"], 2), n["data_pritur"]))
@@ -1047,6 +1136,8 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "strategjia_borxhit": strat, "alarmet": alarme, "njoftimet": njoftime,
         "objektivat": objektiva,
         "planet": g["planet"], "te_ardhurat": g["te_ardhurat"],
+        "vleresimi_te_ardhurave": {str(k): v for k, v in
+                                   vleresoj_te_ardhurat(g, c).items()},
     }
 
 
@@ -1290,10 +1381,23 @@ def _pastro(emri: str, trupi: dict) -> dict:
 @router.get("/te-dhena/{tabela}")
 def lexo_tabelen(tabela: str, kufi: int = Query(500, ge=1, le=5000),
                  rendit: Optional[str] = Query(None, pattern=r"^[a-z_]{1,40}\.(asc|desc)$"),
+                 frekuenca: Optional[str] = Query(None, pattern=r"^[a-z_]{1,20}$"),
+                 drejtimi: Optional[str] = Query(None, pattern=r"^(hyrje|dalje)$"),
+                 lloji: Optional[str] = Query(None, pattern=r"^[a-z_]{1,20}$"),
                  _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Filtrat sherbejne per pamjet e ngushta te se njejtes tabele — p.sh.
+    'shpenzimet mujore fikse' jane thjesht planet me frekuence mujore dhe
+    drejtim dalje, pa nevojen e nje tabele te dyte."""
     kerko_token(_)
+    filtra = {}
+    if frekuenca:
+        filtra["frekuenca"] = f"eq.{frekuenca}"
+    if drejtimi:
+        filtra["drejtimi"] = f"eq.{drejtimi}"
+    if lloji:
+        filtra["lloji"] = f"eq.{lloji}"
     parazgjedhur = {"transaksionet": "data.desc", "raportet": "krijuar_me.desc"}
-    return _lexo(_tabela(tabela), None,
+    return _lexo(_tabela(tabela), filtra or None,
                  rendit or parazgjedhur.get(tabela, "id.desc"), kufi)
 
 
@@ -1331,6 +1435,28 @@ def fshi_rresht(tabela: str, rreshti_id: int,
     if not dalja:
         raise HTTPException(404, f"Rreshti {rreshti_id} nuk u gjet ne '{tabela}'.")
     return {"fshire": rreshti_id, "tabela": tabela}
+
+
+@router.post("/llogaria-kesh")
+def llogaria_kesh(_: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Kthen llogarine 'para ne dore', duke e krijuar nese s'ekziston.
+
+    Jo cdo pagese bie ne banke. Pa kete, formularet do te detyronin zgjedhjen
+    e nje llogarie qe perdoruesi s'e ka hapur kurre.
+    """
+    kerko_token(_)
+    ekzistueset = _lexo("fin_llogarite", {"lloji": "eq.cash", "aktiv": "eq.true"},
+                        "id.asc", 1)
+    if ekzistueset:
+        return ekzistueset[0]
+    c = lexo_cilesimet()
+    dalja = _sb("fin_llogarite", "post", trupi={
+        "user_id": USER_ID, "emri": "Kesh", "lloji": "cash",
+        "monedha": c["monedha_baze"], "bilanci_fillestar": 0,
+        "likuide": True, "aktiv": True,
+        "shenime": "Krijuar automatikisht per pagesat ne dore.",
+    }, prefer="return=representation")
+    return dalja[0] if isinstance(dalja, list) and dalja else dalja
 
 
 @router.get("/cilesimet")
