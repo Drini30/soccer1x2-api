@@ -21,6 +21,8 @@ Hap SQL Editor te Supabase dhe ekzekuto, me kete radhe:
    burimin e te ardhurave, kursi i LEK-ut. I sigurt te ri-ekzekutohet.
 3. `financat_migrim_3.sql` — shuma mujore behet opsionale, dritarja e dates
    ("18-20"), muaji i shpenzimeve vjetore, llogaria "Kesh".
+4. `financat_migrim_4.sql` — bizneset: pasqyra e fitimit, zerat, pika e
+   barazimit, lidhja e transaksioneve me biznesin.
 
 RLS ndizet pa asnje policy: celesi `anon` nuk lexon dot asgje — vetem
 backend-i, me service key, shkruan dhe lexon.
@@ -155,6 +157,38 @@ Rregullat:
 - Klikimi i njoftimit hap formularin e gatshem; ruajtja krijon transaksionin
   dhe njoftimi hesht.
 
+### Bizneset
+Nje biznes mbahet **njesi me vete**, jo kategori shpenzimesh. Arsyeja eshte
+praktike dhe e njohur: me para te perziera nuk kuptohet dot nese biznesi ecen.
+Ura e vetme mes tij dhe teje eshte **terheqja** — dhe vetem ajo shfaqet si e
+ardhur personale, pasi ta shenosh.
+
+Cdo transaksion me `biznesi_id` **perjashtohet** nga shpenzimet personale, nga
+kategorite dhe nga te ardhurat personale. Bilanci i llogarise vazhdon ta
+permbaje (paraja levizi vertet), por analiza personale jo.
+
+Zerat kane tre role:
+
+| Roli | Si llogaritet | Shembull |
+|---|---|---|
+| `te_ardhur` | `cmimi_njesi × sasia`, ose nje shume e sheshte | 12 € × 40 abonente |
+| `kosto_fikse` | shuma, e sjelle ne muaj | Render 25 €/muaj, domain 15 €/vit |
+| `kosto_variabile` | `kosto_per_njesi × njesite`, ose `% e te ardhurave` | 0.8 €/abonent, komision 3% |
+
+Pasqyra mujore:
+```
+te ardhura − kosto variabile = marzhi i kontributit
+marzhi − kosto fikse         = fitimi
+```
+
+**Pika e barazimit** llogaritet mbi marzhin e kontributit, jo mbi te ardhurat
+bruto — perndryshe del gjithmone me e ulet se sa eshte vertet:
+`kosto fikse ÷ marzhi%`, e kthyer ne njesi me cmimin mesatar. **Siguria** eshte
+sa perqind mund te bien shitjet para se te hyhet ne humbje.
+
+Alarmet e biznesit: humbje, terheqje mbi fitimin ("diferenca del nga kapitali,
+jo nga puna"), siguri nen 20%, dhe mungese e te ardhurave te regjistruara.
+
 ### Motori i objektivave
 Nje objektiv nuk eshte vetem nje shifer: motori i kthen nje plan.
 
@@ -211,7 +245,9 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 
 Tabelat: `llogarite`, `transaksionet`, `detyrimet`, `planet`, `te-ardhurat`,
 `investimet`, `objektivat`, `raportet` (vetem lexim). Listimi pranon filtrat
-`frekuenca`, `drejtimi`, `lloji` — mbi ta ndertohen pamjet e shpenzimeve fikse.
+`frekuenca`, `drejtimi`, `lloji`, `biznesi_id` — mbi ta ndertohen pamjet e
+shpenzimeve fikse dhe ato te bizneseve. Tabelat e bizneseve: `bizneset` dhe
+`zerat-e-biznesit`.
 
 Shkrimi filtrohet me liste te bardhe fushash — `id`, `user_id` dhe
 `krijuar_me` nuk vendosen dot nga jashte, dhe cdo PATCH/DELETE kufizohet me
