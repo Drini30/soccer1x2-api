@@ -697,14 +697,9 @@ function vizatoPanelin(){
       · perqendrimi me i madh ${nr(inv.perqendrimi_max, 0)}% ne nje klase te vetme.</p>`;
 
   $('#tab-objektiva').innerHTML = PANEL.objektivat.length
-    ? PANEL.objektivat.map(o => `<div class="perberes">
-        <span class="em">${esc(o.emri)}</span>
-        <span class="pi">${nr(o.aktuale)} / ${nr(o.synim)} ${o.monedha}</span>
-        <div class="shufer"><i style="width:${o.perqind}%"></i></div>
-        <span class="sh">${o.perqind}%${o.afati ? ` · afati ${o.afati}` : ''}${
-          o.kerkon_ne_muaj ? ` · kerkon ${para(o.kerkon_ne_muaj)}/muaj` : ''}</span>
-      </div>`).join('')
-    : '<p class="i-heshtur">Asnje objektiv.</p>';
+    ? PANEL.objektivat.map(vizatoObjektivin).join('')
+    : `<p class="i-heshtur">Asnje objektiv. Shtoje nje te Regjistri →
+       Objektivat, dhe motori te thote si te arrihet.</p>`;
 }
 
 function vizatoNjoftimet(lista){
@@ -772,6 +767,50 @@ async function ruajPagesen(indeksi){
     njofto('Pagesa u shenua.');
     ngarko();
   } catch (e) { $('#pg-gabimi').textContent = e.message; }
+}
+
+const NGJYRA_E_VERDIKTIT = {
+  'i arritshem': 'mire', 'arritur': 'mire', 'me sakrifice': 'paralajmerim',
+  'duhet shtyre': 'kritik', 'pa afat': 'info',
+};
+
+function vizatoObjektivin(o){
+  const pl = o.plani;
+  if (!pl) return `<div class="perberes">
+      <span class="em">${esc(o.emri)}</span>
+      <span class="pi">${nr(o.aktuale)} / ${nr(o.synim)} ${o.monedha}</span>
+      <div class="shufer"><i style="width:${o.perqind}%"></i></div>
+      <span class="sh">I arritur.</span></div>`;
+
+  const ngjyra = NGJYRA_E_VERDIKTIT[pl.verdikti] || 'info';
+  const hapat = pl.hapat.length ? `<div style="margin-top:8px">
+      <div class="etikete i-heshtur">Nga ku dalin parat</div>
+      <table>${pl.hapat.map(h => `<tr>
+        <td>${esc(h.veprimi)}<br><span class="i-heshtur"
+          style="font-size:.76rem">${esc(h.shpjegim)}</span></td>
+        <td class="num">${para(h.shuma_mujore)}</td></tr>`).join('')}</table>
+    </div>` : '';
+  const konfliktet = pl.konfliktet.map(k => `<div class="alarm ${
+      k.niveli === 'ndal' ? 'kritik' : 'paralajmerim'}" style="margin-top:8px">
+      <span class="ik" aria-hidden="true">${k.niveli === 'ndal' ? '\u25CF' : '\u25B2'}</span>
+      <div class="dd">${esc(k.teksti)}</div></div>`).join('');
+
+  return `<div class="perberes">
+    <span class="em">${esc(o.emri)}
+      <span class="distinktiv" style="color:var(--${ngjyra});margin-left:6px">
+        ${esc(pl.verdikti)}</span></span>
+    <span class="pi">${nr(o.aktuale)} / ${nr(o.synim)} ${esc(o.monedha)}</span>
+    <div class="shufer"><i style="width:${o.perqind}%"></i></div>
+    <span class="sh">${o.perqind}%${o.afati ? ` · afati ${o.afati}` : ''}${
+      pl.data_realiste && pl.data_realiste !== o.afati
+        ? ` · realisht ~${pl.data_realiste}` : ''}</span>
+    <div style="grid-column:1/-1;margin-top:6px">
+      <div class="dd" style="font-size:.86rem;color:var(--bojë-2)">${esc(pl.arsyeja)}</div>
+      ${konfliktet}
+      ${hapat ? `<details style="margin-top:6px"><summary style="cursor:pointer;
+        font-size:.84rem;color:var(--seria-1)">Plani mujor</summary>${hapat}</details>` : ''}
+    </div>
+  </div>`;
 }
 
 function tabele(koka, rreshtat, bosh, totali){
