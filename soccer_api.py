@@ -130,7 +130,7 @@ VERSION = ("2026-07-31 · KALIBRIM I MATUR mbi 329 parashikime te arkivuara. "
 # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
 # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
 # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
-BUILD = "2026-09-16-historiku-i-plote"
+BUILD = "2026-09-18-premium-nje-kuptim"
 
 def _env_int(emri: str, parazgjedhje: int) -> int:
     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
@@ -4325,12 +4325,8 @@ def _gjenero_pf():
         print(f"[PF] {_te_reja} hash te rinj nga {len(rows)} ndeshje "
               f"({len(rows) - _te_reja} i kishin tashme)")
 
-_pf_premium_backfilled = False
-
-
 def _zbulo_pf():
     """Zbulon parashikimet e kyçura sapo ndeshja të mbarojë me rezultat real."""
-    global _pf_premium_backfilled
     fund = "FT,AET,PEN,AWD,WO"
     try:
         r = requests.get(f"{PF_URL}?select=id,ndeshja,data&statusi=eq.kycur",
@@ -4359,32 +4355,31 @@ def _zbulo_pf():
                           "zbuluar_me": datetime.utcnow().isoformat()}, timeout=8)
             except Exception:
                 pass
-            try:   # etiketo si is_premium → shfaqet te Historiku PPM
-                requests.patch(
-                    f"{SUPABASE_URL_PREDS}?ndeshja=eq.{requests.utils.quote(nd, safe='')}"
-                    + (f"&data=eq.{dt}" if dt else "") + "&is_premium=is.false",
-                    headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
-                    json={"is_premium": True}, timeout=8)
-            except Exception:
-                pass
+            # ⚠️ KETU ISHTE NJE PATCH `is_premium = true`. U HOQ me 18/09/2026.
+            # Qellimi i tij i vetem ishte qe nje pike e zbuluar te shfaqej te
+            # Historiku PPM. Qe nga 16/09 historiku tregon CDO ndeshje te arkivuar,
+            # ndaj ai shkrim nuk shton me asgje ne faqe — po prishte dy gjera:
+            #   1) KUOTEN. `_kuota_premium_e_mbetur` numeron cdo rresht me
+            #      is_premium. Keto shtesa e hanin kuoten e dites pa kaluar kurre
+            #      nga filtri.
+            #   2) MATJEN. Grupi "premium" permbante ndeshje qe filtri s'i kishte
+            #      zgjedhur, ndaj cdo krahasim premium-kundrejt-te-tjerave ishte
+            #      i ndotur.
+            # PROVA (18 shtator, 29 ndeshje): vendet 1-10 te gjitha premium, pa
+            # vrima — filtri punonte. Po kishte edhe kater shtesa te tjera, ne
+            # vendet 12, 23, 25, 29, DHE TE KATERT ISHIN NDESHJE TE MBARUARA,
+            # ndersa vendi 1, ende pa nisur, ishte brenda majes. Kjo rruge vepron
+            # vetem pas mbarimit te ndeshjes — nenshkrim i sakte.
+            # Tani `is_premium` ka nje kuptim te vetem: u shit si PPM.
 
-    # Backfill një-herësh: ndeshjet PPM tashmë të zbuluara → is_premium (që dalin te Historiku PPM)
-    if not _pf_premium_backfilled:
-        _pf_premium_backfilled = True
-        try:
-            rz = requests.get(f"{PF_URL}?select=ndeshja&statusi=eq.zbuluar",
-                              headers=SUPABASE_SERVICE_HEADERS, timeout=10)
-            names = list({x.get("ndeshja") for x in (rz.json() if rz.status_code == 200 else []) if x.get("ndeshja")})
-        except Exception:
-            names = []
-        for nm in names:
-            try:
-                requests.patch(
-                    f"{SUPABASE_URL_PREDS}?ndeshja=eq.{requests.utils.quote(nm, safe='')}&is_premium=is.false",
-                    headers={**SUPABASE_SERVICE_HEADERS, "Prefer": "return=minimal"},
-                    json={"is_premium": True}, timeout=8)
-            except Exception:
-                pass
+    # ⚠️ KETU ISHTE NJE BACKFILL qe u hoq me 18/09/2026, bashke me shkrimin
+    # me lart. Ai merrte CDO pike te zbuluar ndonjehere dhe i vinte is_premium —
+    # pra e zgjeronte ndotjen prapa ne kohe, mbi gjithe arkivin, dhe e rinisnte
+    # pas cdo restarti te procesit sepse flamuri i tij jetonte ne kujtese.
+    # I njejti arsyetim: historiku tashme i tregon te gjitha ndeshjet, ndaj s'kishte
+    # me asnje perfitim; mbetej vetem demi te kuota dhe te matja.
+    # KUJDES: rreshtat e ndotur me PARE kesaj date mbeten ashtu — hash-i PF eshte
+    # zotim publik dhe nuk terhiqet. Matjet e filtrit nisin nga 18 shtatori.
 
 _ARG_CACHE = {}   # gjuha -> {"quote","quiz"} — përgjigja e fundit e suksesshme (fallback kur Gemini 503)
 _GEMINI_REZERVA = ["gemini-2.5-flash-lite", "gemini-2.0-flash"]   # provohen kur modeli kryesor mbingarkohet
