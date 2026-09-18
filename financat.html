@@ -91,6 +91,20 @@ button:disabled{opacity:.5;cursor:not-allowed}
   overflow:hidden;margin-top:4px}
 .shufer i{display:block;height:100%;background:var(--seria-2);border-radius:3px}
 
+/* ── Buxhetet ──────────────────────────────────────────────────────────── */
+.buxhet{padding:10px 0;border-bottom:1px solid var(--vija)}
+.buxhet:last-child{border-bottom:0}
+.buxhet .koka{display:flex;justify-content:space-between;gap:10px;
+  align-items:baseline;margin-bottom:6px}
+.buxhet .em{font-weight:500}
+.buxhet .sh{font-variant-numeric:tabular-nums;font-size:.88rem;color:var(--bojë-2)}
+.buxhet-shufer{position:relative;height:9px;border-radius:5px;
+  background:var(--siperfaqja-2)}
+.buxhet-shufer i{display:block;height:100%;border-radius:5px;max-width:100%}
+.buxhet-shufer u{position:absolute;top:-4px;bottom:-4px;width:2px;
+  background:var(--bojë-3);text-decoration:none;border-radius:1px}
+.buxhet .nen{font-size:.78rem;color:var(--bojë-3);margin-top:5px}
+
 /* ── Alarmet ───────────────────────────────────────────────────────────── */
 .alarm{display:flex;gap:10px;padding:11px 13px;border-radius:9px;margin-bottom:8px;
   border:1px solid var(--vija);align-items:flex-start}
@@ -225,6 +239,8 @@ svg{display:block;width:100%;overflow:visible}
         <button onclick="hapSkeden('keshilltari')">Keshilltari dhe raportet</button>
         <button onclick="hapSkeden('skenari')">Po sikur?</button>
         <hr>
+        <button onclick="shkarkoKopjen()">Ruaj kopje (JSON)</button>
+        <hr>
         <button class="rrezik" onclick="dil()">Dil</button>
       </div>
     </div>
@@ -258,6 +274,12 @@ svg{display:block;width:100%;overflow:visible}
         <h2>Alarmet</h2>
         <div id="alarmet"></div>
       </div>
+    </div>
+
+    <div class="karte" id="karta-buxhetit">
+      <h2>Buxheti i muajit</h2>
+      <p class="i-heshtur" id="buxheti-nenteksti"></p>
+      <div id="buxhetet-lista"></div>
     </div>
 
     <div class="rrjeta k2">
@@ -310,6 +332,8 @@ svg{display:block;width:100%;overflow:visible}
         <button class="kryesor" id="btn-ruaj" onclick="ruajRreshtin()">Shto</button>
         <button id="btn-anulo" class="fshihu" onclick="anuloRedaktimin()">Anulo</button>
         <span id="reg-statusi" class="i-heshtur"></span>
+        <button class="vogel" style="margin-left:auto"
+                onclick="shkarkoCSV()">Shkarko CSV</button>
       </div>
       <div class="ndarje"></div>
       <div id="reg-tabela"></div>
@@ -598,6 +622,9 @@ function vizatoPanelin(){
       <span class="sh">${esc(p.vlera)} · synimi ${esc(p.synimi)} — ${esc(p.shpjegim)}</span>
     </div>`).join('');
 
+  // ── Buxheti i muajit
+  vizatoBuxhetin(PANEL.buxhetet);
+
   // ── Shpenzimet: totalet dhe kategorite
   const sh = PANEL.shpenzimet;
   $('#shpenzimet-totalet').innerHTML = `<table>
@@ -706,6 +733,60 @@ function vizatoPanelin(){
     ? PANEL.objektivat.map(vizatoObjektivin).join('')
     : `<p class="i-heshtur">Asnje objektiv. Shtoje nje te Regjistri →
        Objektivat, dhe motori te thote si te arrihet.</p>`;
+}
+
+const NGJYRA_E_BUXHETIT = {brenda: 'var(--seria-2)', afer: 'var(--paralajmerim)',
+  mbi_ritem: 'var(--paralajmerim)', kaluar: 'var(--kritik)'};
+const TEKSTI_I_BUXHETIT = {brenda: 'brenda ritmit', afer: 'afer kufirit',
+  mbi_ritem: 'mbi ritem', kaluar: 'i kaluar'};
+
+function vizatoBuxhetin(bx){
+  const karta = $('#karta-buxhetit');
+  if (!bx || !bx.rreshtat.length){
+    // Pa buxhete karta do te ishte nje kuti bosh; me mire nje ftese e vetme.
+    karta.innerHTML = `<h2>Buxheti i muajit</h2>
+      <p class="i-heshtur">Ende pa buxhete. Vendos nje kufi mujor per kategorite
+        qe te ikin pa e kuptuar — ose lere motorin t'i propozoje nga sjellja
+        jote e muajve te fundit.</p>
+      <button class="kryesor" onclick="propozoBuxhete()">Propozo nga historiku</button>`;
+    return;
+  }
+  $('#buxheti-nenteksti').textContent =
+    `Dita ${bx.dita}/${bx.ditet_e_muajit} — ${bx.pjesa_e_kaluar}% e muajit ka `
+    + `kaluar. Vija tregon ku duhet te ishe sot; shiriti ku je vertet. `
+    + `Gjithsej ${para(bx.totali_perdorur)} nga ${para(bx.totali_buxheteve)}.`;
+  $('#buxhetet-lista').innerHTML = bx.rreshtat.map(r => `
+    <div class="buxhet">
+      <div class="koka">
+        <span class="em">${esc(r.kategoria)}</span>
+        <span class="sh">${para(r.perdorur)} / ${para(r.buxheti)}
+          <b style="color:${NGJYRA_E_BUXHETIT[r.gjendja]}">${r.perqind}%</b></span>
+      </div>
+      <div class="buxhet-shufer">
+        <i style="width:${Math.min(100, r.perqind)}%;
+           background:${NGJYRA_E_BUXHETIT[r.gjendja]}"></i>
+        <u style="left:${Math.min(100, bx.pjesa_e_kaluar)}%"
+           title="ku duhet te ishe sot"></u>
+      </div>
+      <div class="nen">${TEKSTI_I_BUXHETIT[r.gjendja]} ·
+        ${r.mbetur >= 0 ? `mbeten ${para(r.mbetur)}`
+          : `<span style="color:var(--kritik)">kaluar me ${para(-r.mbetur)}</span>`}
+        · me kete ritem muaji mbyllet me ${para(r.projeksioni_i_muajit)}</div>
+    </div>`).join('')
+    + (bx.propozime.length ? `<p class="i-heshtur" style="margin-top:10px">
+        ${bx.propozime.length} kategori te tjera s'kane buxhet.
+        <button class="vogel" onclick="propozoBuxhete()">Propozo nga historiku</button></p>` : '');
+}
+
+async function propozoBuxhete(){
+  if (!confirm('Te krijoj buxhete per kategorite pa to, me medianen e muajve '
+             + 'te fundit? Mund t\'i ndryshosh me pas te Regjistri.')) return;
+  try {
+    const r = await api('/buxhete-nga-historiku', {metoda: 'POST', trupi: {}});
+    njofto(r.gjithsej ? `U krijuan ${r.gjithsej} buxhete.`
+                      : (r.shenim || 'Asgje per te krijuar.'));
+    ngarko();
+  } catch (e) { njofto('Gabim: ' + e.message, 4500); }
 }
 
 function vizatoNjoftimet(lista){
@@ -1318,6 +1399,20 @@ const REGJISTRI = {
     kolona: ['emri', 'lloji', 'shuma', 'cmimi_njesi', 'sasia',
              'kosto_per_njesi', 'perqindja', 'frekuenca'],
   },
+  buxhetet: {
+    titull: 'Buxhetet', totali: 'shuma_mujore', tabela: 'buxhetet',
+    ndihme: 'Kufi mujor per nje kategori. Ndryshe nga plani (qe eshte nje ' +
+            'detyrim me date), buxheti eshte nje kufi qe e vendos vete dhe ' +
+            'qe mund ta kalosh — por duke e ditur. Nje kategori, nje buxhet.',
+    fusha: {
+      kategoria: {tip: 'text', eti: 'Kategoria (si te transaksionet)'},
+      shuma_mujore: {tip: 'number', eti: 'Kufiri mujor'},
+      monedha: MONEDHA,
+      pragu_alarmit: {tip: 'number', param: 85, eti: 'Paralajmero ne % te'},
+      shenime: {tip: 'text', eti: 'Shenime'},
+    },
+    kolona: ['kategoria', 'shuma_mujore', 'monedha', 'pragu_alarmit'],
+  },
   objektivat: {
     titull: 'Objektivat', totali: 'shuma_synim', ndihme: 'Ku dua te arrij dhe deri kur.',
     fusha: {
@@ -1458,6 +1553,11 @@ function anuloRedaktimin(){
 }
 
 function tabelaE(id){ return REGJISTRI[id].tabela || id; }
+
+function shkarkoCSV(){
+  const t = tabelaE(REG_AKTIV);
+  shkarko(`/eksport/${t}.csv`, `${t}.csv`);
+}
 
 async function ngarkoTabelen(id){
   const k = REGJISTRI[id];
@@ -1704,6 +1804,32 @@ async function ngarkoRaportet(){
         <div class="pergjigje">${markdown(r.pergjigja || '')}</div>
       </details>`).join('') : '<p class="i-heshtur">Ende asnje raport.</p>';
   } catch (e) { $('#raportet').innerHTML = `<p class="i-heshtur">${esc(e.message)}</p>`; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   KOPJA E SIGURT
+   ═══════════════════════════════════════════════════════════════════════ */
+// Token-i udheton si header, ndaj nje <a href> i thjeshte do te merrte 401.
+// Skedari terhiqet me fetch dhe i jepet shfletuesit si blob.
+async function shkarko(rruga, emri){
+  mbyllMenune();
+  njofto('Po pergatitet…', 1500);
+  try {
+    const p = await fetch('/api/fin' + rruga, {headers: {'X-Fin-Token': TOKEN}});
+    if (!p.ok) throw new Error((await p.text()).slice(0, 200));
+    const blob = await p.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = emri;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    njofto('U shkarkua.');
+  } catch (e) { njofto('Gabim: ' + e.message, 5000); }
+}
+
+function shkarkoKopjen(){
+  const dt = new Date().toISOString().slice(0, 10);
+  shkarko('/eksport', `financat-${dt}.json`);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

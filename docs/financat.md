@@ -23,6 +23,7 @@ Hap SQL Editor te Supabase dhe ekzekuto, me kete radhe:
    ("18-20"), muaji i shpenzimeve vjetore, llogaria "Kesh".
 4. `financat_migrim_4.sql` — bizneset: pasqyra e fitimit, zerat, pika e
    barazimit, lidhja e transaksioneve me biznesin.
+5. `financat_migrim_5.sql` — buxhetet mujore per kategori.
 
 RLS ndizet pa asnje policy: celesi `anon` nuk lexon dot asgje — vetem
 backend-i, me service key, shkruan dhe lexon.
@@ -189,6 +190,28 @@ sa perqind mund te bien shitjet para se te hyhet ne humbje.
 Alarmet e biznesit: humbje, terheqje mbi fitimin ("diferenca del nga kapitali,
 jo nga puna"), siguri nen 20%, dhe mungese e te ardhurave te regjistruara.
 
+### Buxhetet mujore
+Buxheti eshte gje tjeter nga plani: plani thote *"qeraja eshte 30.000 dhe
+paguhet me 5"*; buxheti thote *"ushqimeve u kam vene 35.000 ne muaj dhe deri
+sot kam harxhuar 28.000"*. I pari eshte detyrim, i dyti eshte kufi qe e vendos
+vete dhe qe mund ta kalosh — por duke e ditur.
+
+Nje shirit qe thote vetem "78% e perdorur" genjen me daten 5 dhe qeteson me
+daten 28. Prandaj cdo buxhet krahasohet me **ritmin e pritur**: me 18 shtator
+duhen harxhuar rreth 60% e tij. Vija vertikale ne shirit tregon ku duhet te
+ishe sot; mbushja tregon ku je vertet.
+
+| Gjendja | Kur |
+|---|---|
+| `brenda` | nen pragun tend dhe brenda ritmit |
+| `afer` | mbi pragun e alarmit (parazgjedhje 85%) |
+| `mbi_ritem` | projeksioni i fundit te muajit e kalon buxhetin me mbi 5% |
+| `kaluar` | e ka tejkaluar (rreptesisht mbi 100%) |
+
+Nje buxhet i shpikur nga ajri kalohet muajin e pare dhe braktiset te dytin,
+ndaj "Propozo nga historiku" i mbush me **medianen** e muajve te fundit — me
+sjelljen tende reale. Shpenzimet e biznesit nuk prekin asnje buxhet personal.
+
 ### Motori i objektivave
 Nje objektiv nuk eshte vetem nje shifer: motori i kthen nje plan.
 
@@ -241,6 +264,9 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `POST /api/fin/skano-opsionet` | Skanim tregu per pozicionet dhe borxhet |
 | `POST /api/fin/apliko-cmimet` | Zbaton cmimet e propozuara |
 | `GET /api/fin/raportet` | Arkivi i analizave |
+| `POST /api/fin/buxhete-nga-historiku` | Krijon buxhete nga mediana e kategorive |
+| `GET /api/fin/eksport` | Gjithcka ne nje JSON te vetem |
+| `GET /api/fin/eksport/{tabela}.csv` | Nje tabele si CSV |
 | `GET /api/fin/shendeti` | Pa token; vetem gjendja e konfigurimit |
 
 Tabelat: `llogarite`, `transaksionet`, `detyrimet`, `planet`, `te-ardhurat`,
@@ -270,6 +296,17 @@ Keshilltari nuk eshte keshilltar i licencuar investimesh. Interpreton numrat e
 tu dhe sjell fakte tregu me burim; vendimin e merr ti.
 
 ---
+
+## 4b. Kopja e sigurt
+Nje aplikacion qe mban gjithe jeten tende financiare duhet te te lejoje ta
+marresh ate jashte tij — pa kete, cdo gabim imi ose i Supabase-it do te ishte
+humbje e perhershme.
+
+- **Menu → Ruaj kopje (JSON)** shkarkon gjithcka ne nje skedar te vetem.
+- **Shkarko CSV** ne cdo tabele te regjistrit e jep ate tabele per Excel.
+
+Token-i udheton si header, ndaj shkarkimi behet me `fetch` dhe nje blob — nje
+link i thjeshte do te merrte 401.
 
 ## 5. Kufijte e njohur
 
