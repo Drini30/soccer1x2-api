@@ -260,6 +260,20 @@ svg{display:block;width:100%;overflow:visible}
       </div>
     </div>
 
+    <div class="rrjeta k2">
+      <div class="karte">
+        <h2>Shpenzimet</h2>
+        <p class="i-heshtur">Gjithcka e sjelle ne te njejten njesi — nje
+          shpenzim vjetor nuk krahasohet dot me nje mujor pa e pjestuar me 12.</p>
+        <div id="shpenzimet-totalet"></div>
+      </div>
+      <div class="karte">
+        <h2>Ku shkojne parat</h2>
+        <p class="i-heshtur" id="kategorite-nenteksti"></p>
+        <div id="kategorite"></div>
+      </div>
+    </div>
+
     <div class="karte">
       <h2>Bilanci i projektuar</h2>
       <p class="i-heshtur" id="proj-nenteksti"></p>
@@ -399,6 +413,23 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Pasqyre e vogel e asaj qe ben serveri: LEK dhe ALL jane e njejta monedhe.
+const SINONIME = {LEK: 'ALL', LEKE: 'ALL', 'LEKË': 'ALL', L: 'ALL',
+                  EURO: 'EUR', '€': 'EUR', $: 'USD'};
+function neBaze(shuma, monedha){
+  const kurset = PANEL?.cilesimet?.kurset || {};
+  const kodi = String(monedha || PANEL?.monedha_baze || '').trim().toUpperCase();
+  const kanonik = SINONIME[kodi] || kodi;
+  const kursi = kurset[kanonik];
+  return Number(shuma || 0) * (kursi > 0 ? kursi : 1);
+}
+
+// Totali i nje kolone shumash, i sjelle i teri ne monedhen baze.
+function totaliI(rreshtat, fushaShumes, fushaMonedhes = 'monedha'){
+  return rreshtat.reduce((sa, r) =>
+    sa + neBaze(r[fushaShumes], r[fushaMonedhes]), 0);
+}
 
 function nr(x, shifra = 2){
   if (x === null || x === undefined || isNaN(x)) return '—';
@@ -561,6 +592,41 @@ function vizatoPanelin(){
       <span class="sh">${esc(p.vlera)} · synimi ${esc(p.synimi)} — ${esc(p.shpjegim)}</span>
     </div>`).join('');
 
+  // ── Shpenzimet: totalet dhe kategorite
+  const sh = PANEL.shpenzimet;
+  $('#shpenzimet-totalet').innerHTML = `<table>
+    ${[['Fikse mujore', sh.fikse_mujore, `${sh.nr_fikse_mujore} zera`],
+       ['Fikse vjetore', sh.fikse_vjetore, `${sh.nr_fikse_vjetore} zera · ` +
+        `${para(sh.vjetore_ne_muaj)} ne muaj`],
+       ['Te tjera te perseritshme', sh.te_tjera_mujore, `${sh.nr_te_tjera} zera`],
+       ['Ditore (mesatarja)', sh.ditore_baze, 'nga transaksionet e tua'],
+       ['Keste borxhesh', sh.kestet, ''],
+      ].map(([e, v, n]) => `<tr><td>${e}${n ? `<br><span class="i-heshtur"
+        style="font-size:.78rem">${n}</span>` : ''}</td>
+        <td class="num">${para(v)}</td></tr>`).join('')}
+    <tr style="border-top:2px solid var(--vija)">
+      <td><b>TOTALI MUJOR</b><br><span class="i-heshtur" style="font-size:.78rem">
+        ${para(sh.totali_vjetor)} ne vit</span></td>
+      <td class="num"><b style="font-size:1.1rem">${para(sh.totali_mujor)}</b></td></tr>
+  </table>`;
+
+  // E rendesishme te thuhet: kjo liste vjen nga transaksionet e shenuara,
+  // ndersa totalet majtas vijne nga planet. Mbledhja e te dyjave do te
+  // numeronte te njejtin shpenzim dy here.
+  $('#kategorite-nenteksti').textContent = sh.muaj_te_analizuar
+    ? `Mesatarja mujore e ${sh.muaj_te_analizuar} muajve te fundit te plote, `
+      + `nga transaksionet e shenuara — jo nga planet, ndaj mos i mblidh `
+      + `bashke me totalet majtas.`
+    : 'Ende pa muaj te plote transaksionesh — shto shpenzimet ditore.';
+  $('#kategorite').innerHTML = sh.sipas_kategorise.length
+    ? sh.sipas_kategorise.map(k => `<div class="perberes">
+        <span class="em">${esc(k.kategoria)}</span>
+        <span class="pi">${para(k.mujore_baze)}</span>
+        <div class="shufer"><i style="width:${k.pjesa}%"></i></div>
+        <span class="sh">${k.pjesa}% e shpenzimeve te shenuara</span>
+      </div>`).join('')
+    : '<p class="i-heshtur">Asnje shpenzim i shenuar ende.</p>';
+
   // ── Njoftimet (pagesa qe presin te shenohen)
   vizatoNjoftimet(PANEL.njoftimet || []);
 
@@ -590,7 +656,8 @@ function vizatoPanelin(){
     d.borxhe.map(b => [esc(b.pala), {n: nr(b.mbetur) + ' ' + b.monedha},
       {n: nr(b.interesi_vjetor, 2) + '%'}, {n: nr(b.kesti_mujor_baze)},
       b.afati ? (b.vonuar ? `<span style="color:var(--kritik)">${b.afati} · vonuar</span>`
-        : b.afati) : '—']), 'Asnje borxh.');
+        : b.afati) : '—']), 'Asnje borxh.',
+    {kolona: 1, vlera: d.total_borxh});
   const st = PANEL.strategjia_borxhit;
   $('#strategjia').innerHTML = st.ka_borxhe && st.orteku.muaj ? `
     <div class="ndarje"></div>
@@ -611,7 +678,7 @@ function vizatoPanelin(){
       {n: a.siguria + '%'},
       a.afati ? (a.vonuar ? `<span style="color:var(--kritik)">${a.afati} · vonuar</span>`
         : a.afati) : '—']),
-    'Asnje arketim i pritur.');
+    'Asnje arketim i pritur.', {kolona: 1, vlera: d.arketime_bruto});
   if (d.arketime.length)
     $('#tab-arketime').innerHTML += `<p class="i-heshtur">Bruto ${para(d.arketime_bruto)}
       → i peshuar me sigurine: <b>${para(d.arketime_neto)}</b></p>`;
@@ -624,7 +691,7 @@ function vizatoPanelin(){
       {n: nr(i.vlera_baze)},
       {n: `<span class="${i.fitimi_baze >= 0 ? 'pozitiv' : 'negativ'}">`
         + `${i.fitimi_baze >= 0 ? '+' : ''}${nr(i.fitimi_baze)} (${nr(i.fitimi_perqind, 1)}%)</span>`}]),
-    'Asnje investim i regjistruar.');
+    'Asnje investim i regjistruar.', {kolona: 1, vlera: inv.vlera_baze});
   if (inv.investimet.length)
     $('#tab-investime').innerHTML += `<p class="i-heshtur">Gjithsej ${para(inv.vlera_baze)}
       · perqendrimi me i madh ${nr(inv.perqendrimi_max, 0)}% ne nje klase te vetme.</p>`;
@@ -707,13 +774,21 @@ async function ruajPagesen(indeksi){
   } catch (e) { $('#pg-gabimi').textContent = e.message; }
 }
 
-function tabele(koka, rreshtat, bosh){
+function tabele(koka, rreshtat, bosh, totali){
   if (!rreshtat.length) return `<p class="i-heshtur">${bosh}</p>`;
+  // Nje tabele pa total e le lexuesin te mbledhe me sy — prandaj rreshti i
+  // fundit e jep gjithmone shumen, ne monedhen baze.
+  const fundi = totali ? `<tr style="border-top:2px solid var(--vija)">
+      <td><b>Totali</b> <span class="i-heshtur">(${rreshtat.length})</span></td>
+      ${koka.slice(1).map((_, i) => `<td class="num">${
+        i === (totali.kolona - 1) ? `<b>${para(totali.vlera)}</b>` : ''}</td>`).join('')}
+    </tr>` : '';
   return `<div class="tabele-mbeshtjelles"><table>
     <tr>${koka.map((k, i) => `<th class="${i ? 'num' : ''}">${k}</th>`).join('')}</tr>
     ${rreshtat.map(r => `<tr>${r.map(c =>
       typeof c === 'object' && c !== null && 'n' in c
         ? `<td class="num">${c.n}</td>` : `<td>${c}</td>`).join('')}</tr>`).join('')}
+    ${fundi}
   </table></div>`;
 }
 
@@ -913,7 +988,7 @@ const RREZIKU = {tip: 'select', param: 3, eti: 'Rreziku', opsione: [
 
 const REGJISTRI = {
   transaksionet: {
-    titull: 'Transaksionet', ndihme: 'Cdo levizje reale parash. Shuma gjithmone pozitive — drejtimin e jep lloji.',
+    titull: 'Transaksionet', totali: 'shuma', ndihme: 'Cdo levizje reale parash. Shuma gjithmone pozitive — drejtimin e jep lloji.',
     fusha: {
       data: {tip: 'date', param: sot, eti: 'Data'},
       lloji: {tip: 'select', opsione: [['dalje', 'Dalje'], ['hyrje', 'Hyrje'], ['transfer', 'Transfer']], eti: 'Lloji'},
@@ -926,7 +1001,7 @@ const REGJISTRI = {
     kolona: ['data', 'lloji', 'shuma', 'monedha', 'kategoria', 'pershkrimi'],
   },
   llogarite: {
-    titull: 'Llogarite', ndihme: 'Ku rri paraja. Bilanci fillestar eshte gjendja ne momentin qe e shton — transaksionet llogariten mbi te.',
+    titull: 'Llogarite', totali: 'bilanci_fillestar', ndihme: 'Ku rri paraja. Bilanci fillestar eshte gjendja ne momentin qe e shton — transaksionet llogariten mbi te.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
       lloji: {tip: 'select', opsione: [['bank', 'Banke'], ['cash', 'Cash'], ['kursim', 'Kursim'], ['kartekredit', 'Karte krediti'], ['investim', 'Investim'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
@@ -937,7 +1012,7 @@ const REGJISTRI = {
     kolona: ['emri', 'lloji', 'monedha', 'bilanci_fillestar', 'likuide'],
   },
   detyrimet: {
-    titull: 'Borxhe dhe arketime', ndihme: 'Borxh = un i detyrohem dikujt. Arketim = dikush m detyrohet mua; siguria thote sa % e asaj shume e pret vertet.',
+    titull: 'Borxhe dhe arketime', totali: 'shuma_totale', ndihme: 'Borxh = un i detyrohem dikujt. Arketim = dikush m detyrohet mua; siguria thote sa % e asaj shume e pret vertet.',
     fusha: {
       lloji: {tip: 'select', opsione: [['borxh', 'Borxh (une detyrohem)'], ['arketim', 'Arketim (me detyrohen)']], eti: 'Lloji'},
       pala: {tip: 'text', eti: 'Pala'},
@@ -956,7 +1031,7 @@ const REGJISTRI = {
     kolona: ['lloji', 'pala', 'shuma_totale', 'shuma_paguar', 'monedha', 'interesi_vjetor', 'kesti_mujor', 'afati', 'statusi'],
   },
   'shpenzime-ditore': {
-    titull: 'Shpenzime ditore', tabela: 'transaksionet',
+    titull: 'Shpenzime ditore', totali: 'shuma', tabela: 'transaksionet',
     filtra: {lloji: 'dalje'}, fikse: {lloji: 'dalje'},
     ndihme: 'Cfare ike sot: ushqime, karburant, kafe, veshje. Keto jane ' +
             'shpenzimet e ndryshueshme — pikerisht ato qe formojne "bazen" e ' +
@@ -971,7 +1046,7 @@ const REGJISTRI = {
     kolona: ['data', 'kategoria', 'shuma', 'monedha', 'pershkrimi'],
   },
   'shpenzime-mujore': {
-    titull: 'Shpenzime mujore fikse', tabela: 'planet',
+    titull: 'Shpenzime mujore fikse', totali: 'shuma', tabela: 'planet',
     filtra: {frekuenca: 'mujore', drejtimi: 'dalje'},
     fikse: {frekuenca: 'mujore', drejtimi: 'dalje', horizonti: 'urgjent',
             probabiliteti: 100},
@@ -991,7 +1066,7 @@ const REGJISTRI = {
              'domosdoshmeria'],
   },
   'shpenzime-vjetore': {
-    titull: 'Shpenzime vjetore fikse', tabela: 'planet',
+    titull: 'Shpenzime vjetore fikse', totali: 'shuma', tabela: 'planet',
     filtra: {frekuenca: 'vjetore', drejtimi: 'dalje'},
     fikse: {frekuenca: 'vjetore', drejtimi: 'dalje', horizonti: 'afatmesem',
             probabiliteti: 100},
@@ -1011,7 +1086,7 @@ const REGJISTRI = {
              'dita_pageses', 'domosdoshmeria'],
   },
   planet: {
-    titull: 'Plane te tjera', ndihme: 'Cdo gje qe e di se vjen: qira, sigurime, pushime, dasma, makine. Probabiliteti e zbut shumen per gjerat e pasigurta.',
+    titull: 'Plane te tjera', totali: 'shuma', ndihme: 'Cdo gje qe e di se vjen: qira, sigurime, pushime, dasma, makine. Probabiliteti e zbut shumen per gjerat e pasigurta.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
       drejtimi: {tip: 'select', opsione: [['dalje', 'Dalje'], ['hyrje', 'Hyrje']], eti: 'Drejtimi'},
@@ -1030,7 +1105,7 @@ const REGJISTRI = {
              'horizonti', 'domosdoshmeria'],
   },
   'te-ardhurat': {
-    titull: 'Te ardhurat', ndihme: 'Burimet e rregullta. Oret mujore = 0 do te thote e ardhur pasive.',
+    titull: 'Te ardhurat', totali: 'shuma_mujore', ndihme: 'Burimet e rregullta. Oret mujore = 0 do te thote e ardhur pasive.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
       lloji: {tip: 'select', opsione: [['page', 'Page'], ['freelance', 'Freelance'], ['qira', 'Qira'], ['biznes', 'Biznes'], ['dividend', 'Dividend'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
@@ -1063,7 +1138,7 @@ const REGJISTRI = {
     kolona: ['emri', 'lloji', 'simboli', 'sasia', 'cmimi_blerje', 'cmimi_aktual', 'monedha', 'rreziku'],
   },
   objektivat: {
-    titull: 'Objektivat', ndihme: 'Ku dua te arrij dhe deri kur.',
+    titull: 'Objektivat', totali: 'shuma_synim', ndihme: 'Ku dua te arrij dhe deri kur.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
       lloji: {tip: 'select', opsione: [['rezerve', 'Rezerve'], ['blerje', 'Blerje'], ['investim', 'Investim'], ['shlyerje_borxhi', 'Shlyerje borxhi'], ['te_ardhura', 'Te ardhura'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
@@ -1200,6 +1275,16 @@ async function ngarkoTabelen(id){
   try {
     const rreshtat = await api(`/te-dhena/${tabelaE(id)}?${filtra}`);
     REG_RRESHTAT = rreshtat;
+    // Rreshti i fundit mbledh kolonen e shumave — ne monedhen baze, keshtu
+    // nje liste me LEK dhe EUR te perziera jep nje total qe ka kuptim.
+    const iTotalit = k.totali ? k.kolona.indexOf(k.totali) : -1;
+    const fundi = (iTotalit >= 0 && rreshtat.length) ? `<tr
+        style="border-top:2px solid var(--vija)">
+      ${k.kolona.map((_, i) => i === 0
+        ? `<td><b>Totali</b> <span class="i-heshtur">(${rreshtat.length})</span></td>`
+        : i === iTotalit
+          ? `<td><b>${para(totaliI(rreshtat, k.totali))}</b></td>`
+          : '<td></td>').join('')}<td></td></tr>` : '';
     $('#reg-tabela').innerHTML = rreshtat.length ? `<div class="tabele-mbeshtjelles"><table>
       <tr>${k.kolona.map(c => `<th>${esc(REGJISTRI[id].fusha[c]?.eti || c)}</th>`).join('')}<th></th></tr>
       ${rreshtat.map(r => `<tr>${k.kolona.map(c => {
@@ -1212,6 +1297,7 @@ async function ngarkoTabelen(id){
       }).join('')}<td class="num" style="white-space:nowrap">
         <button class="vogel" onclick="redakto('${id}',${r.id})">Ndrysho</button>
         <button class="vogel" onclick="fshiRreshtin('${id}',${r.id})">Fshi</button></td></tr>`).join('')}
+      ${fundi}
     </table></div>` : '<p class="i-heshtur">Ende bosh.</p>';
   } catch (e) {
     $('#reg-tabela').innerHTML = `<p style="color:var(--kritik)">${esc(e.message)}</p>`;
