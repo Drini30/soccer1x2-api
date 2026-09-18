@@ -941,6 +941,88 @@ def _dita_e_muajit(dita: int, viti: int, muaji: int) -> date:
     return date(viti, muaji, min(max(1, dita), calendar.monthrange(viti, muaji)[1]))
 
 
+def permbledh_shpenzimet(g: Dict[str, Any], c: Dict[str, Any],
+                         rrj: Dict[str, Any], det: Dict[str, Any]) -> Dict[str, Any]:
+    """Ku shkojne parat: totalet sipas llojit dhe sipas kategorise.
+
+    Nje shpenzim vjetor nuk krahasohet dot me nje mujor pa u sjelle ne te
+    njejten njesi — prandaj jepet edhe ekuivalenti mujor (vjetorja / 12).
+    Kategorite nxirren nga transaksionet reale te 3 muajve te fundit te plote,
+    jo nga planet: planet thone cfare duhet te ndodhe, transaksionet thone
+    cfare ndodhi vertet.
+    """
+    sot = date.today()
+    fikse_mujore = fikse_vjetore = te_tjera_mujore = 0.0
+    numri = {"mujore": 0, "vjetore": 0, "te_tjera": 0}
+
+    for p in g["planet"]:
+        if not p.get("aktiv", True) or (p.get("drejtimi") or "dalje") != "dalje":
+            continue
+        mbarimi = _dat(p.get("data_mbarimit"))
+        if mbarimi and mbarimi < sot:
+            continue
+        frek = (p.get("frekuenca") or "mujore").lower()
+        shuma = kthe(p.get("shuma"), p.get("monedha"), c)
+        prob = min(max(_num(p.get("probabiliteti"), 100), 0.0), 100.0) / 100.0
+        if frek == "mujore":
+            fikse_mujore += shuma * prob
+            numri["mujore"] += 1
+        elif frek == "vjetore":
+            fikse_vjetore += shuma * prob
+            numri["vjetore"] += 1
+        elif frek != "nje_here":
+            te_tjera_mujore += shuma * HERE_NE_MUAJ.get(frek, 1.0) * prob
+            numri["te_tjera"] += 1
+
+    # ── Sipas kategorise: mesatarja mujore e 3 muajve te fundit te plote ──
+    kova: Dict[str, Dict[str, float]] = {}
+    muajt_e_pare = set()
+    for t in g["transaksionet"]:
+        if (t.get("lloji") or "dalje").lower() != "dalje":
+            continue
+        d = _dat(t.get("data"))
+        if not d or d > sot:
+            continue
+        muaji = f"{d.year:04d}-{d.month:02d}"
+        if muaji == f"{sot.year:04d}-{sot.month:02d}":
+            continue                      # muaji rrjedhes eshte i paplote
+        if (sot - d).days > 130:
+            continue
+        muajt_e_pare.add(muaji)
+        kat = (t.get("kategoria") or "tjeter").strip().lower()
+        kova.setdefault(kat, {})
+        kova[kat][muaji] = (kova[kat].get(muaji, 0.0)
+                            + kthe(t.get("shuma"), t.get("monedha"), c))
+
+    nr_muajsh = max(1, len(muajt_e_pare))
+    kategorite = sorted(
+        ({"kategoria": kat,
+          "mujore_baze": _rrum(sum(m.values()) / nr_muajsh),
+          "muaj_me_shpenzim": len(m)}
+         for kat, m in kova.items()),
+        key=lambda x: -x["mujore_baze"])
+    totali_kategorive = sum(k["mujore_baze"] for k in kategorite) or 1.0
+    for k in kategorite:
+        k["pjesa"] = _rrum(k["mujore_baze"] / totali_kategorive * 100, 1)
+
+    vjetore_ne_muaj = fikse_vjetore / 12.0
+    totali_mujor = (fikse_mujore + vjetore_ne_muaj + te_tjera_mujore
+                    + rrj["dalje_baze_mujore"] + det["kestet_mujore"])
+
+    return {
+        "fikse_mujore": _rrum(fikse_mujore), "nr_fikse_mujore": numri["mujore"],
+        "fikse_vjetore": _rrum(fikse_vjetore), "nr_fikse_vjetore": numri["vjetore"],
+        "vjetore_ne_muaj": _rrum(vjetore_ne_muaj),
+        "te_tjera_mujore": _rrum(te_tjera_mujore), "nr_te_tjera": numri["te_tjera"],
+        "ditore_baze": rrj["dalje_baze_mujore"],
+        "kestet": det["kestet_mujore"],
+        "totali_mujor": _rrum(totali_mujor),
+        "totali_vjetor": _rrum(totali_mujor * 12),
+        "sipas_kategorise": kategorite[:15],
+        "muaj_te_analizuar": len(muajt_e_pare),
+    }
+
+
 def gjenero_njoftimet(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
     """Pagesat e pritshme qe ende s'jane shenuar.
 
@@ -1106,6 +1188,7 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     strat = strategji_borxhi(det, kap)
     alarme = gjenero_alarme(c, g, bil, rrj, det, inv, proj, kap, skor)
     njoftime = gjenero_njoftimet(g, c)
+    shpenzimet = permbledh_shpenzimet(g, c, rrj, det)
 
     sot = date.today()
     objektiva = []
@@ -1133,6 +1216,7 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "cilesimet": c,
         "bilancet": bil, "rrjedha": rrj, "detyrimet": det, "investimet": inv,
         "projeksioni": proj, "skori": skor, "kapaciteti": kap,
+        "shpenzimet": shpenzimet,
         "strategjia_borxhit": strat, "alarmet": alarme, "njoftimet": njoftime,
         "objektivat": objektiva,
         "planet": g["planet"], "te_ardhurat": g["te_ardhurat"],
