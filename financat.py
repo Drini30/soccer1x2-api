@@ -195,6 +195,34 @@ def _lexo(tabela: str, filtra: Optional[dict] = None,
 # ==========================================================================
 # AUTENTIKIMI
 # ==========================================================================
+# Cili migrim e krijon cilen tabele — perdoret ne mesazhin e alarmit.
+MIGRIMET = {
+    "fin_bizneset": "financat_migrim_4.sql",
+    "fin_biznes_zerat": "financat_migrim_4.sql",
+    "fin_buxhetet": "financat_migrim_5.sql",
+}
+
+
+def _lexo_nese_ekziston(tabela: str, filtra: Optional[dict] = None,
+                        rendit: Optional[str] = None,
+                        mungesat: Optional[List[str]] = None) -> List[dict]:
+    """Si _lexo, por nje tabele qe ende s'eshte krijuar kthen liste bosh.
+
+    Nje migrim i paekzekutuar nuk duhet ta rrezoje gjithe panelin: pjesa
+    tjeter e te dhenave eshte e vlefshme dhe duhet te shihet. Mungesa
+    raportohet si alarm, me emrin e skedarit qe e ndreq.
+    """
+    try:
+        return _lexo(tabela, filtra, rendit)
+    except HTTPException as e:
+        teksti = str(e.detail)
+        if "PGRST205" in teksti or "schema cache" in teksti:
+            if mungesat is not None and tabela not in mungesat:
+                mungesat.append(tabela)
+            return []
+        raise
+
+
 def kerko_token(x_fin_token: Optional[str] = Header(None)) -> None:
     """Fail-closed: pa FIN_TOKEN te vendosur, moduli eshte i mbyllur fare."""
     if not FIN_TOKEN:
@@ -278,6 +306,7 @@ def kursi_i(cilesimet: Dict[str, Any], monedha: Optional[str]) -> float:
 # ==========================================================================
 def mbledh_gjendjen() -> Dict[str, Any]:
     """Nje foto e plote e te dhenave te papërpunuara."""
+    mungesat: List[str] = []
     return {
         "llogarite":     _lexo("fin_llogarite", {"aktiv": "eq.true"}, "id.asc"),
         "transaksionet": _lexo("fin_transaksionet", None, "data.desc", 2000),
@@ -286,9 +315,13 @@ def mbledh_gjendjen() -> Dict[str, Any]:
         "te_ardhurat":   _lexo("fin_te_ardhurat", {"aktiv": "eq.true"}, "id.asc"),
         "investimet":    _lexo("fin_investimet", {"aktiv": "eq.true"}, "id.asc"),
         "objektivat":    _lexo("fin_objektivat", None, "afati.asc"),
-        "bizneset":      _lexo("fin_bizneset", {"aktiv": "eq.true"}, "id.asc"),
-        "biznes_zerat":  _lexo("fin_biznes_zerat", {"aktiv": "eq.true"}, "id.asc"),
-        "buxhetet":      _lexo("fin_buxhetet", {"aktiv": "eq.true"}, "id.asc"),
+        "bizneset":      _lexo_nese_ekziston("fin_bizneset", {"aktiv": "eq.true"},
+                                             "id.asc", mungesat),
+        "biznes_zerat":  _lexo_nese_ekziston("fin_biznes_zerat", {"aktiv": "eq.true"},
+                                             "id.asc", mungesat),
+        "buxhetet":      _lexo_nese_ekziston("fin_buxhetet", {"aktiv": "eq.true"},
+                                             "id.asc", mungesat),
+        "_mungojne":     mungesat,
     }
 
 
@@ -962,6 +995,12 @@ def gjenero_alarme(c: Dict[str, Any], g: Dict[str, Any], bil: Dict[str, Any],
              f"{', '.join(sorted(monedhat_e_panjohura))} — jane numeruar 1:1 me "
              f"{c['monedha_baze']}.",
              "Menu → Cilesimet → Kurset e kembimit.")
+
+    for tabela in g.get("_mungojne") or []:
+        shto("paralajmerim", f"Tabela '{tabela}' mungon ne baze",
+             f"Pjesa perkatese e faqes rri bosh derisa te krijohet.",
+             f"Ekzekuto {MIGRIMET.get(tabela, 'migrimin perkates')} ne Supabase "
+             f"→ SQL Editor.")
 
     rendi = {"kritik": 0, "paralajmerim": 1, "info": 2}
     return sorted(a, key=lambda x: rendi.get(x["niveli"], 3))
