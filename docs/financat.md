@@ -155,6 +155,31 @@ Rregullat:
 - Klikimi i njoftimit hap formularin e gatshem; ruajtja krijon transaksionin
   dhe njoftimi hesht.
 
+### Motori i objektivave
+Nje objektiv nuk eshte vetem nje shifer: motori i kthen nje plan.
+
+1. **Sa kerkon ne muaj** = (synimi − arritura) / muajt deri ne afat.
+2. **Sa ke** = rrjedha neto mujore, **e zbritur** nga objektivat me prioritet
+   me te larte — dy objektiva nuk mund te premtojne te njejtat para. Rendi:
+   prioriteti (1 i pari), pastaj afati me i afert.
+3. **Nga mund te dalin para**, sipas sigurise:
+   - *teprica* — sa e kaloi nje kategori **medianen** e vet muajin e fundit.
+     Mediana, jo mesatarja: nje blerje e madhe e nje muaji nuk duhet ta ngreje
+     pragun perballe te cilit matet muaji tjeter. Kthimi te mesatarja jote
+     nuk eshte sakrifice, eshte korrigjim.
+   - *planet qe i ke shenuar vete* me domosdoshmeri 4-5.
+   - *shkurtim* — deri ne 30% e nje kategorie jo te domosdoshme.
+   Kategorite e domosdoshme (ushqime, qira, kredi, drita, uji, farmaci,
+   kopshti, transport…) nuk propozohen kurre: te presesh ushqimin nuk eshte
+   kursim, eshte deshtim i planit.
+4. **Konfliktet me rendin e prioriteteve** — nuk ndalohet asgje, i thuhet cmimi:
+   - rezerve nen nje muaj shpenzime → `ndal`, sepse nje defekt e kthen planin
+     ne borxh te ri;
+   - borxh me interes ≥ 8% → `kujdes`, me shumen e interesit qe kushton
+     vonesa. Shlyerja e atij borxhi eshte kthim i garantuar.
+5. **Verdikti**: i arritshem · me sakrifice · duhet shtyre · pa afat, plus
+   data realiste e llogaritur nga ritmi i mundshem.
+
 ### Strategjia e borxhit
 Krahason **ortekun** (interesi me i larte i pari) me **debollen** (borxhi me i
 vogel i pari), me te njejten shume shtese, dhe kthen muajt deri ne shlyerje dhe

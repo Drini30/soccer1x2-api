@@ -112,6 +112,16 @@ def monedha_kanonike(m: Optional[str]) -> str:
     return SINONIMET_E_MONEDHAVE.get(e, e)
 
 
+# Kategorite qe nuk preken kur kerkohen para per nje objektiv: te presesh
+# ushqimin ose baren e femijes nuk eshte kursim, eshte deshtim i planit.
+KATEGORI_TE_DOMOSDOSHME = {
+    "ushqime", "ushqim", "qera", "qeraja", "qira", "kredi", "kredia",
+    "energjia", "drita", "uji", "ngrohje", "farmaci", "shendet", "mjekim",
+    "kopshti", "shkolla", "femijet", "transport", "karburant", "sigurime",
+    "taksa_toke", "taksa_shtepie", "taksa_makine", "siguracion_makine",
+    "siguracion_shendeti", "interneti", "telefoni",
+}
+
 # Sa here ne muaj ndodh nje frekuence.
 HERE_NE_MUAJ = {
     "nje_here": 0.0, "ditore": 365 / 12, "javore": 52 / 12, "dyjavore": 26 / 12,
@@ -995,12 +1005,24 @@ def permbledh_shpenzimet(g: Dict[str, Any], c: Dict[str, Any],
                             + kthe(t.get("shuma"), t.get("monedha"), c))
 
     nr_muajsh = max(1, len(muajt_e_pare))
-    kategorite = sorted(
-        ({"kategoria": kat,
-          "mujore_baze": _rrum(sum(m.values()) / nr_muajsh),
-          "muaj_me_shpenzim": len(m)}
-         for kat, m in kova.items()),
-        key=lambda x: -x["mujore_baze"])
+    muaji_i_fundit = max(muajt_e_pare) if muajt_e_pare else None
+    kategorite = []
+    for kat, m in kova.items():
+        vlerat = list(m.values())
+        # Mediana eshte baza, jo mesatarja: nje muaj i vetem me nje blerje te
+        # madhe nuk duhet ta ngreje pragun perballe te cilit matet muaji tjeter.
+        mediana = statistics.median(vlerat) if vlerat else 0.0
+        e_fundit = m.get(muaji_i_fundit, 0.0)
+        kategorite.append({
+            "kategoria": kat,
+            "mujore_baze": _rrum(sum(vlerat) / nr_muajsh),
+            "mediana": _rrum(mediana),
+            "muaji_i_fundit": _rrum(e_fundit),
+            "teprica": _rrum(max(0.0, e_fundit - mediana)),
+            "muaj_me_shpenzim": len(m),
+            "e_domosdoshme": kat in KATEGORI_TE_DOMOSDOSHME,
+        })
+    kategorite.sort(key=lambda x: -x["mujore_baze"])
     totali_kategorive = sum(k["mujore_baze"] for k in kategorite) or 1.0
     for k in kategorite:
         k["pjesa"] = _rrum(k["mujore_baze"] / totali_kategorive * 100, 1)
@@ -1018,8 +1040,9 @@ def permbledh_shpenzimet(g: Dict[str, Any], c: Dict[str, Any],
         "kestet": det["kestet_mujore"],
         "totali_mujor": _rrum(totali_mujor),
         "totali_vjetor": _rrum(totali_mujor * 12),
-        "sipas_kategorise": kategorite[:15],
+        "sipas_kategorise": kategorite[:20],
         "muaj_te_analizuar": len(muajt_e_pare),
+        "muaji_i_fundit": muaji_i_fundit,
     }
 
 
@@ -1174,6 +1197,184 @@ def gjenero_njoftimet(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
     return sorted(njoftime, key=lambda n: (rendi.get(n["niveli"], 2), n["data_pritur"]))
 
 
+def gjej_paret(shpenzimet: Dict[str, Any], g: Dict[str, Any],
+               c: Dict[str, Any]) -> List[dict]:
+    """Nga mund te dalin para pa i prishur jetes.
+
+    Dy burime, te renditura sipas sigurise:
+      1. Teprica — sa e kaloi nje kategori medianen e vet muajin e fundit.
+         Kthimi te mesatarja jote nuk eshte sakrifice, eshte korrigjim.
+      2. Kategorite e zgjedhura (jo te domosdoshme) — deri ne 30% e tyre.
+         Nje limit, jo nje premtim: askush nuk e pret argetimin ne zero.
+    Planet me domosdoshmeri 4-5 (deshire, luks) shtohen te dyta, te plota —
+    ato i ke shenuar vete si te shtyshme.
+    """
+    burimet: List[dict] = []
+    for k in shpenzimet["sipas_kategorise"]:
+        if k["teprica"] > 0 and k["mediana"] > 0:
+            burimet.append({
+                "burimi": k["kategoria"], "shuma": k["teprica"],
+                "lloji": "teprice",
+                "shpjegim": (f"muajin e fundit {k['muaji_i_fundit']:.0f} kundrejt "
+                             f"{k['mediana']:.0f} qe eshte mesatarja jote"),
+                "siguria": "e larte",
+            })
+        if not k["e_domosdoshme"] and k["mediana"] > 0:
+            mundshme = k["mediana"] * 0.30
+            if mundshme >= 1:
+                burimet.append({
+                    "burimi": k["kategoria"], "shuma": _rrum(mundshme),
+                    "lloji": "shkurtim",
+                    "shpjegim": "30% e nje kategorie qe nuk eshte e domosdoshme",
+                    "siguria": "mesatare",
+                })
+
+    sot = date.today()
+    for p in g["planet"]:
+        if not p.get("aktiv", True) or (p.get("drejtimi") or "dalje") != "dalje":
+            continue
+        if int(_num(p.get("domosdoshmeria"), 3)) < 4:
+            continue
+        mbarimi = _dat(p.get("data_mbarimit"))
+        if mbarimi and mbarimi < sot:
+            continue
+        frek = (p.get("frekuenca") or "mujore").lower()
+        mujore = (kthe(p.get("shuma"), p.get("monedha"), c)
+                  * HERE_NE_MUAJ.get(frek, 1.0))
+        if mujore >= 1:
+            burimet.append({
+                "burimi": p.get("emri") or "Plan",
+                "shuma": _rrum(mujore), "lloji": "plan_i_shtyshem",
+                "shpjegim": f"e ke shenuar vete si domosdoshmeri "
+                            f"{int(_num(p.get('domosdoshmeria'), 3))} nga 5",
+                "siguria": "e larte",
+            })
+
+    rendi = {"teprice": 0, "plan_i_shtyshem": 1, "shkurtim": 2}
+    burimet.sort(key=lambda b: (rendi.get(b["lloji"], 3), -b["shuma"]))
+    return burimet
+
+
+def keshillo_objektivin(o: dict, c: Dict[str, Any], arka: Dict[str, Any],
+                        det: Dict[str, Any], skor: Dict[str, Any]) -> Dict[str, Any]:
+    """Nga nje shifer synimi te nje plan i zbatueshem.
+
+    Rendi qe ndiqet eshte ai standard i planifikimit personal: rezerve
+    minimale -> borxh me interes te larte -> objektivat e tjera. Nje objektiv
+    qe e shkel ate rend nuk ndalohet — i thuhet cmimi.
+
+    'arka' mbahet e perbashket dhe zbritet: dy objektiva nuk mund te
+    premtojne te njejtat para. Ai i pari ne rradhe e merr i pari.
+    """
+    mbetur = max(0.0, o["synim"] - o["aktuale"])
+    mbetur_baze = kthe(mbetur, o.get("monedha"), c)
+    muaj = o.get("muaj_mbetur")
+    ne_dispozicion = max(0.0, arka["rrjedha"])
+    burimet = [b for b in arka["burimet"] if b["mbetur"] > 0.5]
+    potenciali = sum(b["mbetur"] for b in burimet)
+
+    if mbetur_baze <= 0:
+        return {"verdikti": "arritur", "arsyeja": "Objektivi eshte mbushur.",
+                "kerkon_ne_muaj": 0, "ne_dispozicion": _rrum(ne_dispozicion),
+                "hapat": [], "konfliktet": []}
+
+    kerkon = mbetur_baze / muaj if muaj else None
+
+    # ── Konfliktet me rendin e prioriteteve ─────────────────────────────
+    konfliktet = []
+    if skor["muaj_mbulimi"] < 1 and (o.get("lloji") or "") != "rezerve":
+        konfliktet.append({
+            "niveli": "ndal",
+            "teksti": (f"Rezerva mbulon vetem {skor['muaj_mbulimi']:.1f} muaj "
+                       f"shpenzime. Nje muaj rezerve vjen para cdo objektivi "
+                       f"tjeter — pa te, nje defekt makine e kthen kete plan "
+                       f"ne borxh te ri.")})
+    borxhe_te_shtrenjta = [b for b in det["borxhe"] if b["interesi_vjetor"] >= 8]
+    if borxhe_te_shtrenjta and (o.get("lloji") or "") != "shlyerje_borxhi":
+        me_i_keqi = max(borxhe_te_shtrenjta, key=lambda b: b["interesi_vjetor"])
+        kosto_vjetore = mbetur_baze * me_i_keqi["interesi_vjetor"] / 100.0
+        konfliktet.append({
+            "niveli": "kujdes",
+            "teksti": (f"Ke {me_i_keqi['mbetur']:.0f} {me_i_keqi['monedha']} borxh "
+                       f"me {me_i_keqi['interesi_vjetor']:.2f}% te {me_i_keqi['pala']}. "
+                       f"Cdo {mbetur_baze:.0f} {c['monedha_baze']} qe shkojne ketu "
+                       f"e jo atje te kushtojne rreth {kosto_vjetore:.0f} "
+                       f"{c['monedha_baze']} interes ne vit. Shlyerja e borxhit "
+                       f"eshte kthim i garantuar prej {me_i_keqi['interesi_vjetor']:.2f}%.")})
+
+    # ── Hapat ───────────────────────────────────────────────────────────
+    hapat = []
+    nga_rrjedha = min(ne_dispozicion, kerkon) if kerkon else ne_dispozicion
+    if nga_rrjedha > 0:
+        arka["rrjedha"] -= nga_rrjedha          # keto para tani jane te zena
+        hapat.append({"veprimi": "Nga rrjedha aktuale",
+                      "shuma_mujore": _rrum(nga_rrjedha),
+                      "shpjegim": "ajo qe te mbetet sot pas gjithe shpenzimeve"})
+    nevoja = (kerkon - nga_rrjedha) if kerkon else 0.0
+    if nevoja > 0:
+        mbledhur = 0.0
+        for b in burimet:
+            if mbledhur >= nevoja - 0.5:
+                break
+            merret = min(b["mbetur"], nevoja - mbledhur)
+            b["mbetur"] -= merret
+            mbledhur += merret
+            hapat.append({"veprimi": f"Shkurto: {b['burimi']}",
+                          "shuma_mujore": _rrum(merret),
+                          "shpjegim": b["shpjegim"]})
+
+    # ── Verdikti ────────────────────────────────────────────────────────
+    mundesia = ne_dispozicion + potenciali
+    if not muaj:
+        muaj_realist = (mbetur_baze / mundesia) if mundesia > 0 else None
+        verdikti = "pa afat"
+        arsyeja = (f"Pa afat te caktuar. Me {mundesia:.0f} {c['monedha_baze']} "
+                   f"ne muaj do te donte rreth {muaj_realist:.0f} muaj."
+                   if muaj_realist else
+                   "Pa afat dhe pa rrjedhe pozitive — ky objektiv nuk levizet dot.")
+    elif kerkon <= ne_dispozicion:
+        verdikti = "i arritshem"
+        arsyeja = (f"Kerkon {kerkon:.0f} {c['monedha_baze']} ne muaj dhe te "
+                   f"mbeten {ne_dispozicion:.0f}. Nuk kerkon asnje ndryshim.")
+    elif kerkon <= mundesia:
+        verdikti = "me sakrifice"
+        arsyeja = (f"Kerkon {kerkon:.0f} {c['monedha_baze']} ne muaj; te mbeten "
+                   f"{ne_dispozicion:.0f}. Diferenca prej {nevoja:.0f} duhet gjetur "
+                   f"nga shkurtimet me poshte.")
+    else:
+        muaj_realist = (mbetur_baze / mundesia) if mundesia > 0 else None
+        verdikti = "duhet shtyre"
+        arsyeja = (f"Kerkon {kerkon:.0f} {c['monedha_baze']} ne muaj, por edhe me "
+                   f"te gjitha shkurtimet arrihen {mundesia:.0f}. "
+                   + (f"Me kete ritem afati realist eshte rreth "
+                      f"{muaj_realist:.0f} muaj, jo {muaj}."
+                      if muaj_realist else
+                      "Pa te ardhura shtese ky objektiv nuk levizet."))
+
+    # "te mbeten 0" nuk shpjegohet vetvetiu — thuaje kush i mori.
+    if arka["te_zena"] > 0.5 and ne_dispozicion < 1:
+        arsyeja += (f" Rrjedha mujore eshte zene tashme nga objektivat me "
+                    f"prioritet me te larte ({arka['te_zena']:.0f} "
+                    f"{c['monedha_baze']}/muaj).")
+
+    data_realiste = None
+    if mundesia > 0:
+        muaj_r = max(1, round(mbetur_baze / mundesia))
+        if muaj_r <= 600:
+            data_realiste = _shto_muaj(date.today(), muaj_r).isoformat()
+
+    return {
+        "verdikti": verdikti, "arsyeja": arsyeja,
+        "kerkon_ne_muaj": _rrum(kerkon) if kerkon else None,
+        "ne_dispozicion": _rrum(ne_dispozicion),
+        "i_zene_nga_te_tjeret": arka["te_zena"] > 0,
+        "potenciali_i_shkurtimeve": _rrum(potenciali),
+        "mungesa": _rrum(max(0.0, nevoja)),
+        "data_realiste": data_realiste,
+        "hapat": hapat, "konfliktet": konfliktet,
+    }
+
+
 def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     """Pika e vetme e vertetes: gjithcka tjeter ndertohet mbi kete."""
     c = lexo_cilesimet()
@@ -1191,8 +1392,18 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     shpenzimet = permbledh_shpenzimet(g, c, rrj, det)
 
     sot = date.today()
+    burimet_e_kursimit = gjej_paret(shpenzimet, g, c)
+    # Objektivat konkurrojne per te njejtat para, ndaj shqyrtohen sipas
+    # prioritetit (1 i pari) dhe pastaj sipas afatit me te afert.
+    rendi_objektivave = sorted(
+        g["objektivat"],
+        key=lambda x: (int(_num(x.get("prioriteti"), 3)),
+                       str(x.get("afati") or "9999-12-31")))
+    arka = {"rrjedha": max(0.0, kap["per_kursim_mujor"]),
+            "burimet": [dict(b, mbetur=b["shuma"]) for b in burimet_e_kursimit],
+            "te_zena": 0.0}
     objektiva = []
-    for o in g["objektivat"]:
+    for o in rendi_objektivave:
         synim = _num(o.get("shuma_synim"))
         aktuale = _num(o.get("shuma_aktuale"))
         afati = _dat(o.get("afati"))
@@ -1209,6 +1420,11 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
                               if muaj_mbetur else None,
             "arritur": bool(o.get("arritur")),
         })
+        if not objektiva[-1]["arritur"]:
+            para = arka["rrjedha"]
+            objektiva[-1]["plani"] = keshillo_objektivin(
+                objektiva[-1], c, arka, det, skor)
+            arka["te_zena"] += para - arka["rrjedha"]
 
     return {
         "koha": datetime.now(timezone.utc).isoformat(),
@@ -1217,6 +1433,7 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "bilancet": bil, "rrjedha": rrj, "detyrimet": det, "investimet": inv,
         "projeksioni": proj, "skori": skor, "kapaciteti": kap,
         "shpenzimet": shpenzimet,
+        "burimet_e_kursimit": burimet_e_kursimit,
         "strategjia_borxhit": strat, "alarmet": alarme, "njoftimet": njoftime,
         "objektivat": objektiva,
         "planet": g["planet"], "te_ardhurat": g["te_ardhurat"],
