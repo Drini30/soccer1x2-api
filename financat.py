@@ -25,12 +25,14 @@ sesa i hapur.
 """
 
 from fastapi import APIRouter, Header, HTTPException, Query, Body
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from datetime import datetime, date, timezone
 from typing import Any, Dict, List, Optional
 import calendar
+import csv
 import hmac
 import json
+import io
 import os
 import statistics
 
@@ -63,6 +65,7 @@ TABELAT = {
     "raportet":      "fin_raportet",
     "bizneset":      "fin_bizneset",
     "zerat-e-biznesit": "fin_biznes_zerat",
+    "buxhetet":      "fin_buxhetet",
 }
 
 # Fushat qe lejohen te shkruhen nga jashte. Cdo gje tjeter ne trup shperfillet
@@ -95,6 +98,8 @@ FUSHAT = {
                          "cmimi_njesi", "sasia", "kosto_per_njesi", "perqindja",
                          "frekuenca", "kategoria", "dita_pageses", "aktiv",
                          "shenime"},
+    "buxhetet": {"kategoria", "shuma_mujore", "monedha", "pragu_alarmit",
+                 "aktiv", "shenime"},
     "raportet": set(),   # vetem lexim; shkruhet nga keshilltari
 }
 
@@ -283,6 +288,7 @@ def mbledh_gjendjen() -> Dict[str, Any]:
         "objektivat":    _lexo("fin_objektivat", None, "afati.asc"),
         "bizneset":      _lexo("fin_bizneset", {"aktiv": "eq.true"}, "id.asc"),
         "biznes_zerat":  _lexo("fin_biznes_zerat", {"aktiv": "eq.true"}, "id.asc"),
+        "buxhetet":      _lexo("fin_buxhetet", {"aktiv": "eq.true"}, "id.asc"),
     }
 
 
@@ -1542,6 +1548,78 @@ def analizo_bizneset(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
     return dalja
 
 
+
+def llogarit_buxhetet(g: Dict[str, Any], c: Dict[str, Any],
+                      shpenzimet: Dict[str, Any]) -> Dict[str, Any]:
+    """Sa ke harxhuar nga cdo buxhet — dhe a je brenda ritmit.
+
+    Nje shirit qe thote vetem "78% e perdorur" genjen ne daten 5 dhe qeteson
+    ne daten 28. Prandaj krahasimi behet me ritmin e pritur: me 18 shtator
+    duhen harxhuar rreth 60% e muajit. Mbi ate del 'mbi ritem', dhe
+    projeksioni tregon ku mbaron muaji me kete ritem.
+    """
+    sot = date.today()
+    ditet_e_muajit = calendar.monthrange(sot.year, sot.month)[1]
+    pjesa_e_kaluar = sot.day / ditet_e_muajit
+
+    harxhuar: Dict[str, float] = {}
+    for t in g["transaksionet"]:
+        if (t.get("lloji") or "dalje").lower() != "dalje" or t.get("biznesi_id"):
+            continue
+        d = _dat(t.get("data"))
+        if not d or d.year != sot.year or d.month != sot.month:
+            continue
+        kat = (t.get("kategoria") or "tjeter").strip().lower()
+        harxhuar[kat] = harxhuar.get(kat, 0.0) + kthe(t.get("shuma"), t.get("monedha"), c)
+
+    rreshtat = []
+    for b in g["buxhetet"]:
+        kat = (b.get("kategoria") or "").strip().lower()
+        buxheti = kthe(b.get("shuma_mujore"), b.get("monedha"), c)
+        perdorur = harxhuar.get(kat, 0.0)
+        perqind = (perdorur / buxheti * 100) if buxheti > 0 else 0.0
+        pritej = buxheti * pjesa_e_kaluar
+        projeksioni = (perdorur / pjesa_e_kaluar) if pjesa_e_kaluar > 0 else perdorur
+        prag = int(_num(b.get("pragu_alarmit"), 85))
+
+        if perqind > 100.5:
+            gjendja = "kaluar"
+        elif projeksioni > buxheti * 1.05:
+            gjendja = "mbi_ritem"
+        elif perqind >= prag:
+            gjendja = "afer"
+        else:
+            gjendja = "brenda"
+
+        rreshtat.append({
+            "id": b.get("id"), "kategoria": kat,
+            "buxheti": _rrum(buxheti), "perdorur": _rrum(perdorur),
+            "mbetur": _rrum(buxheti - perdorur), "perqind": _rrum(perqind, 1),
+            "pritej_deri_sot": _rrum(pritej),
+            "projeksioni_i_muajit": _rrum(projeksioni),
+            "gjendja": gjendja, "pragu": prag,
+            "monedha": (b.get("monedha") or c["monedha_baze"]).upper(),
+        })
+
+    # Kategorite me shpenzim te ndjeshem qe s'kane buxhet ende — propozohet
+    # mediana e tyre, sepse ajo eshte sjellja jote, jo nje shifer e shpikur.
+    me_buxhet = {r["kategoria"] for r in rreshtat}
+    propozime = [{"kategoria": k["kategoria"], "shuma_mujore": k["mediana"]}
+                 for k in shpenzimet["sipas_kategorise"]
+                 if k["kategoria"] not in me_buxhet and k["mediana"] >= 1]
+
+    rendi = {"kaluar": 0, "mbi_ritem": 1, "afer": 2, "brenda": 3}
+    rreshtat.sort(key=lambda r: (rendi.get(r["gjendja"], 4), -r["perqind"]))
+    return {
+        "rreshtat": rreshtat,
+        "totali_buxheteve": _rrum(sum(r["buxheti"] for r in rreshtat)),
+        "totali_perdorur": _rrum(sum(r["perdorur"] for r in rreshtat)),
+        "dita": sot.day, "ditet_e_muajit": ditet_e_muajit,
+        "pjesa_e_kaluar": _rrum(pjesa_e_kaluar * 100, 1),
+        "propozime": propozime[:12],
+    }
+
+
 def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     """Pika e vetme e vertetes: gjithcka tjeter ndertohet mbi kete."""
     c = lexo_cilesimet()
@@ -1557,6 +1635,24 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     alarme = gjenero_alarme(c, g, bil, rrj, det, inv, proj, kap, skor)
     njoftime = gjenero_njoftimet(g, c)
     shpenzimet = permbledh_shpenzimet(g, c, rrj, det)
+    buxhetet = llogarit_buxhetet(g, c, shpenzimet)
+    for b in buxhetet["rreshtat"]:
+        if b["gjendja"] == "kaluar":
+            alarme.insert(0, {
+                "niveli": "paralajmerim",
+                "titulli": f"Buxheti i kaluar: {b['kategoria']}",
+                "detaji": (f"{b['perdorur']:.0f} nga {b['buxheti']:.0f} "
+                           f"{c['monedha_baze']} ({b['perqind']:.0f}%)."),
+                "veprimi": "Ndalo ketu deri ne fund te muajit, ose ngrije buxhetin."})
+        elif b["gjendja"] == "mbi_ritem":
+            alarme.append({
+                "niveli": "info",
+                "titulli": f"Mbi ritem: {b['kategoria']}",
+                "detaji": (f"Deri sot {b['perdorur']:.0f} nga {b['buxheti']:.0f}; "
+                           f"me kete ritem muaji mbyllet me "
+                           f"{b['projeksioni_i_muajit']:.0f}."),
+                "veprimi": ""})
+
 
     sot = date.today()
     burimet_e_kursimit = gjej_paret(shpenzimet, g, c)
@@ -1602,6 +1698,7 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "shpenzimet": shpenzimet,
         "burimet_e_kursimit": burimet_e_kursimit,
         "bizneset": analizo_bizneset(g, c),
+        "buxhetet": buxhetet,
         "strategjia_borxhit": strat, "alarmet": alarme, "njoftimet": njoftime,
         "objektivat": objektiva,
         "planet": g["planet"], "te_ardhurat": g["te_ardhurat"],
@@ -1931,6 +2028,37 @@ def llogaria_kesh(_: Optional[str] = Header(None, alias="X-Fin-Token")):
     return dalja[0] if isinstance(dalja, list) and dalja else dalja
 
 
+@router.post("/buxhete-nga-historiku")
+def buxhete_nga_historiku(trupi: dict = Body(default={}),
+                          _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Krijon buxhete per kategorite qe s'kane ende nje, me medianen e tyre.
+
+    Mediana e sjelljes tende eshte pikenisja e vetme e ndershme: nje buxhet i
+    shpikur nga ajri kalohet muajin e pare dhe braktiset muajin e dyte.
+    Trupi opsional: {kategorite: ["ushqime", ...]} per te zgjedhur vetem disa.
+    """
+    kerko_token(_)
+    p = ndertoj_panelin(3)
+    propozime = p["buxhetet"]["propozime"]
+    kerkuara = trupi.get("kategorite")
+    if kerkuara:
+        e_kerkuar = {str(k).strip().lower() for k in kerkuara}
+        propozime = [x for x in propozime if x["kategoria"] in e_kerkuar]
+    if not propozime:
+        return {"krijuar": [], "shenim": "Asnje kategori pa buxhet."}
+
+    krijuar = []
+    for pr in propozime:
+        rr = _sb("fin_buxhetet", "post", trupi={
+            "user_id": USER_ID, "kategoria": pr["kategoria"],
+            "shuma_mujore": pr["shuma_mujore"],
+            "monedha": p["monedha_baze"], "aktiv": True,
+        }, prefer="return=representation")
+        if rr:
+            krijuar.append(rr[0] if isinstance(rr, list) else rr)
+    return {"krijuar": krijuar, "gjithsej": len(krijuar)}
+
+
 @router.get("/cilesimet")
 def merr_cilesimet(_: Optional[str] = Header(None, alias="X-Fin-Token")):
     kerko_token(_)
@@ -2207,6 +2335,63 @@ def raportet(kufi: int = Query(20, ge=1, le=100),
              _: Optional[str] = Header(None, alias="X-Fin-Token")):
     kerko_token(_)
     return _lexo("fin_raportet", None, "krijuar_me.desc", kufi)
+
+
+# ==========================================================================
+# KOPJA E SIGURT — te dhenat dalin nga aty ku hyne
+# ==========================================================================
+# Nje aplikacion qe mban gjithe jeten tende financiare duhet te te lejoje ta
+# marresh ate jashte tij. Pa kete, cdo gabim i imi ose i Supabase-it eshte
+# humbje e perhershme.
+TABELAT_E_EKSPORTIT = ["llogarite", "transaksionet", "detyrimet", "planet",
+                       "te-ardhurat", "investimet", "objektivat", "bizneset",
+                       "zerat-e-biznesit", "buxhetet", "raportet"]
+
+
+@router.get("/eksport")
+def eksport(_: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Gjithcka ne nje skedar te vetem JSON, gati per t'u ruajtur."""
+    kerko_token(_)
+    tani = datetime.now(timezone.utc)
+    dalja: Dict[str, Any] = {
+        "_krijuar": tani.isoformat(),
+        "_burimi": "financat", "_version": 1,
+        "cilesimet": lexo_cilesimet(),
+    }
+    for emri in TABELAT_E_EKSPORTIT:
+        try:
+            dalja[emri] = _lexo(TABELAT[emri], None, "id.asc", 5000)
+        except HTTPException as e:
+            dalja[emri] = {"_gabim": str(e.detail)}
+    emri_skedarit = f"financat-{tani.date().isoformat()}.json"
+    return JSONResponse(dalja, headers={
+        "Content-Disposition": f'attachment; filename="{emri_skedarit}"'})
+
+
+@router.get("/eksport/{tabela}.csv")
+def eksport_csv(tabela: str, _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Nje tabele e vetme si CSV — per Excel ose Sheets."""
+    kerko_token(_)
+    rreshtat = _lexo(_tabela(tabela), None, "id.asc", 5000)
+    if not rreshtat:
+        return PlainTextResponse("", headers={
+            "Content-Disposition": f'attachment; filename="{tabela}.csv"'})
+    # Kolonat mblidhen nga te gjithe rreshtat: nje rresht i vetem mund te mos
+    # i kete te gjitha fushat opsionale.
+    kolonat: List[str] = []
+    for rr in rreshtat:
+        for k in rr:
+            if k not in kolonat:
+                kolonat.append(k)
+    buf = io.StringIO()
+    shkruesi = csv.DictWriter(buf, fieldnames=kolonat, extrasaction="ignore")
+    shkruesi.writeheader()
+    for rr in rreshtat:
+        shkruesi.writerow({k: ("" if rr.get(k) is None else rr.get(k))
+                           for k in kolonat})
+    return PlainTextResponse(buf.getvalue(), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition":
+                                      f'attachment; filename="{tabela}.csv"'})
 
 
 @router.get("/shendeti")
