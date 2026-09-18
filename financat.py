@@ -61,6 +61,8 @@ TABELAT = {
     "investimet":    "fin_investimet",
     "objektivat":    "fin_objektivat",
     "raportet":      "fin_raportet",
+    "bizneset":      "fin_bizneset",
+    "zerat-e-biznesit": "fin_biznes_zerat",
 }
 
 # Fushat qe lejohen te shkruhen nga jashte. Cdo gje tjeter ne trup shperfillet
@@ -70,7 +72,8 @@ FUSHAT = {
                   "likuide", "aktiv", "shenime"},
     "transaksionet": {"data", "llogaria_id", "lloji", "shuma", "monedha",
                       "kategoria", "pershkrimi", "detyrimi_id", "plani_id",
-                      "te_ardhura_id", "llogaria_dest_id", "etiketa"},
+                      "te_ardhura_id", "biznesi_id", "llogaria_dest_id",
+                      "etiketa"},
     "detyrimet": {"lloji", "pala", "pershkrimi", "shuma_totale", "shuma_paguar",
                   "monedha", "interesi_vjetor", "kesti_mujor", "afati",
                   "prioriteti", "statusi", "siguria"},
@@ -86,6 +89,12 @@ FUSHAT = {
                    "kthimi_pritshem", "aktiv", "shenime", "perditesuar_me"},
     "objektivat": {"emri", "shuma_synim", "shuma_aktuale", "monedha", "afati",
                    "prioriteti", "lloji", "arritur"},
+    "bizneset": {"emri", "pershkrimi", "monedha", "data_fillimit",
+                 "terheqje_mujore", "llogaria_id", "njesia", "aktiv", "shenime"},
+    "zerat-e-biznesit": {"biznesi_id", "emri", "lloji", "monedha", "shuma",
+                         "cmimi_njesi", "sasia", "kosto_per_njesi", "perqindja",
+                         "frekuenca", "kategoria", "dita_pageses", "aktiv",
+                         "shenime"},
     "raportet": set(),   # vetem lexim; shkruhet nga keshilltari
 }
 
@@ -272,6 +281,8 @@ def mbledh_gjendjen() -> Dict[str, Any]:
         "te_ardhurat":   _lexo("fin_te_ardhurat", {"aktiv": "eq.true"}, "id.asc"),
         "investimet":    _lexo("fin_investimet", {"aktiv": "eq.true"}, "id.asc"),
         "objektivat":    _lexo("fin_objektivat", None, "afati.asc"),
+        "bizneset":      _lexo("fin_bizneset", {"aktiv": "eq.true"}, "id.asc"),
+        "biznes_zerat":  _lexo("fin_biznes_zerat", {"aktiv": "eq.true"}, "id.asc"),
     }
 
 
@@ -393,6 +404,10 @@ def llogarit_rrjedhen(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
             continue
         lloji = (t.get("lloji") or "dalje").lower()
         if lloji == "transfer":
+            continue
+        # Paraja e biznesit nuk eshte paraja jote: ajo hyn ne jeten tende
+        # vetem si terheqje, e cila shenohet si e ardhur personale.
+        if t.get("biznesi_id"):
             continue
         celes = f"{d.year:04d}-{d.month:02d}"
         k = kova.setdefault(celes, {"hyrje": 0.0, "dalje": 0.0, "dalje_baze": 0.0})
@@ -990,6 +1005,8 @@ def permbledh_shpenzimet(g: Dict[str, Any], c: Dict[str, Any],
     for t in g["transaksionet"]:
         if (t.get("lloji") or "dalje").lower() != "dalje":
             continue
+        if t.get("biznesi_id"):
+            continue                      # shpenzim biznesi, jo personal
         d = _dat(t.get("data"))
         if not d or d > sot:
             continue
@@ -1375,6 +1392,156 @@ def keshillo_objektivin(o: dict, c: Dict[str, Any], arka: Dict[str, Any],
     }
 
 
+def _ne_muaj(shuma: float, frekuenca: Optional[str]) -> float:
+    """Cdo shifer sillet ne muaj — perndryshe nje kosto vjetore duket e vogel."""
+    f = (frekuenca or "mujore").lower()
+    if f == "vjetore":
+        return shuma / 12.0
+    return shuma * HERE_NE_MUAJ.get(f, 1.0) if f in HERE_NE_MUAJ else shuma
+
+
+def analizo_bizneset(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
+    """Nje pasqyre fitimi per cdo biznes, plus pika e barazimit.
+
+    Pika e barazimit eshte numri qe i mungon shumices se bizneseve te vogla:
+    sa njesi duhen shitur qe kostot fikse te mbulohen. Llogaritet mbi marzhin
+    e kontributit (te ardhura minus kosto variabile), jo mbi te ardhurat bruto
+    — perndryshe del gjithmone me e ulet se sa eshte vertet.
+
+    Fitimi i biznesit NUK hyn te te ardhurat e tua: hyn vetem terheqja, dhe
+    vetem pasi ta shenosh si te ardhur personale.
+    """
+    sot = date.today()
+    dalja: List[dict] = []
+
+    for b in g["bizneset"]:
+        bid = int(b["id"])
+        zerat = [z for z in g["biznes_zerat"]
+                 if str(z.get("biznesi_id")) == str(bid) and z.get("aktiv", True)]
+
+        te_ardhura = kosto_fikse = kosto_var = 0.0
+        njesite = 0.0
+        rreshtat = {"te_ardhur": [], "kosto_fikse": [], "kosto_variabile": []}
+
+        for z in zerat:
+            if (z.get("lloji") or "") != "te_ardhur":
+                continue
+            sasia = _num(z.get("sasia"))
+            shuma = (_num(z.get("cmimi_njesi")) * sasia if sasia > 0
+                     else _num(z.get("shuma")))
+            mujore = _ne_muaj(kthe(shuma, z.get("monedha"), c), z.get("frekuenca"))
+            te_ardhura += mujore
+            njesite += sasia
+            rreshtat["te_ardhur"].append({
+                "id": z["id"], "emri": z.get("emri"), "mujore": _rrum(mujore),
+                "sasia": sasia, "cmimi_njesi": _num(z.get("cmimi_njesi")),
+                "monedha": (z.get("monedha") or c["monedha_baze"]).upper()})
+
+        for z in zerat:
+            lloji = z.get("lloji") or ""
+            if lloji == "kosto_fikse":
+                mujore = _ne_muaj(kthe(z.get("shuma"), z.get("monedha"), c),
+                                  z.get("frekuenca"))
+                kosto_fikse += mujore
+                rreshtat["kosto_fikse"].append({
+                    "id": z["id"], "emri": z.get("emri"), "mujore": _rrum(mujore),
+                    "frekuenca": z.get("frekuenca"),
+                    "kategoria": z.get("kategoria")})
+            elif lloji == "kosto_variabile":
+                # Kosto per njesi: nese zeri ka sasine e vet, perdoret ajo;
+                # perndryshe supozohet se vlen per te gjitha njesite e biznesit.
+                sasia = _num(z.get("sasia")) or njesite
+                mujore = (kthe(_num(z.get("kosto_per_njesi")) * sasia,
+                               z.get("monedha"), c)
+                          + te_ardhura * _num(z.get("perqindja")) / 100.0
+                          + kthe(z.get("shuma"), z.get("monedha"), c))
+                mujore = _ne_muaj(mujore, z.get("frekuenca"))
+                kosto_var += mujore
+                rreshtat["kosto_variabile"].append({
+                    "id": z["id"], "emri": z.get("emri"), "mujore": _rrum(mujore),
+                    "kosto_per_njesi": _num(z.get("kosto_per_njesi")),
+                    "perqindja": _num(z.get("perqindja"))})
+
+        marzhi = te_ardhura - kosto_var
+        marzhi_perq = (marzhi / te_ardhura * 100) if te_ardhura > 0 else 0.0
+        fitimi = marzhi - kosto_fikse
+        terheqja = kthe(b.get("terheqje_mujore"), b.get("monedha"), c)
+
+        barazimi_te_ardhura = (kosto_fikse / (marzhi_perq / 100)
+                               if marzhi_perq > 0 else None)
+        cmimi_mesatar = (te_ardhura / njesite) if njesite > 0 else None
+        barazimi_njesi = (barazimi_te_ardhura / cmimi_mesatar
+                          if barazimi_te_ardhura and cmimi_mesatar else None)
+        siguria = ((te_ardhura - barazimi_te_ardhura) / te_ardhura * 100
+                   if barazimi_te_ardhura and te_ardhura > 0 else None)
+
+        # ── Sa ndodhi vertet: transaksionet e lidhura me kete biznes ────
+        reale_hyrje = reale_dalje = 0.0
+        muajt_reale = set()
+        for t in g["transaksionet"]:
+            if str(t.get("biznesi_id") or "") != str(bid):
+                continue
+            d = _dat(t.get("data"))
+            if not d or d > sot or (sot - d).days > 130:
+                continue
+            if d.month == sot.month and d.year == sot.year:
+                continue
+            muajt_reale.add(f"{d.year:04d}-{d.month:02d}")
+            vlera = kthe(t.get("shuma"), t.get("monedha"), c)
+            if (t.get("lloji") or "dalje").lower() == "hyrje":
+                reale_hyrje += vlera
+            else:
+                reale_dalje += vlera
+        nr = max(1, len(muajt_reale))
+
+        alarme = []
+        if te_ardhura <= 0:
+            alarme.append({"niveli": "paralajmerim",
+                           "teksti": "Asnje e ardhur e regjistruar — pa to nuk "
+                                     "llogaritet dot as fitimi as pika e barazimit."})
+        if fitimi < 0:
+            alarme.append({"niveli": "kritik",
+                           "teksti": f"Biznesi humbet {abs(fitimi):,.0f} "
+                                     f"{c['monedha_baze']} ne muaj.".replace(",", ".")})
+        if terheqja > max(0.0, fitimi) and terheqja > 0:
+            alarme.append({"niveli": "kritik",
+                           "teksti": f"Terheq {terheqja:,.0f} ne muaj por fitimi "
+                                     f"eshte {fitimi:,.0f} — diferenca del nga "
+                                     f"kapitali, jo nga puna.".replace(",", ".")})
+        if siguria is not None and 0 < siguria < 20:
+            alarme.append({"niveli": "paralajmerim",
+                           "teksti": f"Vetem {siguria:.0f}% mbi piken e barazimit: "
+                                     f"nje rene e vogel e shitjeve e kthen ne humbje."})
+
+        dalja.append({
+            "id": bid, "emri": b.get("emri"), "njesia": b.get("njesia") or "njesi",
+            "monedha": (b.get("monedha") or c["monedha_baze"]).upper(),
+            "te_ardhura_mujore": _rrum(te_ardhura),
+            "kosto_fikse_mujore": _rrum(kosto_fikse),
+            "kosto_variabile_mujore": _rrum(kosto_var),
+            "marzhi_kontributit": _rrum(marzhi),
+            "marzhi_perqind": _rrum(marzhi_perq, 1),
+            "fitimi_mujor": _rrum(fitimi),
+            "fitimi_vjetor": _rrum(fitimi * 12),
+            "marzhi_neto_perqind": _rrum(fitimi / te_ardhura * 100, 1)
+                                   if te_ardhura > 0 else None,
+            "njesite": _rrum(njesite, 2),
+            "cmimi_mesatar": _rrum(cmimi_mesatar) if cmimi_mesatar else None,
+            "barazimi_te_ardhura": _rrum(barazimi_te_ardhura)
+                                   if barazimi_te_ardhura else None,
+            "barazimi_njesi": _rrum(barazimi_njesi, 1) if barazimi_njesi else None,
+            "siguria_perqind": _rrum(siguria, 1) if siguria is not None else None,
+            "terheqje_mujore": _rrum(terheqja),
+            "mbetet_ne_biznes": _rrum(fitimi - terheqja),
+            "reale_hyrje_mujore": _rrum(reale_hyrje / nr),
+            "reale_dalje_mujore": _rrum(reale_dalje / nr),
+            "muaj_reale": len(muajt_reale),
+            "zerat": rreshtat, "alarme": alarme,
+        })
+
+    return dalja
+
+
 def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     """Pika e vetme e vertetes: gjithcka tjeter ndertohet mbi kete."""
     c = lexo_cilesimet()
@@ -1434,6 +1601,7 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "projeksioni": proj, "skori": skor, "kapaciteti": kap,
         "shpenzimet": shpenzimet,
         "burimet_e_kursimit": burimet_e_kursimit,
+        "bizneset": analizo_bizneset(g, c),
         "strategjia_borxhit": strat, "alarmet": alarme, "njoftimet": njoftime,
         "objektivat": objektiva,
         "planet": g["planet"], "te_ardhurat": g["te_ardhurat"],
@@ -1685,6 +1853,7 @@ def lexo_tabelen(tabela: str, kufi: int = Query(500, ge=1, le=5000),
                  frekuenca: Optional[str] = Query(None, pattern=r"^[a-z_]{1,20}$"),
                  drejtimi: Optional[str] = Query(None, pattern=r"^(hyrje|dalje)$"),
                  lloji: Optional[str] = Query(None, pattern=r"^[a-z_]{1,20}$"),
+                 biznesi_id: Optional[int] = Query(None, ge=1),
                  _: Optional[str] = Header(None, alias="X-Fin-Token")):
     """Filtrat sherbejne per pamjet e ngushta te se njejtes tabele — p.sh.
     'shpenzimet mujore fikse' jane thjesht planet me frekuence mujore dhe
@@ -1697,6 +1866,8 @@ def lexo_tabelen(tabela: str, kufi: int = Query(500, ge=1, le=5000),
         filtra["drejtimi"] = f"eq.{drejtimi}"
     if lloji:
         filtra["lloji"] = f"eq.{lloji}"
+    if biznesi_id:
+        filtra["biznesi_id"] = f"eq.{biznesi_id}"
     parazgjedhur = {"transaksionet": "data.desc", "raportet": "krijuar_me.desc"}
     return _lexo(_tabela(tabela), filtra or None,
                  rendit or parazgjedhur.get(tabela, "id.desc"), kufi)

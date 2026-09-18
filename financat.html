@@ -340,6 +340,11 @@ svg{display:block;width:100%;overflow:visible}
     </div>
   </section>
 
+  <!-- ── BIZNESET ── -->
+  <section id="pj-bizneset" class="fshihu">
+    <div id="bizneset"></div>
+  </section>
+
   <!-- ── CILESIMET ── -->
   <section id="pj-cilesimet" class="fshihu">
     <div class="karte">
@@ -499,7 +504,7 @@ try {
    SKEDAT
    ═══════════════════════════════════════════════════════════════════════ */
 const SKEDAT = [
-  ['panel', 'Paneli'], ['regjistri', 'Regjistri'],
+  ['panel', 'Paneli'], ['regjistri', 'Regjistri'], ['bizneset', 'Bizneset'],
   ['skenari', 'Po sikur?'], ['keshilltari', 'Keshilltari'],
 ];
 // Cilesimet nuk kane skede — hapen nga menuja.
@@ -519,6 +524,7 @@ function hapSkeden(id){
   if (id === 'keshilltari') ngarkoRaportet();
   if (id === 'regjistri') hapRegjistrin(REG_AKTIV);
   if (id === 'cilesimet') hapCilesimet();
+  if (id === 'bizneset') vizatoBizneset();
 }
 
 /* ── Menuja ─────────────────────────────────────────────────────────── */
@@ -1001,6 +1007,102 @@ function shufraNeto(mbajtes, muajt){
 window.addEventListener('resize', () => { if (PANEL) vizatoGrafiket(); });
 
 /* ═══════════════════════════════════════════════════════════════════════
+   BIZNESET — pasqyra e fitimit dhe pika e barazimit
+   ═══════════════════════════════════════════════════════════════════════ */
+function vizatoBizneset(){
+  const lista = PANEL?.bizneset || [];
+  if (!lista.length){
+    $('#bizneset').innerHTML = `<div class="karte">
+      <h2>Asnje biznes</h2>
+      <p class="i-heshtur">Shtoje te Regjistri → Bizneset, pastaj zerat e tij
+        (te ardhura, kosto fikse, kosto variabile) te "Zerat e biznesit".
+        Paraja e biznesit mbahet e ndare nga jotja: fitimi i tij nuk behet
+        e ardhur jotja derisa ta terheqesh.</p></div>`;
+    return;
+  }
+  $('#bizneset').innerHTML = lista.map(b => {
+    const tabelaZerave = (titulli, rreshtat, kolonaExtra) => rreshtat.length
+      ? `<h3 style="margin-top:14px">${titulli}</h3><table>
+          ${rreshtat.map(z => `<tr><td>${esc(z.emri)}${kolonaExtra(z)}</td>
+            <td class="num">${para(z.mujore)}</td></tr>`).join('')}
+          <tr style="border-top:2px solid var(--vija)"><td><b>Totali</b></td>
+            <td class="num"><b>${para(rreshtat.reduce((a, z) => a + z.mujore, 0))}</b></td></tr>
+        </table>`
+      : `<h3 style="margin-top:14px">${titulli}</h3>
+         <p class="i-heshtur">Asnje zë.</p>`;
+
+    const fitimKlas = b.fitimi_mujor >= 0 ? 'pozitiv' : 'negativ';
+    return `<div class="karte">
+      <h2>${esc(b.emri)}</h2>
+      <p class="i-heshtur">Fitimi i biznesit nuk eshte e ardhur jotja derisa
+        ta terheqesh — dhe terheqja shenohet vecmas, te Te ardhurat.</p>
+
+      ${b.alarme.map(a => `<div class="alarm ${a.niveli}">
+        <span class="ik" aria-hidden="true">${a.niveli === 'kritik' ? '\u25CF' : '\u25B2'}</span>
+        <div class="dd">${esc(a.teksti)}</div></div>`).join('')}
+
+      <div class="pllaka" style="margin-top:12px">
+        <div class="pllake"><div class="etikete">Te ardhura / muaj</div>
+          <div class="vlera">${para(b.te_ardhura_mujore)}</div>
+          <div class="nen">${b.njesite ? `${nr(b.njesite, 0)} ${esc(b.njesia)} · `
+            + `${para(b.cmimi_mesatar)} mesatarisht` : 'pa njesi te shenuara'}</div></div>
+        <div class="pllake"><div class="etikete">Fitimi / muaj</div>
+          <div class="vlera ${fitimKlas}">${para(b.fitimi_mujor)}</div>
+          <div class="nen">${para(b.fitimi_vjetor)} ne vit${
+            b.marzhi_neto_perqind !== null ? ` · marzhi ${b.marzhi_neto_perqind}%` : ''}</div></div>
+        <div class="pllake"><div class="etikete">Pika e barazimit</div>
+          <div class="vlera">${b.barazimi_njesi !== null
+            ? `${nr(b.barazimi_njesi, 1)}` : '—'}</div>
+          <div class="nen">${b.barazimi_njesi !== null
+            ? `${esc(b.njesia)} · ${para(b.barazimi_te_ardhura)} te ardhura`
+            : 'duhen te ardhura me njesi'}</div></div>
+        <div class="pllake"><div class="etikete">Siguria</div>
+          <div class="vlera ${b.siguria_perqind >= 20 ? 'pozitiv' : 'negativ'}">${
+            b.siguria_perqind !== null ? nr(b.siguria_perqind, 0) + '%' : '—'}</div>
+          <div class="nen">sa mund te bien shitjet para humbjes</div></div>
+        <div class="pllake"><div class="etikete">Terheq per vete</div>
+          <div class="vlera">${para(b.terheqje_mujore)}</div>
+          <div class="nen">mbeten ne biznes ${para(b.mbetet_ne_biznes)}</div></div>
+      </div>
+
+      <div class="ndarje"></div>
+      <h3>Pasqyra mujore</h3>
+      <table>
+        <tr><td>Te ardhura</td><td class="num">${para(b.te_ardhura_mujore)}</td></tr>
+        <tr><td>− Kosto variabile</td>
+            <td class="num">${para(b.kosto_variabile_mujore)}</td></tr>
+        <tr style="border-top:1px solid var(--vija)">
+            <td><b>= Marzhi i kontributit</b><br><span class="i-heshtur"
+              style="font-size:.78rem">${b.marzhi_perqind}% e te ardhurave — mbi
+              kete matet pika e barazimit</span></td>
+            <td class="num"><b>${para(b.marzhi_kontributit)}</b></td></tr>
+        <tr><td>− Kosto fikse</td><td class="num">${para(b.kosto_fikse_mujore)}</td></tr>
+        <tr style="border-top:2px solid var(--vija)"><td><b>= FITIMI</b></td>
+            <td class="num"><b class="${fitimKlas}"
+              style="font-size:1.05rem">${para(b.fitimi_mujor)}</b></td></tr>
+      </table>
+
+      ${b.muaj_reale ? `<p class="i-heshtur" style="margin-top:10px">
+        Nga transaksionet e shenuara (${b.muaj_reale} muaj):
+        hyrje ${para(b.reale_hyrje_mujore)}/muaj, dalje
+        ${para(b.reale_dalje_mujore)}/muaj — krahasoji me shifrat e mesiperme.</p>` : ''}
+
+      ${tabelaZerave('Te ardhurat', b.zerat.te_ardhur, z => z.sasia
+        ? `<br><span class="i-heshtur" style="font-size:.78rem">${nr(z.sasia, 0)}
+           × ${nr(z.cmimi_njesi, 2)} ${esc(z.monedha)}</span>` : '')}
+      ${tabelaZerave('Kosto fikse', b.zerat.kosto_fikse, z =>
+        z.frekuenca === 'vjetore' ? `<br><span class="i-heshtur"
+          style="font-size:.78rem">vjetore, e pjestuar me 12</span>` : '')}
+      ${tabelaZerave('Kosto variabile', b.zerat.kosto_variabile, z =>
+        z.perqindja ? `<br><span class="i-heshtur" style="font-size:.78rem">${
+          nr(z.perqindja, 2)}% e te ardhurave</span>`
+        : z.kosto_per_njesi ? `<br><span class="i-heshtur" style="font-size:.78rem">${
+          nr(z.kosto_per_njesi, 2)} per ${esc(b.njesia)}</span>` : '')}
+    </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    REGJISTRI — formularët dhe tabelat e të dhënave
    ═══════════════════════════════════════════════════════════════════════ */
 const sot = () => new Date().toISOString().slice(0, 10);
@@ -1176,6 +1278,46 @@ const REGJISTRI = {
     },
     kolona: ['emri', 'lloji', 'simboli', 'sasia', 'cmimi_blerje', 'cmimi_aktual', 'monedha', 'rreziku'],
   },
+  bizneset: {
+    titull: 'Bizneset', totali: 'terheqje_mujore', tabela: 'bizneset',
+    ndihme: 'Cdo biznes mbahet njesi me vete. Terheqja mujore eshte ura e ' +
+            'vetme drejt xhepit tend — dhe ajo shenohet edhe te Te ardhurat.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      njesia: {tip: 'text', param: 'abonent',
+               eti: 'Njesia qe shet (abonent, klient, ore)'},
+      monedha: MONEDHA,
+      terheqje_mujore: {tip: 'number', param: 0, eti: 'Sa terheq per vete / muaj'},
+      llogaria_id: {tip: 'llogari', eti: 'Llogaria e biznesit'},
+      data_fillimit: {tip: 'date', eti: 'Filloi me'},
+      pershkrimi: {tip: 'text', eti: 'Pershkrimi'},
+    },
+    kolona: ['emri', 'njesia', 'monedha', 'terheqje_mujore', 'data_fillimit'],
+  },
+  'zerat-e-biznesit': {
+    titull: 'Zerat e biznesit', totali: 'shuma', tabela: 'zerat-e-biznesit',
+    ndihme: 'Te ardhurat me cmim x sasi (12 EUR x 40 abonente). Kosto fikse ' +
+            'nuk ndryshojne me vellimin (Render, domain). Kosto variabile ' +
+            'rriten me te (kosto API per abonent, ose komisione ne %).',
+    fusha: {
+      biznesi_id: {tip: 'biznes', eti: 'Biznesi'},
+      emri: {tip: 'text', eti: 'Emri i zerit'},
+      lloji: {tip: 'select', param: 'kosto_fikse', eti: 'Lloji', opsione: [
+        ['te_ardhur', 'Te ardhur'], ['kosto_fikse', 'Kosto fikse'],
+        ['kosto_variabile', 'Kosto variabile']]},
+      frekuenca: {tip: 'select', param: 'mujore', eti: 'Frekuenca',
+        opsione: [['mujore', 'Mujore'], ['vjetore', 'Vjetore']]},
+      monedha: MONEDHA,
+      shuma: {tip: 'number', param: 0, eti: 'Shuma e sheshte'},
+      cmimi_njesi: {tip: 'number', param: 0, eti: 'Cmimi per njesi'},
+      sasia: {tip: 'number', param: 0, eti: 'Sasia (sa njesi)'},
+      kosto_per_njesi: {tip: 'number', param: 0, eti: 'Kosto per njesi'},
+      perqindja: {tip: 'number', param: 0, eti: 'Ose % e te ardhurave'},
+      kategoria: {tip: 'text', param: 'tjeter', eti: 'Kategoria'},
+    },
+    kolona: ['emri', 'lloji', 'shuma', 'cmimi_njesi', 'sasia',
+             'kosto_per_njesi', 'perqindja', 'frekuenca'],
+  },
   objektivat: {
     titull: 'Objektivat', totali: 'shuma_synim', ndihme: 'Ku dua te arrij dhe deri kur.',
     fusha: {
@@ -1235,6 +1377,11 @@ async function hapRegjistrin(id){
     if (f.tip === 'llogari')
       return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
         <option value="">—</option>${opsionetELlogarive()}</select></div>`;
+    if (f.tip === 'biznes')
+      return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
+        ${(PANEL?.bizneset || []).map(b =>
+          `<option value="${b.id}">${esc(b.emri)}</option>`).join('')
+        || '<option value="">(shto nje biznes me pare)</option>'}</select></div>`;
     if (f.tip === 'kategori')
       return `<div><label for="${vid}">${f.eti}</label>
         <select id="${vid}" onchange="kategoriaNdryshoi('${vid}')">${
@@ -1281,6 +1428,11 @@ function redakto(id, rreshtiId){
     const v = $(`#f-${id}-${emri}`);
     if (!v) continue;
     const vlera = rresht[emri];
+    if (f.tip === 'biznes')
+      return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
+        ${(PANEL?.bizneset || []).map(b =>
+          `<option value="${b.id}">${esc(b.emri)}</option>`).join('')
+        || '<option value="">(shto nje biznes me pare)</option>'}</select></div>`;
     if (f.tip === 'kategori'){
       const ne_liste = f.opsione.some(([kodi]) => kodi === vlera);
       v.value = ne_liste ? vlera : '__vet__';
@@ -1354,11 +1506,17 @@ async function ruajRreshtin(){
     // Gjate ndryshimit, nje fushe e zbrazur do te thote "hiqe vleren" —
     // gjate shtimit do te thote "lere parazgjedhjen e bazes".
     if (vlera === ''){ if (po_ndryshon) trupi[emri] = null; continue; }
+    if (f.tip === 'biznes'){ trupi[emri] = Number(vlera) || null; continue; }
     if (f.tip === 'llogari'){
       try { trupi[emri] = await zgjidhLlogarine(vlera); }
       catch (e) { njofto('Gabim: ' + e.message, 4000); return; }
       continue;
     }
+    if (f.tip === 'biznes')
+      return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
+        ${(PANEL?.bizneset || []).map(b =>
+          `<option value="${b.id}">${esc(b.emri)}</option>`).join('')
+        || '<option value="">(shto nje biznes me pare)</option>'}</select></div>`;
     if (f.tip === 'kategori'){
       let kat = v.value;
       if (kat === '__vet__'){
