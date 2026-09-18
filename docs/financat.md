@@ -24,6 +24,7 @@ Hap SQL Editor te Supabase dhe ekzekuto, me kete radhe:
 4. `financat_migrim_4.sql` — bizneset: pasqyra e fitimit, zerat, pika e
    barazimit, lidhja e transaksioneve me biznesin.
 5. `financat_migrim_5.sql` — buxhetet mujore per kategori.
+6. `financat_migrim_6.sql` — personat, dhe lidhja e cdo levizjeje me ta.
 
 RLS ndizet pa asnje policy: celesi `anon` nuk lexon dot asgje — vetem
 backend-i, me service key, shkruan dhe lexon.
@@ -190,6 +191,31 @@ sa perqind mund te bien shitjet para se te hyhet ne humbje.
 Alarmet e biznesit: humbje, terheqje mbi fitimin ("diferenca del nga kapitali,
 jo nga puna"), siguri nen 20%, dhe mungese e te ardhurave te regjistruara.
 
+### Ditari dhe gjendja e llogarive
+Cdo pagese e shenuar — nga njoftimet, nga regjistri ose nga butoni "Paguaj" —
+eshte nje transaksion i lidhur me nje llogari. Paneli e tregon kete ne tre
+vende, sepse nje shifer qe levize pa u pare nuk sherben:
+
+- **Llogarite** — gjendja e sotme e secilës: `bilanci_fillestar` plus cdo
+  hyrje, minus cdo dalje. (Kolona `bilanci_fillestar` ne regjistri eshte
+  gjendja **fillestare**, jo ajo e sotmja — mos i ngaterro.)
+- **Levizjet e fundit** — ditari: data, burimi, llogaria, personi, shuma, dhe
+  nje buton qe te con drejt e te rreshti per ta ndrequr.
+- **Levizja e radhes** — cfare pritet te levize me pare, per sa dite, sa eshte
+  dhe a eshte fikse apo e ndryshueshme.
+
+### Personat
+Nje ekonomi me dy paga nuk eshte nje xhep i vetem. Llogarite, te ardhurat,
+borxhet dhe levizjet mund t'i caktohen nje personi; paneli nxjerr per secilin
+te ardhurat, shpenzimet, neton dhe bilancin. Totali mbetet nje — ky eshte
+vetem zberthimi i tij. Cfare nuk i caktohet askujt del si "Pa person".
+
+### Pagesa e borxhit me nje hap
+Butoni **Paguaj** te cdo borxh (dhe **Arketo** te cdo arketim) ben te tria
+njeheresh: krijon transaksionin, e zbret shumen nga llogaria e zgjedhur, dhe
+rrit `shuma_paguar`. Kur mbetja arrin zeron, statusi behet `shlyer` dhe
+borxhi del nga lista. Nje pagese me e madhe se mbetja refuzohet.
+
 ### Buxhetet mujore
 Buxheti eshte gje tjeter nga plani: plani thote *"qeraja eshte 30.000 dhe
 paguhet me 5"*; buxheti thote *"ushqimeve u kam vene 35.000 ne muaj dhe deri
@@ -264,6 +290,7 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `POST /api/fin/skano-opsionet` | Skanim tregu per pozicionet dhe borxhet |
 | `POST /api/fin/apliko-cmimet` | Zbaton cmimet e propozuara |
 | `GET /api/fin/raportet` | Arkivi i analizave |
+| `POST /api/fin/paguaj-borxh` | Pagese borxhi: transaksioni + mbetja + mbyllja |
 | `POST /api/fin/buxhete-nga-historiku` | Krijon buxhete nga mediana e kategorive |
 | `GET /api/fin/eksport` | Gjithcka ne nje JSON te vetem |
 | `GET /api/fin/eksport/{tabela}.csv` | Nje tabele si CSV |
