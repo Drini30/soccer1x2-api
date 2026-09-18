@@ -66,27 +66,28 @@ TABELAT = {
     "bizneset":      "fin_bizneset",
     "zerat-e-biznesit": "fin_biznes_zerat",
     "buxhetet":      "fin_buxhetet",
+    "personat":      "fin_personat",
 }
 
 # Fushat qe lejohen te shkruhen nga jashte. Cdo gje tjeter ne trup shperfillet
 # ne heshtje — nuk duam qe nje POST te vendose id, user_id apo krijuar_me.
 FUSHAT = {
     "llogarite": {"emri", "lloji", "monedha", "bilanci_fillestar", "limiti",
-                  "likuide", "aktiv", "shenime"},
+                  "likuide", "aktiv", "shenime", "personi_id"},
     "transaksionet": {"data", "llogaria_id", "lloji", "shuma", "monedha",
                       "kategoria", "pershkrimi", "detyrimi_id", "plani_id",
                       "te_ardhura_id", "biznesi_id", "llogaria_dest_id",
-                      "etiketa"},
+                      "etiketa", "personi_id"},
     "detyrimet": {"lloji", "pala", "pershkrimi", "shuma_totale", "shuma_paguar",
                   "monedha", "interesi_vjetor", "kesti_mujor", "afati",
-                  "prioriteti", "statusi", "siguria"},
+                  "prioriteti", "statusi", "siguria", "personi_id"},
     "planet": {"emri", "drejtimi", "shuma", "monedha", "kategoria", "frekuenca",
                "data_fillimit", "data_mbarimit", "horizonti", "domosdoshmeria",
                "probabiliteti", "aktiv", "shenime", "dita_pageses",
                "dita_pageses_fund", "muaji_pageses", "llogaria_id"},
     "te-ardhurat": {"emri", "lloji", "shuma_mujore", "monedha", "siguria",
                     "oret_mujore", "aktiv", "dita_pageses",
-                    "shuma_e_ndryshueshme", "llogaria_id"},
+                    "shuma_e_ndryshueshme", "llogaria_id", "personi_id"},
     "investimet": {"emri", "lloji", "simboli", "sasia", "cmimi_blerje",
                    "cmimi_aktual", "monedha", "data_blerje", "rreziku",
                    "kthimi_pritshem", "aktiv", "shenime", "perditesuar_me"},
@@ -100,6 +101,7 @@ FUSHAT = {
                          "shenime"},
     "buxhetet": {"kategoria", "shuma_mujore", "monedha", "pragu_alarmit",
                  "aktiv", "shenime"},
+    "personat": {"emri", "ngjyra", "shenime", "aktiv"},
     "raportet": set(),   # vetem lexim; shkruhet nga keshilltari
 }
 
@@ -200,6 +202,7 @@ MIGRIMET = {
     "fin_bizneset": "financat_migrim_4.sql",
     "fin_biznes_zerat": "financat_migrim_4.sql",
     "fin_buxhetet": "financat_migrim_5.sql",
+    "fin_personat": "financat_migrim_6.sql",
 }
 
 
@@ -320,6 +323,8 @@ def mbledh_gjendjen() -> Dict[str, Any]:
         "biznes_zerat":  _lexo_nese_ekziston("fin_biznes_zerat", {"aktiv": "eq.true"},
                                              "id.asc", mungesat),
         "buxhetet":      _lexo_nese_ekziston("fin_buxhetet", {"aktiv": "eq.true"},
+                                             "id.asc", mungesat),
+        "personat":      _lexo_nese_ekziston("fin_personat", {"aktiv": "eq.true"},
                                              "id.asc", mungesat),
         "_mungojne":     mungesat,
     }
@@ -1659,6 +1664,191 @@ def llogarit_buxhetet(g: Dict[str, Any], c: Dict[str, Any],
     }
 
 
+def levizjet_e_fundit(g: Dict[str, Any], c: Dict[str, Any], sa: int = 25) -> List[dict]:
+    """Ditari: cdo levizje e fundit, me emer llogarie, personi dhe burimi.
+
+    Pa kete, nje pagese e bere nga njoftimet zhdukej: shifra levizte diku ne
+    total, por nuk dukej ku u shkrua dhe si te ndryshohej.
+    """
+    emrat_e_llogarive = {int(l["id"]): l.get("emri") for l in g["llogarite"]}
+    emrat_e_personave = {int(p["id"]): p.get("emri") for p in g.get("personat") or []}
+    emrat_e_planeve = {int(p["id"]): p.get("emri") for p in g["planet"]}
+    emrat_e_ardhurave = {int(a["id"]): a.get("emri") for a in g["te_ardhurat"]}
+    emrat_e_detyrimeve = {int(d["id"]): d.get("pala") for d in g["detyrimet"]}
+    emrat_e_bizneseve = {int(b["id"]): b.get("emri") for b in g.get("bizneset") or []}
+
+    def _emri(harta: dict, vlera: Any) -> Optional[str]:
+        try:
+            return harta.get(int(vlera)) if vlera is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    rreshtat = []
+    for t in g["transaksionet"][:sa * 3]:
+        d = _dat(t.get("data"))
+        lloji = (t.get("lloji") or "dalje").lower()
+        burimi = (_emri(emrat_e_ardhurave, t.get("te_ardhura_id"))
+                  or _emri(emrat_e_planeve, t.get("plani_id"))
+                  or _emri(emrat_e_detyrimeve, t.get("detyrimi_id")))
+        rreshtat.append({
+            "id": t.get("id"), "data": d.isoformat() if d else None,
+            "lloji": lloji,
+            "shuma": _num(t.get("shuma")),
+            "monedha": (t.get("monedha") or c["monedha_baze"]).upper(),
+            "ne_baze": _rrum(kthe(t.get("shuma"), t.get("monedha"), c)),
+            "kategoria": t.get("kategoria"),
+            "pershkrimi": t.get("pershkrimi"),
+            "llogaria": _emri(emrat_e_llogarive, t.get("llogaria_id")),
+            "personi": _emri(emrat_e_personave, t.get("personi_id")),
+            "biznesi": _emri(emrat_e_bizneseve, t.get("biznesi_id")),
+            "burimi": burimi,
+        })
+    rreshtat.sort(key=lambda r: (r["data"] or "", r["id"] or 0), reverse=True)
+    return rreshtat[:sa]
+
+
+def levizja_e_radhes(g: Dict[str, Any], c: Dict[str, Any],
+                     det: Dict[str, Any]) -> Optional[dict]:
+    """Cfare pritet te levize me pare — dhe per sa dite.
+
+    Shikohen te ardhurat me date, planet e perseritshme me date, planet nje-here,
+    dhe afatet e borxheve. Fitues eshte data me e afert qe s'ka kaluar.
+    """
+    sot = date.today()
+    kandidatet: List[dict] = []
+
+    def _dita_tjeter(dita: int) -> Optional[date]:
+        if dita <= 0:
+            return None
+        e_ketij_muaji = _dita_e_muajit(dita, sot.year, sot.month)
+        if e_ketij_muaji >= sot:
+            return e_ketij_muaji
+        pasardhes = _shto_muaj(sot, 1)
+        return _dita_e_muajit(dita, pasardhes.year, pasardhes.month)
+
+    for a in g["te_ardhurat"]:
+        d = _dita_tjeter(int(_num(a.get("dita_pageses"), 0)))
+        if not d:
+            continue
+        e_ndryshueshme = bool(a.get("shuma_e_ndryshueshme"))
+        kandidatet.append({
+            "emri": a.get("emri"), "drejtimi": "hyrje", "data": d,
+            "shuma": kthe(a.get("shuma_mujore"), a.get("monedha"), c),
+            "monedha": (a.get("monedha") or c["monedha_baze"]).upper(),
+            "shuma_vendase": _num(a.get("shuma_mujore")),
+            "fikse": not e_ndryshueshme, "burimi": "te ardhur"})
+
+    for p in g["planet"]:
+        if not p.get("aktiv", True):
+            continue
+        frek = (p.get("frekuenca") or "mujore").lower()
+        mbarimi = _dat(p.get("data_mbarimit"))
+        if mbarimi and mbarimi < sot:
+            continue
+        if frek == "nje_here":
+            d = _dat(p.get("data_fillimit"))
+            if not d or d < sot:
+                continue
+        elif frek == "vjetore":
+            muaji = int(_num(p.get("muaji_pageses"), 0))
+            dita = int(_num(p.get("dita_pageses"), 0))
+            if muaji < 1 or dita < 1:
+                continue
+            viti = sot.year if (muaji, dita) >= (sot.month, sot.day) else sot.year + 1
+            d = _dita_e_muajit(dita, viti, muaji)
+        else:
+            d = _dita_tjeter(int(_num(p.get("dita_pageses"), 0)))
+        if not d:
+            continue
+        kandidatet.append({
+            "emri": p.get("emri"),
+            "drejtimi": (p.get("drejtimi") or "dalje"), "data": d,
+            "shuma": kthe(p.get("shuma"), p.get("monedha"), c),
+            "monedha": (p.get("monedha") or c["monedha_baze"]).upper(),
+            "shuma_vendase": _num(p.get("shuma")),
+            "fikse": int(_num(p.get("probabiliteti"), 100)) >= 100,
+            "burimi": "plan"})
+
+    for b in det["borxhe"] + det["arketime"]:
+        d = _dat(b.get("afati"))
+        if not d or d < sot:
+            continue
+        kandidatet.append({
+            "emri": b.get("pala"),
+            "drejtimi": "dalje" if b in det["borxhe"] else "hyrje", "data": d,
+            "shuma": b["mbetur_baze"], "monedha": b["monedha"],
+            "shuma_vendase": b["mbetur"], "fikse": True, "burimi": "detyrim"})
+
+    if not kandidatet:
+        return None
+    i_pari = min(kandidatet, key=lambda x: x["data"])
+    dite = (i_pari["data"] - sot).days
+    return {
+        "emri": i_pari["emri"], "drejtimi": i_pari["drejtimi"],
+        "data": i_pari["data"].isoformat(), "dite": dite,
+        "shuma": _rrum(i_pari["shuma"]),
+        "shuma_vendase": _rrum(i_pari["shuma_vendase"]),
+        "monedha": i_pari["monedha"], "fikse": i_pari["fikse"],
+        "burimi": i_pari["burimi"],
+        "sa_shpejt": ("sot" if dite == 0 else "neser" if dite == 1
+                      else f"per {dite} dite"),
+    }
+
+
+def permbledh_personat(g: Dict[str, Any], c: Dict[str, Any],
+                       bil: Dict[str, Any]) -> List[dict]:
+    """Kush sjell sa dhe kush shpenzon sa. Totali mbetet nje, por ka zberthim."""
+    sot = date.today()
+    personat = {int(p["id"]): {"id": int(p["id"]), "emri": p.get("emri"),
+                               "te_ardhura_mujore": 0.0, "shpenzime_mujore": 0.0,
+                               "bilanci": 0.0, "llogari": 0}
+                for p in g.get("personat") or []}
+    pa_person = {"id": None, "emri": "Pa person", "te_ardhura_mujore": 0.0,
+                 "shpenzime_mujore": 0.0, "bilanci": 0.0, "llogari": 0}
+
+    def kutia(vlera):
+        try:
+            return personat.get(int(vlera), pa_person) if vlera is not None else pa_person
+        except (TypeError, ValueError):
+            return pa_person
+
+    vleresimet = vleresoj_te_ardhurat(g, c)
+    for a in g["te_ardhurat"]:
+        k = kutia(a.get("personi_id"))
+        k["te_ardhura_mujore"] += vleresimet.get(int(a["id"]), {}).get("mujore_baze", 0.0)
+
+    # Shpenzimet: mesatarja mujore e muajve te plote te fundit
+    muajt: Dict[Any, set] = {}
+    for t in g["transaksionet"]:
+        if (t.get("lloji") or "dalje").lower() != "dalje" or t.get("biznesi_id"):
+            continue
+        d = _dat(t.get("data"))
+        if not d or d > sot or (sot - d).days > 130:
+            continue
+        if d.year == sot.year and d.month == sot.month:
+            continue
+        k = kutia(t.get("personi_id"))
+        k["shpenzime_mujore"] += kthe(t.get("shuma"), t.get("monedha"), c)
+        muajt.setdefault(k["emri"], set()).add(f"{d.year:04d}-{d.month:02d}")
+
+    for l, rr in zip(g["llogarite"], bil["llogarite"]):
+        k = kutia(l.get("personi_id"))
+        k["bilanci"] += rr["bilanci_baze"]
+        k["llogari"] += 1
+
+    dalja = []
+    for k in list(personat.values()) + [pa_person]:
+        nr = max(1, len(muajt.get(k["emri"], set())))
+        k["shpenzime_mujore"] = _rrum(k["shpenzime_mujore"] / nr)
+        k["te_ardhura_mujore"] = _rrum(k["te_ardhura_mujore"])
+        k["bilanci"] = _rrum(k["bilanci"])
+        k["neto_mujore"] = _rrum(k["te_ardhura_mujore"] - k["shpenzime_mujore"])
+        if (k["te_ardhura_mujore"] or k["shpenzime_mujore"] or k["bilanci"]
+                or k["llogari"]):
+            dalja.append(k)
+    return sorted(dalja, key=lambda x: -x["te_ardhura_mujore"])
+
+
 def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     """Pika e vetme e vertetes: gjithcka tjeter ndertohet mbi kete."""
     c = lexo_cilesimet()
@@ -1736,6 +1926,9 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "projeksioni": proj, "skori": skor, "kapaciteti": kap,
         "shpenzimet": shpenzimet,
         "burimet_e_kursimit": burimet_e_kursimit,
+        "levizjet": levizjet_e_fundit(g, c),
+        "levizja_e_radhes": levizja_e_radhes(g, c, det),
+        "personat": permbledh_personat(g, c, bil),
         "bizneset": analizo_bizneset(g, c),
         "buxhetet": buxhetet,
         "strategjia_borxhit": strat, "alarmet": alarme, "njoftimet": njoftime,
@@ -2211,6 +2404,7 @@ def regjistro_pagese(trupi: dict = Body(...),
                       or burimi.get("kategoria") or "tjeter"),
         "pershkrimi": trupi.get("pershkrimi") or burimi.get("emri"),
         "llogaria_id": trupi.get("llogaria_id") or burimi.get("llogaria_id"),
+        "personi_id": trupi.get("personi_id") or burimi.get("personi_id"),
     }
     rresht["te_ardhura_id" if lloji == "te_ardhura" else "plani_id"] = burimi_id
 
@@ -2367,6 +2561,83 @@ def apliko_cmimet(trupi: dict = Body(...),
         if dalja:
             perditesuar.append(cid)
     return {"perditesuar": perditesuar, "gjithsej": len(perditesuar)}
+
+
+@router.post("/paguaj-borxh")
+def paguaj_borxh(trupi: dict = Body(...),
+                 _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Nje pagese borxhi ne nje hap: transaksioni, mbetja e re, dhe mbyllja.
+
+    Deri tani duhej shenuar transaksioni nga njera ane dhe ndryshuar
+    'shuma_paguar' nga tjetra — dy hapa qe harrohen lehte dhe qe, kur
+    harrohen, e lene borxhin te dukej i papaguar.
+
+    Trupi: {detyrimi_id, shuma, data, monedha, llogaria_id, personi_id}
+    """
+    kerko_token(_)
+    try:
+        detyrimi_id = int(trupi.get("detyrimi_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "detyrimi_id mungon ose s'eshte numer.")
+    shuma = _num(trupi.get("shuma"))
+    if shuma <= 0:
+        raise HTTPException(400, "Shuma duhet me e madhe se zero.")
+
+    rreshtat = _lexo("fin_detyrimet", {"id": f"eq.{detyrimi_id}"})
+    if not rreshtat:
+        raise HTTPException(404, f"Detyrimi {detyrimi_id} nuk u gjet.")
+    d = rreshtat[0]
+    c = lexo_cilesimet()
+
+    # Pagesa mund te behet ne monedhe tjeter nga ajo e borxhit — sillet ne te.
+    monedha_pageses = (trupi.get("monedha") or d.get("monedha")
+                       or c["monedha_baze"]).strip().upper()
+    kursi_borxhit = kursi_i(c, d.get("monedha")) or 1.0
+    shuma_ne_borxh = kthe(shuma, monedha_pageses, c) / kursi_borxhit
+
+    mbetur = _num(d.get("shuma_totale")) - _num(d.get("shuma_paguar"))
+    if mbetur <= 0.005:
+        raise HTTPException(400, "Ky detyrim eshte shlyer tashme.")
+    if shuma_ne_borxh > mbetur + 0.005:
+        raise HTTPException(400,
+            f"Pagesa ({shuma_ne_borxh:.2f}) e kalon mbetjen ({mbetur:.2f} "
+            f"{(d.get('monedha') or '').upper()}).")
+
+    eshte_borxh = (d.get("lloji") or "borxh") == "borxh"
+    trx = {
+        "user_id": USER_ID,
+        "data": trupi.get("data") or date.today().isoformat(),
+        "lloji": "dalje" if eshte_borxh else "hyrje",
+        "shuma": shuma, "monedha": monedha_pageses,
+        "kategoria": "shlyerje_borxhi" if eshte_borxh else "arketim",
+        "pershkrimi": f"{'Pagese' if eshte_borxh else 'Arketim'}: {d.get('pala')}",
+        "llogaria_id": trupi.get("llogaria_id"),
+        "personi_id": trupi.get("personi_id") or d.get("personi_id"),
+        "detyrimi_id": detyrimi_id,
+    }
+    dalja_trx = _sb("fin_transaksionet", "post", trupi=trx,
+                    prefer="return=representation")
+
+    paguar_e_re = _num(d.get("shuma_paguar")) + shuma_ne_borxh
+    e_mbyllur = paguar_e_re >= _num(d.get("shuma_totale")) - 0.005
+    perditesimi = {"shuma_paguar": round(paguar_e_re, 2)}
+    if e_mbyllur:
+        perditesimi["statusi"] = "shlyer"
+    _sb("fin_detyrimet", "patch",
+        params={"id": f"eq.{detyrimi_id}", "user_id": f"eq.{USER_ID}"},
+        trupi=perditesimi, prefer="return=representation")
+
+    return {
+        "transaksioni": (dalja_trx[0] if isinstance(dalja_trx, list) and dalja_trx
+                         else dalja_trx),
+        "mbetur": _rrum(max(0.0, mbetur - shuma_ne_borxh)),
+        "monedha": (d.get("monedha") or c["monedha_baze"]).upper(),
+        "shlyer": e_mbyllur,
+        "mesazhi": ("Borxhi u shlye dhe doli nga lista."
+                    if e_mbyllur else
+                    f"Mbeten {mbetur - shuma_ne_borxh:.2f} "
+                    f"{(d.get('monedha') or '').upper()}."),
+    }
 
 
 @router.get("/raportet")

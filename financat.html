@@ -276,6 +276,27 @@ svg{display:block;width:100%;overflow:visible}
       </div>
     </div>
 
+    <div class="rrjeta k2" style="margin-top:16px">
+      <div class="karte">
+        <h2>Llogarite</h2>
+        <p class="i-heshtur">Gjendja e sotme e secilës: bilanci fillestar plus
+          cdo hyrje, minus cdo dalje.</p>
+        <div id="llogarite-gjendja"></div>
+      </div>
+      <div class="karte">
+        <h2>Sipas personit</h2>
+        <p class="i-heshtur" id="personat-nenteksti"></p>
+        <div id="personat"></div>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Levizjet e fundit</h2>
+      <p class="i-heshtur">Cdo gje qe ka levizur, nga ku erdhi dhe ku shkoi.
+        Klikoje "Ndrysho" nese dicka u shenua gabim.</p>
+      <div id="levizjet"></div>
+    </div>
+
     <div class="karte" id="karta-buxhetit">
       <h2>Buxheti i muajit</h2>
       <p class="i-heshtur" id="buxheti-nenteksti"></p>
@@ -539,14 +560,14 @@ function ndertoSkedat(){
     `<button class="skeda" role="tab" aria-selected="${i === 0}"
        onclick="hapSkeden('${id}')">${em}</button>`).join('');
 }
-function hapSkeden(id){
+async function hapSkeden(id){
   PJESET.forEach(p => $('#pj-' + p).classList.toggle('fshihu', p !== id));
   $$('#skedat .skeda').forEach((b, i) =>
     b.setAttribute('aria-selected', SKEDAT[i][0] === id));
   mbyllMenune();
   window.scrollTo({top: 0, behavior: 'smooth'});
   if (id === 'keshilltari') ngarkoRaportet();
-  if (id === 'regjistri') hapRegjistrin(REG_AKTIV);
+  if (id === 'regjistri') await hapRegjistrin(REG_AKTIV);
   if (id === 'cilesimet') hapCilesimet();
   if (id === 'bizneset') vizatoBizneset();
 }
@@ -599,6 +620,17 @@ function vizatoPanelin(){
      'sa rron pa asnje te ardhur', s.muaj_mbulimi >= 3 ? 'pozitiv' : 'negativ'],
     ['Borxhi', para(PANEL.detyrimet.total_borxh),
      `kestet ${para(PANEL.detyrimet.kestet_mujore)}/muaj`, ''],
+    ['Levizja e radhes', PANEL.levizja_e_radhes
+      ? `${PANEL.levizja_e_radhes.drejtimi === 'hyrje' ? '+' : '−'}`
+        + `${nr(PANEL.levizja_e_radhes.shuma_vendase, 0)} `
+        + `${esc(PANEL.levizja_e_radhes.monedha)}`
+      : '—',
+     PANEL.levizja_e_radhes
+      ? `${esc(PANEL.levizja_e_radhes.emri)} · ${PANEL.levizja_e_radhes.sa_shpejt}`
+        + `${PANEL.levizja_e_radhes.fikse ? ' · fikse' : ' · e ndryshueshme'}`
+      : 'asnje date e shenuar',
+     PANEL.levizja_e_radhes && PANEL.levizja_e_radhes.drejtimi === 'hyrje'
+      ? 'pozitiv' : ''],
     ['Teprica e lire', para(k.teprica_e_lire),
      k.rezerva_mungese > 0 ? `mungon rezerve ${para(k.rezerva_mungese)}` : 'rezerva e mbushur',
      k.teprica_e_lire > 0 ? 'pozitiv' : ''],
@@ -621,6 +653,11 @@ function vizatoPanelin(){
       <div class="shufer"><i style="width:${Math.max(0, p.pike / p.maks * 100)}%"></i></div>
       <span class="sh">${esc(p.vlera)} · synimi ${esc(p.synimi)} — ${esc(p.shpjegim)}</span>
     </div>`).join('');
+
+  // ── Llogarite, personat, ditari
+  vizatoLlogarite(PANEL.bilancet);
+  vizatoPersonat(PANEL.personat || []);
+  vizatoLevizjet(PANEL.levizjet || []);
 
   // ── Buxheti i muajit
   vizatoBuxhetin(PANEL.buxhetet);
@@ -685,12 +722,13 @@ function vizatoPanelin(){
   // ── Tabelat
   const d = PANEL.detyrimet;
   $('#tab-borxhe').innerHTML = tabele(
-    ['Pala', 'Mbetur', 'Interes', 'Kesti', 'Afati'],
+    ['Pala', 'Mbetur', 'Interes', 'Afati', ''],
     d.borxhe.map(b => [esc(b.pala), {n: nr(b.mbetur) + ' ' + b.monedha},
-      {n: nr(b.interesi_vjetor, 2) + '%'}, {n: nr(b.kesti_mujor_baze)},
+      {n: nr(b.interesi_vjetor, 2) + '%'},
       b.afati ? (b.vonuar ? `<span style="color:var(--kritik)">${b.afati} · vonuar</span>`
-        : b.afati) : '—']), 'Asnje borxh.',
-    {kolona: 1, vlera: d.total_borxh});
+        : b.afati) : '—',
+      {n: `<button class="vogel" onclick="hapPagesenEBorxhit(${b.id})">Paguaj</button>`}]),
+    'Asnje borxh.', {kolona: 1, vlera: d.total_borxh});
   const st = PANEL.strategjia_borxhit;
   $('#strategjia').innerHTML = st.ka_borxhe && st.orteku.muaj ? `
     <div class="ndarje"></div>
@@ -706,11 +744,12 @@ function vizatoPanelin(){
       ? ' — kursen ' + para(st.kursim_nga_orteku) : ''}</p>` : '';
 
   $('#tab-arketime').innerHTML = tabele(
-    ['Pala', 'Mbetur', 'Siguria', 'Afati'],
+    ['Pala', 'Mbetur', 'Siguria', 'Afati', ''],
     d.arketime.map(a => [esc(a.pala), {n: nr(a.mbetur) + ' ' + a.monedha},
       {n: a.siguria + '%'},
       a.afati ? (a.vonuar ? `<span style="color:var(--kritik)">${a.afati} · vonuar</span>`
-        : a.afati) : '—']),
+        : a.afati) : '—',
+      {n: `<button class="vogel" onclick="hapPagesenEBorxhit(${a.id})">Arketo</button>`}]),
     'Asnje arketim i pritur.', {kolona: 1, vlera: d.arketime_bruto});
   if (d.arketime.length)
     $('#tab-arketime').innerHTML += `<p class="i-heshtur">Bruto ${para(d.arketime_bruto)}
@@ -733,6 +772,68 @@ function vizatoPanelin(){
     ? PANEL.objektivat.map(vizatoObjektivin).join('')
     : `<p class="i-heshtur">Asnje objektiv. Shtoje nje te Regjistri →
        Objektivat, dhe motori te thote si te arrihet.</p>`;
+}
+
+function vizatoLlogarite(bil){
+  $('#llogarite-gjendja').innerHTML = bil.llogarite.length
+    ? `<div class="tabele-mbeshtjelles"><table>
+    ${bil.llogarite.map(l => `<tr>
+      <td>${esc(l.emri)}<br><span class="i-heshtur" style="font-size:.76rem">
+        ${esc(l.lloji)}${l.likuide ? '' : ' · jo likuide'}</span></td>
+      <td class="num"><b class="${l.bilanci >= 0 ? '' : 'negativ'}">${
+        nr(l.bilanci, 0)} ${esc(l.monedha)}</b>${
+        l.monedha !== PANEL.monedha_baze
+          ? `<br><span class="i-heshtur" style="font-size:.76rem">${
+             para(l.bilanci_baze)}</span>` : ''}</td></tr>`).join('')}
+    <tr style="border-top:2px solid var(--vija)"><td><b>Totali</b></td>
+      <td class="num"><b>${para(bil.total_baze)}</b></td></tr>
+  </table></div>` : '<p class="i-heshtur">Asnje llogari.</p>';
+}
+
+function vizatoPersonat(lista){
+  $('#personat-nenteksti').textContent = lista.length
+    ? 'Totali mbetet nje; ky eshte zberthimi i tij.'
+    : 'Shto personat te Regjistri → Personat, pastaj cakto secilen llogari, '
+      + 'te ardhur dhe levizje te dikush.';
+  $('#personat').innerHTML = lista.length
+    ? `<div class="tabele-mbeshtjelles"><table>
+    <tr><th>Personi</th><th class="num">Te ardhura</th>
+        <th class="num">Shpenzime</th><th class="num">Neto</th>
+        <th class="num">Bilanci</th></tr>
+    ${lista.map(p => `<tr>
+      <td>${esc(p.emri)}</td>
+      <td class="num">${para(p.te_ardhura_mujore)}</td>
+      <td class="num">${para(p.shpenzime_mujore)}</td>
+      <td class="num ${p.neto_mujore >= 0 ? 'pozitiv' : 'negativ'}">${
+        para(p.neto_mujore)}</td>
+      <td class="num">${para(p.bilanci)}</td></tr>`).join('')}
+  </table></div>` : '';
+}
+
+function vizatoLevizjet(lista){
+  $('#levizjet').innerHTML = lista.length ? `<div class="tabele-mbeshtjelles"><table>
+    <tr><th>Data</th><th>Cfare</th><th>Llogaria</th>
+        <th class="num">Shuma</th><th></th></tr>
+    ${lista.map(l => `<tr>
+      <td>${esc(l.data || '—')}</td>
+      <td>${esc(l.burimi || l.pershkrimi || l.kategoria || '—')}
+        ${l.burimi && l.pershkrimi && l.burimi !== l.pershkrimi
+          ? `<br><span class="i-heshtur" style="font-size:.76rem">${esc(l.pershkrimi)}</span>` : ''}
+        ${l.personi ? `<br><span class="i-heshtur" style="font-size:.76rem">${esc(l.personi)}</span>` : ''}
+        ${l.biznesi ? `<br><span class="i-heshtur" style="font-size:.76rem">biznes: ${esc(l.biznesi)}</span>` : ''}</td>
+      <td>${esc(l.llogaria || '—')}</td>
+      <td class="num ${l.lloji === 'hyrje' ? 'pozitiv' : 'negativ'}">
+        ${l.lloji === 'hyrje' ? '+' : '−'}${nr(l.shuma, 0)} ${esc(l.monedha)}</td>
+      <td class="num"><button class="vogel"
+        onclick="shkoTeLevizja(${l.id})">Ndrysho</button></td></tr>`).join('')}
+  </table></div>` : `<p class="i-heshtur">Asnje levizje ende. Cdo pagese e
+    shenuar nga njoftimet ose nga regjistri do te dale ketu.</p>`;
+}
+
+async function shkoTeLevizja(id){
+  REG_AKTIV = 'transaksionet';
+  await hapSkeden('regjistri');    // pritet, qe redaktimi te mos mbulohet
+  redakto('transaksionet', id);
 }
 
 const NGJYRA_E_BUXHETIT = {brenda: 'var(--seria-2)', afer: 'var(--paralajmerim)',
@@ -824,6 +925,10 @@ function hapPagesen(indeksi){
         <input id="pg-data" type="date" value="${esc(v.data)}"></div>
       <div><label for="pg-llogaria">Llogaria</label>
         <select id="pg-llogaria"><option value="">—</option>${opsionet}</select></div>
+      <div><label for="pg-personi">Personi</label>
+        <select id="pg-personi"><option value="">—</option>${
+          (PANEL?.personat || []).filter(pp => pp.id).map(pp =>
+            `<option value="${pp.id}">${esc(pp.emri)}</option>`).join('')}</select></div>
     </div>
     <div class="rresht">
       <button class="kryesor" onclick="ruajPagesen(${indeksi})">Ruaj pagesen</button>
@@ -835,6 +940,61 @@ function hapPagesen(indeksi){
   setTimeout(() => $('#pg-shuma')?.focus(), 30);
 }
 function mbyllModalin(){ $('#mbulesa')?.remove(); }
+
+/* Pagesa e nje borxhi ne nje hap: transaksioni, mbetja e re dhe mbyllja e tij
+   behen bashke — ndryshe harrohet gjysma dhe borxhi duket i papaguar. */
+function hapPagesenEBorxhit(id){
+  const d = PANEL.detyrimet;
+  const b = [...d.borxhe, ...d.arketime].find(x => x.id === id);
+  if (!b) return;
+  const eshte_borxh = d.borxhe.some(x => x.id === id);
+  const kutia = document.createElement('div');
+  kutia.className = 'mbulese'; kutia.id = 'mbulesa';
+  kutia.onclick = e => { if (e.target === kutia) mbyllModalin(); };
+  kutia.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+    <h2>${eshte_borxh ? 'Paguaj' : 'Arketo'}: ${esc(b.pala)}</h2>
+    <p class="i-heshtur">Mbeten <b>${nr(b.mbetur)} ${esc(b.monedha)}</b>${
+      b.interesi_vjetor ? ` me ${nr(b.interesi_vjetor, 2)}% interes` : ''}.
+      ${eshte_borxh ? 'Shuma i zbritet llogarise qe zgjedh.'
+                    : 'Shuma i shtohet llogarise qe zgjedh.'}</p>
+    <div class="fusha">
+      <div><label for="pb-shuma">Shuma</label>
+        <input id="pb-shuma" type="number" step="any" value="${b.mbetur}"></div>
+      <div><label for="pb-monedha">Monedha</label>
+        <input id="pb-monedha" value="${esc(b.monedha)}"></div>
+      <div><label for="pb-data">Data</label>
+        <input id="pb-data" type="date" value="${sot()}"></div>
+      <div><label for="pb-llogaria">Llogaria</label>
+        <select id="pb-llogaria"><option value="">—</option>
+          ${opsionetELlogarive()}</select></div>
+    </div>
+    <div class="rresht">
+      <button class="kryesor" onclick="ruajPagesenEBorxhit(${id})">Ruaj</button>
+      <button onclick="mbyllModalin()">Anulo</button>
+    </div>
+    <p id="pb-gabimi" class="i-heshtur" style="color:var(--kritik)"></p>
+  </div>`;
+  document.body.appendChild(kutia);
+  setTimeout(() => $('#pb-shuma')?.select(), 30);
+}
+
+async function ruajPagesenEBorxhit(id){
+  const shuma = Number($('#pb-shuma').value);
+  if (!shuma || shuma <= 0){
+    $('#pb-gabimi').textContent = 'Fut nje shume me te madhe se zero.'; return;
+  }
+  try {
+    const r = await api('/paguaj-borxh', {metoda: 'POST', trupi: {
+      detyrimi_id: id, shuma,
+      monedha: $('#pb-monedha').value.trim(),
+      data: $('#pb-data').value || sot(),
+      llogaria_id: await zgjidhLlogarine($('#pb-llogaria').value),
+    }});
+    mbyllModalin();
+    njofto(r.mesazhi, 4000);
+    ngarko();
+  } catch (e) { $('#pb-gabimi').textContent = e.message; }
+}
 
 async function ruajPagesen(indeksi){
   const n = (PANEL.njoftimet || [])[indeksi], v = n.veprimi;
@@ -848,6 +1008,7 @@ async function ruajPagesen(indeksi){
       monedha: $('#pg-monedha').value.trim() || v.monedha,
       data: $('#pg-data').value || v.data,
       llogaria_id: await zgjidhLlogarine($('#pg-llogaria').value),
+      personi_id: Number($('#pg-personi').value) || null,
       kategoria: v.kategoria, pershkrimi: v.emri,
     }});
     mbyllModalin();
@@ -1217,10 +1378,22 @@ const REGJISTRI = {
       shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
       llogaria_id: {tip: 'llogari', eti: 'Llogaria'},
       llogaria_dest_id: {tip: 'llogari', eti: 'Destinacioni (transfer)'},
+      personi_id: {tip: 'person', eti: 'Kush e beri'},
       kategoria: {tip: 'text', param: 'tjeter', eti: 'Kategoria'},
       pershkrimi: {tip: 'text', eti: 'Pershkrimi'},
     },
     kolona: ['data', 'lloji', 'shuma', 'monedha', 'kategoria', 'pershkrimi'],
+  },
+  personat: {
+    titull: 'Personat', tabela: 'personat',
+    ndihme: 'Kush eshte ne kete ekonomi. Pastaj cakto secilen llogari, te ' +
+            'ardhur, borxh dhe levizje te dikush — totali mbetet nje, por ' +
+            'paneli tregon kush sjell sa dhe kush shpenzon sa.',
+    fusha: {
+      emri: {tip: 'text', eti: 'Emri'},
+      shenime: {tip: 'text', eti: 'Shenime'},
+    },
+    kolona: ['emri', 'shenime'],
   },
   llogarite: {
     titull: 'Llogarite', totali: 'bilanci_fillestar', ndihme: 'Ku rri paraja. Bilanci fillestar eshte gjendja ne momentin qe e shton — transaksionet llogariten mbi te.',
@@ -1230,6 +1403,7 @@ const REGJISTRI = {
       monedha: MONEDHA,
       bilanci_fillestar: {tip: 'number', param: 0, eti: 'Bilanci fillestar'},
       likuide: {tip: 'bool', param: true, eti: 'Likuide (numerohet ne rezerve)'},
+      personi_id: {tip: 'person', eti: 'E kujt eshte'},
     },
     kolona: ['emri', 'lloji', 'monedha', 'bilanci_fillestar', 'likuide'],
   },
@@ -1248,6 +1422,7 @@ const REGJISTRI = {
                 eti: 'Sa % e pret vertet (vetem per arketimet)'},
       prioriteti: PRIORITETI,
       statusi: {tip: 'select', opsione: [['aktiv', 'Aktiv'], ['shlyer', 'Shlyer'], ['vonuar', 'Vonuar'], ['dyshimtar', 'Dyshimtar']], eti: 'Statusi'},
+      personi_id: {tip: 'person', eti: 'E kujt eshte'},
       pershkrimi: {tip: 'text', eti: 'Pershkrimi'},
     },
     kolona: ['lloji', 'pala', 'shuma_totale', 'shuma_paguar', 'monedha', 'interesi_vjetor', 'kesti_mujor', 'afati', 'statusi'],
@@ -1263,6 +1438,7 @@ const REGJISTRI = {
       kategoria: {tip: 'kategori', opsione: [['ushqime','Ushqime'],['karburant','Karburant'],['kafe','Kafe / dreka'],['veshje','Veshje'],['farmaci','Farmaci / shendet'],['transport','Transport'],['argetim','Argetim'],['higjiene','Higjiene / shtepiake'],['shtepia','Shtepia'],['dhurata','Dhurata'],['femijet','Femijet'],['cigare','Duhan / pije'],['tjeter','Tjeter']], eti: 'Kategoria'},
       shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
       llogaria_id: {tip: 'llogari', eti: 'Paguar nga'},
+      personi_id: {tip: 'person', eti: 'Kush e beri'},
       pershkrimi: {tip: 'text', eti: 'Pershkrimi (opsional)'},
     },
     kolona: ['data', 'kategoria', 'shuma', 'monedha', 'pershkrimi'],
@@ -1337,6 +1513,7 @@ const REGJISTRI = {
       shuma_e_ndryshueshme: {tip: 'bool', param: false,
         eti: 'Shuma ndryshon cdo muaj (freelance)'},
       llogaria_id: {tip: 'llogari', eti: 'Bie ne llogarine'},
+      personi_id: {tip: 'person', eti: 'E kujt eshte'},
       siguria: SIGURIA_TE_ARDHURAVE,
       oret_mujore: {tip: 'number', param: 0,
                     eti: 'Oret ne muaj (0 = e ardhur pasive)'},
@@ -1472,6 +1649,12 @@ async function hapRegjistrin(id){
     if (f.tip === 'llogari')
       return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
         <option value="">—</option>${opsionetELlogarive()}</select></div>`;
+    if (f.tip === 'person')
+      return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
+        <option value="">—</option>${(PANEL?.personat || [])
+          .filter(pp => pp.id).map(pp =>
+            `<option value="${pp.id}">${esc(pp.emri)}</option>`).join('')}
+        </select></div>`;
     if (f.tip === 'biznes')
       return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
         ${(PANEL?.bizneset || []).map(b =>
@@ -1495,7 +1678,7 @@ async function hapRegjistrin(id){
       ${tip === 'number' ? 'step="any"' : ''} value="${param ?? ''}"></div>`;
   }).join('');
   perditesoModenE();
-  ngarkoTabelen(id);
+  await ngarkoTabelen(id);
 }
 
 /* Kategoria: lista e gatshme mbulon rastet e zakonshme, por asnje liste
@@ -1517,17 +1700,15 @@ function perditesoModenE(){
 
 function redakto(id, rreshtiId){
   const rresht = REG_RRESHTAT.find(r => String(r.id) === String(rreshtiId));
-  if (!rresht) return;
+  if (!rresht){
+    njofto(`Rreshti #${rreshtiId} nuk u gjet ne liste — provo Rifresko.`, 4000);
+    return;
+  }
   REG_REDAKTIM = rresht.id;
   for (const [emri, f] of Object.entries(REGJISTRI[id].fusha)){
     const v = $(`#f-${id}-${emri}`);
     if (!v) continue;
     const vlera = rresht[emri];
-    if (f.tip === 'biznes')
-      return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
-        ${(PANEL?.bizneset || []).map(b =>
-          `<option value="${b.id}">${esc(b.emri)}</option>`).join('')
-        || '<option value="">(shto nje biznes me pare)</option>'}</select></div>`;
     if (f.tip === 'kategori'){
       const ne_liste = f.opsione.some(([kodi]) => kodi === vlera);
       v.value = ne_liste ? vlera : '__vet__';
@@ -1606,17 +1787,14 @@ async function ruajRreshtin(){
     // Gjate ndryshimit, nje fushe e zbrazur do te thote "hiqe vleren" —
     // gjate shtimit do te thote "lere parazgjedhjen e bazes".
     if (vlera === ''){ if (po_ndryshon) trupi[emri] = null; continue; }
-    if (f.tip === 'biznes'){ trupi[emri] = Number(vlera) || null; continue; }
+    if (f.tip === 'biznes' || f.tip === 'person'){
+      trupi[emri] = Number(vlera) || null; continue;
+    }
     if (f.tip === 'llogari'){
       try { trupi[emri] = await zgjidhLlogarine(vlera); }
       catch (e) { njofto('Gabim: ' + e.message, 4000); return; }
       continue;
     }
-    if (f.tip === 'biznes')
-      return `<div><label for="${vid}">${f.eti}</label><select id="${vid}">
-        ${(PANEL?.bizneset || []).map(b =>
-          `<option value="${b.id}">${esc(b.emri)}</option>`).join('')
-        || '<option value="">(shto nje biznes me pare)</option>'}</select></div>`;
     if (f.tip === 'kategori'){
       let kat = v.value;
       if (kat === '__vet__'){
