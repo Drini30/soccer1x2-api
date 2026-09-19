@@ -8,16 +8,23 @@
 --
 -- Kjo pyetje i nxjerr TE GJITHA tregjet ne ate zone, qe te shihet kush del vertet.
 
-WITH b AS (
+-- ⚠️ `kuota_fav` llogaritet ne nje CTE TE DYTE me qellim: Postgres s'e lejon
+-- perdorimin e nje aliasi (`od`) brenda te njejtit SELECT ku ai krijohet.
+WITH b0 AS (
   SELECT
+    to_char(data::date,'YYYY-MM') AS muaji,
     odds_reale AS od, tregjet_full AS tg,
-    LEAST(NULLIF(od->>'1','')::numeric, NULLIF(od->>'2','')::numeric) AS kuota_fav,
     split_part(replace(rezultati_ft,' ',''),'-',1)::int AS gv,
     split_part(replace(rezultati_ft,' ',''),'-',2)::int AS gm
   FROM arkiv_rezultatesh
   WHERE odds_reale IS NOT NULL
     AND odds_reale->>'1' IS NOT NULL AND odds_reale->>'2' IS NOT NULL
     AND replace(rezultati_ft,' ','') ~ '^[0-9]+-[0-9]+$'
+),
+b AS (
+  SELECT *, LEAST(NULLIF(od->>'1','')::numeric,
+                  NULLIF(od->>'2','')::numeric) AS kuota_fav
+  FROM b0
 ),
 z AS (
   SELECT b.*, t.tregu,
