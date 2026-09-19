@@ -27,14 +27,18 @@ b AS (
     NULLIF(regexp_replace(p.koef_1::text, '[^0-9.]', '', 'g'), '')::numeric AS k1,
     NULLIF(regexp_replace(p.koef_x::text, '[^0-9.]', '', 'g'), '')::numeric AS kx,
     NULLIF(regexp_replace(p.koef_2::text, '[^0-9.]', '', 'g'), '')::numeric AS k2,
-    split_part(p.rezultati_sakt, '-', 1)::int      AS g1,
-    split_part(p.rezultati_sakt, '-', 2)::int      AS g2,
-    split_part(p.rezultati,      '-', 1)::int      AS r1,
-    split_part(p.rezultati,      '-', 2)::int      AS r2
+    trim(split_part(p.rezultati_sakt, '-', 1))::int AS g1,
+    trim(split_part(p.rezultati_sakt, '-', 2))::int AS g2,
+    trim(split_part(p.rezultati, '-', 1))::int     AS r1,
+    trim(split_part(p.rezultati, '-', 2))::int     AS r2
   FROM predictions p, parametrat par
   WHERE p.data::date BETWEEN par.nga AND par.deri
-    AND p.rezultati_sakt ~ '^[0-9]+-[0-9]+$'
-    AND p.rezultati      ~ '^[0-9]+-[0-9]+$'      -- vetem ndeshjet e mbaruara
+    AND p.rezultati_sakt ~ '^\s*[0-9]+\s*-\s*[0-9]+\s*$'
+    -- Rezultati real ruhet si '0 - 0' (me hapesira), ndryshe nga rezultati_sakt
+    AND p.rezultati      ~ '^\s*[0-9]+\s*-\s*[0-9]+\s*$'
+    -- Vetem ndeshjet e luajtura: nje ndeshje NS mban '0 - 0' si vend-mbajtese
+    -- dhe do te numerohej si barazim i vertete
+    AND p.statusi IN ('FT', 'AET', 'PEN', 'AWD', 'WO')
 ),
 d AS (
   SELECT *,

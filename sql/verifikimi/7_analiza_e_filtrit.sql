@@ -33,13 +33,16 @@ baza AS (
     COALESCE(p.is_premium, false)                          AS premium,
     COALESCE(p.is_value,   false)                          AS value,
     p.rezultati,
-    split_part(p.rezultati, '-', 1)::int                   AS r1,
-    split_part(p.rezultati, '-', 2)::int                   AS r2
+    trim(split_part(p.rezultati, '-', 1))::int             AS r1,
+    trim(split_part(p.rezultati, '-', 2))::int             AS r2
   FROM predictions p, parametrat par
   WHERE p.data::date = par.dita
     AND p.best_bet IS NOT NULL
     AND p.best_bet->>'tregu' IS NOT NULL
-    AND p.rezultati ~ '^[0-9]+-[0-9]+$'          -- vetem ndeshjet e mbaruara
+    -- Rezultati real ruhet si '0 - 0' (me hapesira)
+    AND p.rezultati ~ '^\s*[0-9]+\s*-\s*[0-9]+\s*$'
+    -- Vetem ndeshjet e luajtura: nje ndeshje NS mban '0 - 0' si vend-mbajtese
+    AND p.statusi IN ('FT', 'AET', 'PEN', 'AWD', 'WO')
 ),
 v AS (
   SELECT *,
