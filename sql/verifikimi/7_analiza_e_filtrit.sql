@@ -20,12 +20,12 @@
 -- ========================================================================
 
 WITH parametrat AS (
-  -- ▼▼ NDRYSHO VETEM KETU ▼▼
-  SELECT DATE '2026-09-19' AS dita
+  -- ▼▼ NDRYSHO VETEM KETU ▼▼  (nje dite: vendos te njejten date te dyja)
+  SELECT DATE '2026-09-19' AS nga, DATE '2026-09-19' AS deri
 ),
 baza AS (
   SELECT
-    p.ora, p.ndeshja, p.liga_emri,
+    p.data::date AS data, p.ora, p.ndeshja, p.liga_emri,
     p.best_bet->>'tregu'                                   AS tregu,
     NULLIF(p.best_bet->>'koef', '')::numeric               AS koef,
     NULLIF(p.best_bet->>'prob', '')::numeric               AS prob,
@@ -36,7 +36,7 @@ baza AS (
     trim(split_part(p.rezultati, '-', 1))::int             AS r1,
     trim(split_part(p.rezultati, '-', 2))::int             AS r2
   FROM predictions p, parametrat par
-  WHERE p.data::date = par.dita
+  WHERE p.data::date BETWEEN par.nga AND par.deri
     AND p.best_bet IS NOT NULL
     AND p.best_bet->>'tregu' IS NOT NULL
     -- Rezultati real ruhet si '0 - 0' (me hapesira)
@@ -116,8 +116,13 @@ perm AS (
   FROM m
   GROUP BY 2
   UNION ALL
+  SELECT '4b · SIPAS DITES', data::text,
+         count(*)::int, sum(g)::int, round(100.0*sum(g)/count(*), 1),
+         round(100.0*avg(prob), 1), round(avg(koef), 2), round(avg(besu), 1)
+  FROM m GROUP BY data
+  UNION ALL
   SELECT '5 · NDESHJET',
-         COALESCE(ora, '--') || '  ' || ndeshja || '  →  ' || tregu
+         data::text || '  ' || COALESCE(ora, '--') || '  ' || ndeshja || '  →  ' || tregu
            || CASE WHEN premium THEN '  [premium]' ELSE '' END
            || '  (' || rezultati || ')',
          1, g, (g * 100)::numeric,
