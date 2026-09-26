@@ -25,6 +25,8 @@ Hap SQL Editor te Supabase dhe ekzekuto, me kete radhe:
    barazimit, lidhja e transaksioneve me biznesin.
 5. `financat_migrim_5.sql` — buxhetet mujore per kategori.
 6. `financat_migrim_6.sql` — personat, dhe lidhja e cdo levizjeje me ta.
+7. `financat_migrim_7.sql` — data **dhe ora** per cdo levizje (`kryer_me`),
+   `perditesuar_me` mbi cdo tabele, dhe ditari i veprimeve (`fin_veprimet`).
 
 RLS ndizet pa asnje policy: celesi `anon` nuk lexon dot asgje — vetem
 backend-i, me service key, shkruan dhe lexon.
@@ -38,6 +40,10 @@ backend-i, me service key, shkruan dhe lexon.
 | `ANTHROPIC_API_KEY` | Jo | Pa te punon gjithcka pervec Keshilltarit. |
 | `FIN_MODELI` | Jo | Parazgjedhje `claude-opus-5`. |
 | `FIN_USER_ID` | Jo | Parazgjedhje `une`. |
+
+Zona e ores nuk eshte variabel mjedisi por cilesim: `zona_kohore` te
+`fin_cilesimet` (parazgjedhje `Europe/Tirane`). Serveri i Render-it punon
+ne UTC — pa kete, nje pagese e bere ne 00:30 do te lexohej "dje".
 
 ### c) Perdorimi
 Hap `https://<domeni>/financat`, fut `FIN_TOKEN`-in. Ruhet ne `localStorage`
@@ -199,10 +205,49 @@ vende, sepse nje shifer qe levize pa u pare nuk sherben:
 - **Llogarite** — gjendja e sotme e secilës: `bilanci_fillestar` plus cdo
   hyrje, minus cdo dalje. (Kolona `bilanci_fillestar` ne regjistri eshte
   gjendja **fillestare**, jo ajo e sotmja — mos i ngaterro.)
-- **Levizjet e fundit** — ditari: data, burimi, llogaria, personi, shuma, dhe
-  nje buton qe te con drejt e te rreshti per ta ndrequr.
+- **Levizjet e fundit** — data **dhe ora**, burimi, llogaria, personi, shuma,
+  dhe nje buton qe te con drejt e te rreshti per ta ndrequr. Ora e vendos
+  radhen brenda dites: dy pagesa te se njejtes dite nuk renditen me sipas
+  id-se se rastit.
 - **Levizja e radhes** — cfare pritet te levize me pare, per sa dite, sa eshte
   dhe a eshte fikse apo e ndryshueshme.
+
+### Data dhe ora e cdo gjeje
+Cdo transaksion mban **momentin e sakte** ne kolonen `kryer_me` (timestamptz),
+jo vetem daten. Rregullat:
+
+- Ne formular, fusha **Ora** vjen e mbushur me oren e tanishme; mund ta
+  ndryshosh. Nese e le bosh, merret ora e momentit qe e shtyp "Shto" — pra
+  asnje levizje nuk mbetet pa ore.
+- `data` dhe `kryer_me` nuk ndahen kurre nga njera-tjetra: nje trigger ne baze
+  (`fin_vulos_kohen`) e mban daten te barabarte me diten e momentit. Nese
+  ndryshon vetem daten, ora e mbajtur deri atehere e ndjek; nese ndryshon
+  oren, data rrjedh prej saj.
+- Nje ndryshim qe **nuk** e prek oren (p.sh. ndreqja e nje shume) nuk e
+  zhvendos pagesen ne oren kur e ndreqe.
+- Ora ruhet me zonen brenda dhe shfaqet ne zonen e cilesimeve, jo ne ate te
+  shfletuesit.
+
+Per rreshtat e vjeter, migrimi 7 e mbush `kryer_me` nga `krijuar_me` kur
+shkrimi ka ndodhur po ate dite; kur jo, vendos 12:00 — nje shenje e qarte qe
+ora e vertete nuk njihet, ne vend te nje ore te shpikur.
+
+Cdo tabele mban edhe `perditesuar_me`, te vulosur nga baza (jo nga kodi) sa
+here nje rresht ndryshon.
+
+### Ditari i veprimeve
+`fin_veprimet` mban **cdo veprim** me daten dhe oren: shtim, ndryshim,
+fshirje, pagese, shlyerje borxhi, ndryshim cilesimesh, krijim buxhetesh,
+thirrje te keshilltarit, skanim tregu, zbatim cmimesh, eksport.
+
+Ndryshe nga levizjet (qe tregojne parane), ditari tregon **veprimin** — edhe
+ato qe nuk lene transaksion pas vetes. Nje fshirje ruan rreshtin e plote ne
+`detaje`, keshtu qe nje fshirje e gabuar eshte e kthyeshme; nje ndryshim ruan
+te dyja anet, te vjetren dhe te renë.
+
+Shkrimi i ditarit nuk e rrezon kurre veprimin qe dokumenton: nje pagese e bere
+mbetet e bere edhe nese ditari deshton. Por as nuk hesht — deshtimi del te
+`/api/fin/shendeti` dhe si alarm ne panel.
 
 ### Personat
 Nje ekonomi me dy paga nuk eshte nje xhep i vetem. Llogarite, te ardhurat,
@@ -290,6 +335,7 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `POST /api/fin/skano-opsionet` | Skanim tregu per pozicionet dhe borxhet |
 | `POST /api/fin/apliko-cmimet` | Zbaton cmimet e propozuara |
 | `GET /api/fin/raportet` | Arkivi i analizave |
+| `GET /api/fin/veprimet?kufi=100` | Ditari: cdo veprim me date dhe ore |
 | `POST /api/fin/paguaj-borxh` | Pagese borxhi: transaksioni + mbetja + mbyllja |
 | `POST /api/fin/buxhete-nga-historiku` | Krijon buxhete nga mediana e kategorive |
 | `GET /api/fin/eksport` | Gjithcka ne nje JSON te vetem |
@@ -297,14 +343,16 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `GET /api/fin/shendeti` | Pa token; vetem gjendja e konfigurimit |
 
 Tabelat: `llogarite`, `transaksionet`, `detyrimet`, `planet`, `te-ardhurat`,
-`investimet`, `objektivat`, `raportet` (vetem lexim). Listimi pranon filtrat
+`investimet`, `objektivat`, `personat`, `raportet` dhe `veprimet` (dy te
+fundit vetem lexim). Listimi pranon filtrat
 `frekuenca`, `drejtimi`, `lloji`, `biznesi_id` — mbi ta ndertohen pamjet e
 shpenzimeve fikse dhe ato te bizneseve. Tabelat e bizneseve: `bizneset` dhe
 `zerat-e-biznesit`.
 
 Shkrimi filtrohet me liste te bardhe fushash — `id`, `user_id` dhe
 `krijuar_me` nuk vendosen dot nga jashte, dhe cdo PATCH/DELETE kufizohet me
-`user_id`.
+`user_id`. Per transaksionet pranohet edhe fusha `ora` ("HH:MM"): ajo nuk
+eshte kolone, por bashkohet me `data` ne `kryer_me` para shkrimit.
 
 ---
 

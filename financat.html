@@ -297,6 +297,14 @@ svg{display:block;width:100%;overflow:visible}
       <div id="levizjet"></div>
     </div>
 
+    <div class="karte">
+      <h2>Ditari i veprimeve</h2>
+      <p class="i-heshtur">Cdo shtim, ndryshim, fshirje dhe pagese — me daten
+        dhe oren e sakte. Ketu duket edhe ajo qe nuk le transaksion pas vetes,
+        si nje ndryshim shume ose nje fshirje.</p>
+      <div id="veprimet"></div>
+    </div>
+
     <div class="karte" id="karta-buxhetit">
       <h2>Buxheti i muajit</h2>
       <p class="i-heshtur" id="buxheti-nenteksti"></p>
@@ -598,8 +606,9 @@ async function ngarko(){
     PANEL = await api('/panel?muaj=12');
     LLOGARITE = await api('/te-dhena/llogarite');
     vizatoPanelin();
-    $('#statusi').textContent = 'Perditesuar ' +
-      new Date(PANEL.koha).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+    // E njejta zone si gjithe faqja: nje "Perditesuar 13:02" ne krye mbi nje
+    // ditar qe thote 15:02 do te dukej si nje ore e prishur.
+    $('#statusi').textContent = 'Perditesuar ' + oraE(PANEL.koha);
   } catch (e) {
     $('#statusi').innerHTML = `<span style="color:var(--kritik)">${esc(e.message)}</span>`;
   }
@@ -658,6 +667,7 @@ function vizatoPanelin(){
   vizatoLlogarite(PANEL.bilancet);
   vizatoPersonat(PANEL.personat || []);
   vizatoLevizjet(PANEL.levizjet || []);
+  vizatoVeprimet(PANEL.veprimet || []);
 
   // ── Buxheti i muajit
   vizatoBuxhetin(PANEL.buxhetet);
@@ -812,10 +822,12 @@ function vizatoPersonat(lista){
 
 function vizatoLevizjet(lista){
   $('#levizjet').innerHTML = lista.length ? `<div class="tabele-mbeshtjelles"><table>
-    <tr><th>Data</th><th>Cfare</th><th>Llogaria</th>
+    <tr><th>Data dhe ora</th><th>Cfare</th><th>Llogaria</th>
         <th class="num">Shuma</th><th></th></tr>
     ${lista.map(l => `<tr>
-      <td>${esc(l.data || '—')}</td>
+      <td style="white-space:nowrap">${esc(l.data || '—')}${
+        l.ora ? `<br><span class="i-heshtur" style="font-size:.76rem">${
+          esc(l.ora)}</span>` : ''}</td>
       <td>${esc(l.burimi || l.pershkrimi || l.kategoria || '—')}
         ${l.burimi && l.pershkrimi && l.burimi !== l.pershkrimi
           ? `<br><span class="i-heshtur" style="font-size:.76rem">${esc(l.pershkrimi)}</span>` : ''}
@@ -828,6 +840,36 @@ function vizatoLevizjet(lista){
         onclick="shkoTeLevizja(${l.id})">Ndrysho</button></td></tr>`).join('')}
   </table></div>` : `<p class="i-heshtur">Asnje levizje ende. Cdo pagese e
     shenuar nga njoftimet ose nga regjistri do te dale ketu.</p>`;
+}
+
+const NGJYRA_E_VEPRIMIT = {
+  shtim: 'var(--seria-2)', pagese: 'var(--seria-1)', shlyerje: 'var(--seria-1)',
+  ndryshim: 'var(--paralajmerim)', fshirje: 'var(--kritik)',
+};
+
+function vizatoVeprimet(lista){
+  $('#veprimet').innerHTML = lista.length ? `<div class="tabele-mbeshtjelles"><table>
+    <tr><th>Kur</th><th>Veprimi</th><th>Cfare</th><th></th></tr>
+    ${lista.map(v => `<tr>
+      <td style="white-space:nowrap">${esc(v.data || '—')}${
+        v.ora ? `<br><span class="i-heshtur" style="font-size:.76rem">${
+          esc(v.ora)}</span>` : ''}</td>
+      <td style="color:${NGJYRA_E_VEPRIMIT[v.veprimi] || 'inherit'}">${
+        esc(v.veprimi_shqip || v.veprimi || '—')}</td>
+      <td>${esc(v.titulli || '—')}</td>
+      <td class="num">${v.tabela && v.rreshti_id && REGJISTRI[v.tabela]
+        ? `<button class="vogel" onclick="shkoTeRreshti('${esc(v.tabela)}',${
+            v.rreshti_id})">Shiko</button>` : ''}</td></tr>`).join('')}
+  </table></div>` : `<p class="i-heshtur">Ende pa veprime. Sapo te shtosh ose
+    te ndryshosh dicka, do te shfaqet ketu me daten dhe oren.</p>`;
+}
+
+/* Nga ditari te vete rreshti: nje veprim i gabuar duhet te jete nje klik larg
+   nga ndreqja e tij, jo nje kerkim neper skeda. */
+async function shkoTeRreshti(tabela, id){
+  REG_AKTIV = tabela;
+  await hapSkeden('regjistri');
+  redakto(tabela, id);
 }
 
 async function shkoTeLevizja(id){
@@ -923,6 +965,8 @@ function hapPagesen(indeksi){
         <input id="pg-monedha" value="${esc(v.monedha)}"></div>
       <div><label for="pg-data">Data</label>
         <input id="pg-data" type="date" value="${esc(v.data)}"></div>
+      <div><label for="pg-ora">Ora</label>
+        <input id="pg-ora" type="time" step="60" value="${oraTani()}"></div>
       <div><label for="pg-llogaria">Llogaria</label>
         <select id="pg-llogaria"><option value="">—</option>${opsionet}</select></div>
       <div><label for="pg-personi">Personi</label>
@@ -964,6 +1008,8 @@ function hapPagesenEBorxhit(id){
         <input id="pb-monedha" value="${esc(b.monedha)}"></div>
       <div><label for="pb-data">Data</label>
         <input id="pb-data" type="date" value="${sot()}"></div>
+      <div><label for="pb-ora">Ora</label>
+        <input id="pb-ora" type="time" step="60" value="${oraTani()}"></div>
       <div><label for="pb-llogaria">Llogaria</label>
         <select id="pb-llogaria"><option value="">—</option>
           ${opsionetELlogarive()}</select></div>
@@ -988,6 +1034,7 @@ async function ruajPagesenEBorxhit(id){
       detyrimi_id: id, shuma,
       monedha: $('#pb-monedha').value.trim(),
       data: $('#pb-data').value || sot(),
+      ora: $('#pb-ora').value || oraTani(),
       llogaria_id: await zgjidhLlogarine($('#pb-llogaria').value),
     }});
     mbyllModalin();
@@ -1007,6 +1054,7 @@ async function ruajPagesen(indeksi){
       lloji: v.lloji, burimi_id: v.burimi_id, shuma,
       monedha: $('#pg-monedha').value.trim() || v.monedha,
       data: $('#pg-data').value || v.data,
+      ora: $('#pg-ora').value || oraTani(),
       llogaria_id: await zgjidhLlogarine($('#pg-llogaria').value),
       personi_id: Number($('#pg-personi').value) || null,
       kategoria: v.kategoria, pershkrimi: v.emri,
@@ -1348,6 +1396,28 @@ function vizatoBizneset(){
    REGJISTRI — formularët dhe tabelat e të dhënave
    ═══════════════════════════════════════════════════════════════════════ */
 const sot = () => new Date().toISOString().slice(0, 10);
+
+/* Ora shfaqet gjithmone ne zonen e vendosur te cilesimet, jo ne ate te
+   shfletuesit: nje pagese e bere ne Tirane duhet te lexohet njesoj edhe nga
+   nje laptop i vendosur gabim. */
+const zonaE = () => PANEL?.zona_kohore || undefined;
+function oraTani(){
+  return new Date().toLocaleTimeString('sq-AL', {hour: '2-digit',
+    minute: '2-digit', hour12: false, timeZone: zonaE()});
+}
+function oraE(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso).slice(11, 16);
+  return d.toLocaleTimeString('sq-AL', {hour: '2-digit', minute: '2-digit',
+    hour12: false, timeZone: zonaE()});
+}
+function dataE(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso).slice(0, 10);
+  return d.toLocaleDateString('sv-SE', {timeZone: zonaE()});   // sv-SE = YYYY-MM-DD
+}
 const MUAJT_EMRA = ['Janar', 'Shkurt', 'Mars', 'Prill', 'Maj', 'Qershor',
   'Korrik', 'Gusht', 'Shtator', 'Tetor', 'Nentor', 'Dhjetor'];
 // Monedha parazgjedhur eshte ajo e panelit — jo 'EUR' e ngurte.
@@ -1374,6 +1444,7 @@ const REGJISTRI = {
     titull: 'Transaksionet', totali: 'shuma', ndihme: 'Cdo levizje reale parash. Shuma gjithmone pozitive — drejtimin e jep lloji.',
     fusha: {
       data: {tip: 'date', param: sot, eti: 'Data'},
+      ora: {tip: 'ora', param: oraTani, eti: 'Ora'},
       lloji: {tip: 'select', opsione: [['dalje', 'Dalje'], ['hyrje', 'Hyrje'], ['transfer', 'Transfer']], eti: 'Lloji'},
       shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
       llogaria_id: {tip: 'llogari', eti: 'Llogaria'},
@@ -1382,7 +1453,7 @@ const REGJISTRI = {
       kategoria: {tip: 'text', param: 'tjeter', eti: 'Kategoria'},
       pershkrimi: {tip: 'text', eti: 'Pershkrimi'},
     },
-    kolona: ['data', 'lloji', 'shuma', 'monedha', 'kategoria', 'pershkrimi'],
+    kolona: ['data', 'ora', 'lloji', 'shuma', 'monedha', 'kategoria', 'pershkrimi'],
   },
   personat: {
     titull: 'Personat', tabela: 'personat',
@@ -1435,13 +1506,14 @@ const REGJISTRI = {
             'shpenzimit mujor dhe qendrueshmerine ne skor.',
     fusha: {
       data: {tip: 'date', param: sot, eti: 'Data'},
+      ora: {tip: 'ora', param: oraTani, eti: 'Ora'},
       kategoria: {tip: 'kategori', opsione: [['ushqime','Ushqime'],['karburant','Karburant'],['kafe','Kafe / dreka'],['veshje','Veshje'],['farmaci','Farmaci / shendet'],['transport','Transport'],['argetim','Argetim'],['higjiene','Higjiene / shtepiake'],['shtepia','Shtepia'],['dhurata','Dhurata'],['femijet','Femijet'],['cigare','Duhan / pije'],['tjeter','Tjeter']], eti: 'Kategoria'},
       shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
       llogaria_id: {tip: 'llogari', eti: 'Paguar nga'},
       personi_id: {tip: 'person', eti: 'Kush e beri'},
       pershkrimi: {tip: 'text', eti: 'Pershkrimi (opsional)'},
     },
-    kolona: ['data', 'kategoria', 'shuma', 'monedha', 'pershkrimi'],
+    kolona: ['data', 'ora', 'kategoria', 'shuma', 'monedha', 'pershkrimi'],
   },
   'shpenzime-mujore': {
     titull: 'Shpenzime mujore fikse', totali: 'shuma', tabela: 'planet',
@@ -1667,6 +1739,11 @@ async function hapRegjistrin(id){
         }<option value="__vet__">+ Shkruaj vete…</option></select>
         <input id="${vid}-vet" class="fshihu" style="margin-top:6px"
                placeholder="emri i kategorise sate"></div>`;
+    if (f.tip === 'ora')
+      return `<div><label for="${vid}">${f.eti}</label>
+        <input id="${vid}" type="time" step="60" value="${param ?? ''}">
+        <span class="i-heshtur" style="font-size:.74rem">momenti i sakte —
+          nese e lë bosh, merret ora e tanishme</span></div>`;
     if (f.tip === 'dite')
       return `<div><label for="${vid}">${f.eti}</label>
         <input id="${vid}" type="text" inputmode="numeric" placeholder="18 ose 18-20"
@@ -1721,7 +1798,11 @@ function redakto(id, rreshtiId){
       const fund = rresht[emri + '_fund'];
       v.value = vlera ? (fund ? `${vlera}-${fund}` : String(vlera)) : '';
     }
-    else if (f.tip === 'date') v.value = vlera ? String(vlera).slice(0, 10) : '';
+    else if (f.tip === 'ora') v.value = oraE(rresht.kryer_me);
+    else if (f.tip === 'date')
+      v.value = rresht.kryer_me && emri === 'data'
+        ? dataE(rresht.kryer_me)                 // data e vertete e momentit
+        : (vlera ? String(vlera).slice(0, 10) : '');
     else v.value = (vlera === null || vlera === undefined) ? '' : vlera;
   }
   perditesoModenE();
@@ -1761,6 +1842,8 @@ async function ngarkoTabelen(id){
       <tr>${k.kolona.map(c => `<th>${esc(REGJISTRI[id].fusha[c]?.eti || c)}</th>`).join('')}<th></th></tr>
       ${rreshtat.map(r => `<tr>${k.kolona.map(c => {
         let v = r[c];
+        // 'ora' s'eshte kolone ne baze — eshte pjesa e dyte e momentit.
+        if (c === 'ora') v = oraE(r.kryer_me);
         if (c === 'dita_pageses' && v && r.dita_pageses_fund)
           v = `${v}-${r.dita_pageses_fund}`;
         if (c === 'muaji_pageses' && v) v = MUAJT_EMRA[Number(v) - 1] || v;

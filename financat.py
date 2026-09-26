@@ -26,8 +26,9 @@ sesa i hapur.
 
 from fastapi import APIRouter, Header, HTTPException, Query, Body
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
-from datetime import datetime, date, timezone
+from datetime import datetime, date, time, timezone, tzinfo
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import calendar
 import csv
 import hmac
@@ -67,6 +68,7 @@ TABELAT = {
     "zerat-e-biznesit": "fin_biznes_zerat",
     "buxhetet":      "fin_buxhetet",
     "personat":      "fin_personat",
+    "veprimet":      "fin_veprimet",
 }
 
 # Fushat qe lejohen te shkruhen nga jashte. Cdo gje tjeter ne trup shperfillet
@@ -74,9 +76,9 @@ TABELAT = {
 FUSHAT = {
     "llogarite": {"emri", "lloji", "monedha", "bilanci_fillestar", "limiti",
                   "likuide", "aktiv", "shenime", "personi_id"},
-    "transaksionet": {"data", "llogaria_id", "lloji", "shuma", "monedha",
-                      "kategoria", "pershkrimi", "detyrimi_id", "plani_id",
-                      "te_ardhura_id", "biznesi_id", "llogaria_dest_id",
+    "transaksionet": {"data", "kryer_me", "llogaria_id", "lloji", "shuma",
+                      "monedha", "kategoria", "pershkrimi", "detyrimi_id",
+                      "plani_id", "te_ardhura_id", "biznesi_id", "llogaria_dest_id",
                       "etiketa", "personi_id"},
     "detyrimet": {"lloji", "pala", "pershkrimi", "shuma_totale", "shuma_paguar",
                   "monedha", "interesi_vjetor", "kesti_mujor", "afati",
@@ -103,10 +105,17 @@ FUSHAT = {
                  "aktiv", "shenime"},
     "personat": {"emri", "ngjyra", "shenime", "aktiv"},
     "raportet": set(),   # vetem lexim; shkruhet nga keshilltari
+    "veprimet": set(),   # vetem lexim; ditarin e shkruan vete moduli
 }
+
+# Ora ruhet gjithmone si timestamptz (me zonen brenda), por shfaqet ne zonen
+# e perdoruesit. Pa kete, nje pagese e bere ne 00:30 do te dilte "dje" — sepse
+# serveri i Render-it punon ne UTC, jo ne oren e Tiranes.
+ZONA_PARAZGJEDHUR = "Europe/Tirane"
 
 CILESIMET_PARAZGJEDHUR = {
     "monedha_baze": "EUR",
+    "zona_kohore": ZONA_PARAZGJEDHUR,
     "kurset": {"EUR": 1.0, "ALL": 0.0102, "USD": 0.92, "GBP": 1.17, "CHF": 1.05},
     "rezerva_muaj": 3,
     "synimi_kursimit": 20,
@@ -203,6 +212,7 @@ MIGRIMET = {
     "fin_biznes_zerat": "financat_migrim_4.sql",
     "fin_buxhetet": "financat_migrim_5.sql",
     "fin_personat": "financat_migrim_6.sql",
+    "fin_veprimet": "financat_migrim_7.sql",
 }
 
 
@@ -224,6 +234,56 @@ def _lexo_nese_ekziston(tabela: str, filtra: Optional[dict] = None,
                 mungesat.append(tabela)
             return []
         raise
+
+
+# ==========================================================================
+# DITARI I VEPRIMEVE — cdo veprim le daten dhe oren
+# ==========================================================================
+# Nje shifer qe levizi pa u kuptuar duhet te kete gjithmone nje shpjegim me
+# emer, date dhe ore. Prandaj cdo shtim, ndryshim, fshirje dhe pagese shkon
+# edhe ne fin_veprimet — jo per statistike, por qe te mund te kthehet mbrapsht.
+#
+# Shkrimi i ditarit nuk guxon ta rrezoje veprimin qe po dokumenton: nje pagese
+# e bere mbetet e bere edhe nese ditari deshton. Por as nuk fshihet: deshtimi
+# mbahet ketu dhe del te /shendeti dhe te alarmet e panelit.
+PROBLEMET: List[dict] = []
+
+
+def _shenoj_problem(mesazhi: str) -> None:
+    """Mban problemet e heshtura te modulit, qe te mos mbeten te heshtura."""
+    rresht = {"mesazhi": mesazhi,
+              "kur": datetime.now(timezone.utc).isoformat()}
+    PROBLEMET[:] = ([p for p in PROBLEMET if p["mesazhi"] != mesazhi]
+                    + [rresht])[-10:]
+
+
+def shkruaj_veprimin(veprimi: str, titulli: str, tabela: Optional[str] = None,
+                     rreshti_id: Any = None, detaje: Any = None,
+                     cilesimet: Optional[Dict[str, Any]] = None) -> None:
+    """Le nje gjurme te veprimit, me daten dhe oren e sakte."""
+    try:
+        nr_i = int(rreshti_id) if rreshti_id is not None else None
+    except (TypeError, ValueError):
+        nr_i = None
+    try:
+        _sb("fin_veprimet", "post", trupi={
+            "user_id": USER_ID,
+            "kur": datetime.now(zona_e(cilesimet)).isoformat(),
+            "veprimi": veprimi,
+            "tabela": tabela,
+            "rreshti_id": nr_i,
+            "titulli": str(titulli)[:300],
+            "detaje": detaje if isinstance(detaje, (dict, list)) else {},
+        }, prefer="return=minimal")
+    except HTTPException as e:
+        teksti = str(e.detail)
+        if "PGRST205" in teksti or "schema cache" in teksti:
+            _shenoj_problem("Ditari i veprimeve mungon — ekzekuto "
+                            "financat_migrim_7.sql ne Supabase.")
+        else:
+            _shenoj_problem(f"Ditari nuk u shkrua: {teksti[:160]}")
+    except Exception as e:                                   # rrjet, JSON, …
+        _shenoj_problem(f"Ditari nuk u shkrua: {type(e).__name__}: {e}"[:200])
 
 
 def kerko_token(x_fin_token: Optional[str] = Header(None)) -> None:
@@ -255,6 +315,95 @@ def _dat(x: Any) -> Optional[date]:
         return datetime.fromisoformat(str(x)[:10]).date()
     except ValueError:
         return None
+
+
+def zona_e(cilesimet: Optional[Dict[str, Any]] = None) -> tzinfo:
+    """Zona e perdoruesit nga cilesimet; nese emri s'njihet, UTC me nje shenim.
+
+    Rrezimi i modulit per nje emer zone te shkruar gabim do te ishte i tepert —
+    por heshtja do te ishte me e keqe, ndaj problemi mbahet dhe del te alarmet.
+    """
+    emri = str((cilesimet or {}).get("zona_kohore") or ZONA_PARAZGJEDHUR).strip()
+    try:
+        return ZoneInfo(emri)
+    except (ZoneInfoNotFoundError, ValueError):
+        pass
+    try:
+        return ZoneInfo(ZONA_PARAZGJEDHUR)
+    except (ZoneInfoNotFoundError, ValueError):
+        # Pa bazen e zonave (pakoja 'tzdata') mbetet vetem UTC.
+        _shenoj_problem(f"Zona '{emri}' nuk njihet — orët shfaqen ne UTC.")
+        return timezone.utc
+
+
+def tani(cilesimet: Optional[Dict[str, Any]] = None) -> datetime:
+    """Momenti i tanishem ne oren e perdoruesit."""
+    return datetime.now(zona_e(cilesimet))
+
+
+def _koh(x: Any) -> Optional[datetime]:
+    """Lexon nje timestamp nga baza ose nga trupi i kerkeses."""
+    if not x:
+        return None
+    if isinstance(x, datetime):
+        return x
+    teksti = str(x).strip().replace(" ", "T")
+    # PostgREST kthen '+00:00' ose '+0000'; Python i do te dyja ndryshe.
+    if teksti.endswith("Z"):
+        teksti = teksti[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(teksti)
+    except ValueError:
+        return None
+
+
+def _ore(x: Any) -> Optional[time]:
+    """'14:30' ose '14:30:05' → ora. Cdo gje tjeter → None (pa ore te dhene)."""
+    if x is None or isinstance(x, time):
+        return x
+    teksti = str(x).strip()
+    if not teksti:
+        return None
+    copat = teksti.split(":")
+    if not 2 <= len(copat) <= 3:
+        return None
+    try:
+        h, m = int(copat[0]), int(copat[1])
+        sek = int(float(copat[2])) if len(copat) == 3 else 0
+    except ValueError:
+        return None
+    if not (0 <= h <= 23 and 0 <= m <= 59 and 0 <= sek <= 59):
+        return None
+    return time(h, m, sek)
+
+
+def vula_e_kohes(trupi: dict, cilesimet: Optional[Dict[str, Any]] = None,
+                 data_e_gatshme: Any = None) -> str:
+    """Momenti i sakte i nje levizjeje, nga {kryer_me} ose nga {data, ora}.
+
+    Rregulli: nese perdoruesi jep vetem daten, ora eshte ajo e momentit qe po
+    e shkruan. Keshtu dy pagesa te te njejtes dite ruajne radhen e vertete,
+    pa i kerkuar askujt te shtype nje ore.
+    """
+    z = zona_e(cilesimet)
+    e_plote = _koh(trupi.get("kryer_me"))
+    if e_plote:
+        nese = e_plote if e_plote.tzinfo else e_plote.replace(tzinfo=z)
+        return nese.astimezone(z).isoformat()
+    tash = datetime.now(z)
+    d = _dat(trupi.get("data")) or _dat(data_e_gatshme) or tash.date()
+    o = _ore(trupi.get("ora")) or tash.time().replace(microsecond=0)
+    return datetime.combine(d, o, tzinfo=z).isoformat()
+
+
+def _shfaq_kohen(x: Any, cilesimet: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Timestamp → 'YYYY-MM-DD HH:MM' ne oren e perdoruesit."""
+    d = _koh(x)
+    if not d:
+        return None
+    if not d.tzinfo:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(zona_e(cilesimet)).strftime("%Y-%m-%d %H:%M")
 
 
 def _shto_muaj(d: date, n: int) -> date:
@@ -326,6 +475,8 @@ def mbledh_gjendjen() -> Dict[str, Any]:
                                              "id.asc", mungesat),
         "personat":      _lexo_nese_ekziston("fin_personat", {"aktiv": "eq.true"},
                                              "id.asc", mungesat),
+        "veprimet":      _lexo_nese_ekziston("fin_veprimet", None,
+                                             "kur.desc", mungesat)[:40],
         "_mungojne":     mungesat,
     }
 
@@ -1007,6 +1158,10 @@ def gjenero_alarme(c: Dict[str, Any], g: Dict[str, Any], bil: Dict[str, Any],
              f"Ekzekuto {MIGRIMET.get(tabela, 'migrimin perkates')} ne Supabase "
              f"→ SQL Editor.")
 
+    for p in PROBLEMET:
+        shto("paralajmerim", "Nje veprim nuk u regjistrua plotesisht",
+             p["mesazhi"], "Shih /api/fin/shendeti per detajet.")
+
     rendi = {"kritik": 0, "paralajmerim": 1, "info": 2}
     return sorted(a, key=lambda x: rendi.get(x["niveli"], 3))
 
@@ -1686,12 +1841,16 @@ def levizjet_e_fundit(g: Dict[str, Any], c: Dict[str, Any], sa: int = 25) -> Lis
     rreshtat = []
     for t in g["transaksionet"][:sa * 3]:
         d = _dat(t.get("data"))
+        # Momenti i sakte ekziston vetem pas migrimit 7; para tij mbetet data.
+        vula = _shfaq_kohen(t.get("kryer_me"), c)
         lloji = (t.get("lloji") or "dalje").lower()
         burimi = (_emri(emrat_e_ardhurave, t.get("te_ardhura_id"))
                   or _emri(emrat_e_planeve, t.get("plani_id"))
                   or _emri(emrat_e_detyrimeve, t.get("detyrimi_id")))
         rreshtat.append({
             "id": t.get("id"), "data": d.isoformat() if d else None,
+            "kryer_me": t.get("kryer_me"),
+            "ora": vula[11:] if vula else None,
             "lloji": lloji,
             "shuma": _num(t.get("shuma")),
             "monedha": (t.get("monedha") or c["monedha_baze"]).upper(),
@@ -1703,8 +1862,43 @@ def levizjet_e_fundit(g: Dict[str, Any], c: Dict[str, Any], sa: int = 25) -> Lis
             "biznesi": _emri(emrat_e_bizneseve, t.get("biznesi_id")),
             "burimi": burimi,
         })
-    rreshtat.sort(key=lambda r: (r["data"] or "", r["id"] or 0), reverse=True)
+    # Radha brenda dites tani ka kuptim: ora e vendos, jo id-ja e rastit.
+    rreshtat.sort(key=lambda r: (r["data"] or "", r["ora"] or "", r["id"] or 0),
+                  reverse=True)
     return rreshtat[:sa]
+
+
+VEPRIMET_NE_SHQIP = {
+    "shtim": "Shtim", "ndryshim": "Ndryshim", "fshirje": "Fshirje",
+    "pagese": "Pagese", "shlyerje": "Shlyerje", "cilesime": "Cilesime",
+    "buxhete": "Buxhete", "keshillim": "Keshilltari", "skanim": "Skanim tregu",
+    "cmime": "Cmime tregu", "eksport": "Eksport",
+}
+
+
+def permbledh_veprimet(g: Dict[str, Any], c: Dict[str, Any],
+                       sa: int = 25) -> List[dict]:
+    """Ditari: cfare u be, kur sakte, dhe mbi cilin rresht.
+
+    Ndryshe nga levizjet (qe tregojne parane), ketu duket VEPRIMI — perfshire
+    ndryshimet dhe fshirjet, qe nuk lene asnje transaksion pas vetes.
+    """
+    rreshtat = []
+    for v in (g.get("veprimet") or [])[:sa]:
+        kur = _shfaq_kohen(v.get("kur"), c)
+        rreshtat.append({
+            "id": v.get("id"),
+            "kur": v.get("kur"),
+            "data": kur[:10] if kur else None,
+            "ora": kur[11:] if kur else None,
+            "veprimi": v.get("veprimi"),
+            "veprimi_shqip": VEPRIMET_NE_SHQIP.get(v.get("veprimi"),
+                                                   v.get("veprimi")),
+            "tabela": v.get("tabela"),
+            "rreshti_id": v.get("rreshti_id"),
+            "titulli": v.get("titulli"),
+        })
+    return rreshtat
 
 
 def levizja_e_radhes(g: Dict[str, Any], c: Dict[str, Any],
@@ -1918,8 +2112,11 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
                 objektiva[-1], c, arka, det, skor)
             arka["te_zena"] += para - arka["rrjedha"]
 
+    tash = tani(c)
     return {
-        "koha": datetime.now(timezone.utc).isoformat(),
+        "koha": tash.isoformat(),
+        "koha_lokale": tash.strftime("%Y-%m-%d %H:%M"),
+        "zona_kohore": str(c.get("zona_kohore") or ZONA_PARAZGJEDHUR),
         "monedha_baze": c["monedha_baze"],
         "cilesimet": c,
         "bilancet": bil, "rrjedha": rrj, "detyrimet": det, "investimet": inv,
@@ -1927,6 +2124,7 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "shpenzimet": shpenzimet,
         "burimet_e_kursimit": burimet_e_kursimit,
         "levizjet": levizjet_e_fundit(g, c),
+        "veprimet": permbledh_veprimet(g, c),
         "levizja_e_radhes": levizja_e_radhes(g, c, det),
         "personat": permbledh_personat(g, c, bil),
         "bizneset": analizo_bizneset(g, c),
@@ -2176,6 +2374,54 @@ def _pastro(emri: str, trupi: dict) -> dict:
     return e_paster
 
 
+def _emri_i_rreshtit(rresht: Optional[dict]) -> str:
+    """Nje emer i lexueshem per ditarin — jo nje id e thate."""
+    for f in ("emri", "pala", "pershkrimi", "kategoria", "celes", "titulli"):
+        v = (rresht or {}).get(f)
+        if v not in (None, ""):
+            return str(v)
+    return f"#{(rresht or {}).get('id', '?')}"
+
+
+def _me_kohen(tabela: str, trupi: dict, cilesimet: Dict[str, Any],
+              ekzistues: Optional[dict] = None) -> dict:
+    """Per transaksionet: {data, ora} → momenti i sakte 'kryer_me'.
+
+    Ne nje ndryshim qe s'e prek oren, vula e vjeter nuk cenohet: nje korrigjim
+    i shumes nuk duhet ta zhvendose pagesen ne oren kur e ndreqe.
+    """
+    if tabela != "transaksionet":
+        return trupi
+    t = dict(trupi or {})
+    po_ndryshon = ekzistues is not None
+    if po_ndryshon and not (t.get("ora") or t.get("kryer_me")):
+        t.pop("ora", None)
+        return t
+    t["kryer_me"] = vula_e_kohes(t, cilesimet, (ekzistues or {}).get("data"))
+    t.pop("ora", None)
+    return t
+
+
+def _sb_me_kohe(tabela: str, metoda: str, params: Optional[dict] = None,
+                trupi: Optional[dict] = None, prefer: Optional[str] = None):
+    """Si _sb, por i duron bazat ku migrimi 7 s'eshte ekzekutuar ende.
+
+    Nje kolone qe mungon nuk duhet ta ndaloje nje pagese; mungesa raportohet
+    me emrin e skedarit qe e ndreq dhe rreshti shkruhet pa oren.
+    """
+    try:
+        return _sb(tabela, metoda, params=params, trupi=trupi, prefer=prefer)
+    except HTTPException as e:
+        teksti = str(e.detail)
+        if trupi and "kryer_me" in trupi and "kryer_me" in teksti:
+            _shenoj_problem("Kolona 'kryer_me' mungon — ekzekuto "
+                            "financat_migrim_7.sql ne Supabase qe levizjet "
+                            "te ruajne edhe oren.")
+            pa_ore = {k: v for k, v in trupi.items() if k != "kryer_me"}
+            return _sb(tabela, metoda, params=params, trupi=pa_ore, prefer=prefer)
+        raise
+
+
 @router.get("/te-dhena/{tabela}")
 def lexo_tabelen(tabela: str, kufi: int = Query(500, ge=1, le=5000),
                  rendit: Optional[str] = Query(None, pattern=r"^[a-z_]{1,40}\.(asc|desc)$"),
@@ -2206,24 +2452,38 @@ def lexo_tabelen(tabela: str, kufi: int = Query(500, ge=1, le=5000),
 def shto_rresht(tabela: str, trupi: dict = Body(...),
                 _: Optional[str] = Header(None, alias="X-Fin-Token")):
     kerko_token(_)
-    rresht = _pastro(tabela, trupi)
+    c = lexo_cilesimet()
+    rresht = _pastro(tabela, _me_kohen(tabela, trupi, c))
     rresht["user_id"] = USER_ID
-    dalja = _sb(_tabela(tabela), "post", trupi=rresht,
-                prefer="return=representation")
-    return dalja[0] if isinstance(dalja, list) and dalja else dalja
+    dalja = _sb_me_kohe(_tabela(tabela), "post", trupi=rresht,
+                        prefer="return=representation")
+    e_re = dalja[0] if isinstance(dalja, list) and dalja else dalja
+    shkruaj_veprimin("shtim", f"Shtim te {tabela}: {_emri_i_rreshtit(e_re)}",
+                     tabela, (e_re or {}).get("id"), rresht, c)
+    return e_re
 
 
 @router.patch("/te-dhena/{tabela}/{rreshti_id}")
 def ndrysho_rresht(tabela: str, rreshti_id: int, trupi: dict = Body(...),
                    _: Optional[str] = Header(None, alias="X-Fin-Token")):
     kerko_token(_)
-    rresht = _pastro(tabela, trupi)
-    dalja = _sb(_tabela(tabela), "patch",
-                params={"id": f"eq.{rreshti_id}", "user_id": f"eq.{USER_ID}"},
-                trupi=rresht, prefer="return=representation")
+    c = lexo_cilesimet()
+    # Rreshti i vjeter lexohet para ndryshimit: ditari mban edhe ate qe u
+    # zhduk, jo vetem ate qe zuri vendin e tij.
+    i_vjetri = (_lexo(_tabela(tabela), {"id": f"eq.{rreshti_id}"}) or [None])[0]
+    rresht = _pastro(tabela, _me_kohen(tabela, trupi, c, i_vjetri or {}))
+    dalja = _sb_me_kohe(_tabela(tabela), "patch",
+                        params={"id": f"eq.{rreshti_id}", "user_id": f"eq.{USER_ID}"},
+                        trupi=rresht, prefer="return=representation")
     if not dalja:
         raise HTTPException(404, f"Rreshti {rreshti_id} nuk u gjet ne '{tabela}'.")
-    return dalja[0] if isinstance(dalja, list) else dalja
+    i_riu = dalja[0] if isinstance(dalja, list) else dalja
+    shkruaj_veprimin("ndryshim",
+                     f"Ndryshim te {tabela}: {_emri_i_rreshtit(i_riu)}",
+                     tabela, rreshti_id,
+                     {"i_ri": rresht,
+                      "i_vjeter": {k: (i_vjetri or {}).get(k) for k in rresht}}, c)
+    return i_riu
 
 
 @router.delete("/te-dhena/{tabela}/{rreshti_id}")
@@ -2235,6 +2495,12 @@ def fshi_rresht(tabela: str, rreshti_id: int,
                 prefer="return=representation")
     if not dalja:
         raise HTTPException(404, f"Rreshti {rreshti_id} nuk u gjet ne '{tabela}'.")
+    i_fshiri = dalja[0] if isinstance(dalja, list) else dalja
+    # Rreshti i plote ruhet ne ditar: nje fshirje e gabuar duhet te jete e
+    # kthyeshme, jo nje humbje pa gjurme.
+    shkruaj_veprimin("fshirje", f"Fshirje nga {tabela}: "
+                                f"{_emri_i_rreshtit(i_fshiri)}",
+                     tabela, rreshti_id, {"rreshti": i_fshiri})
     return {"fshire": rreshti_id, "tabela": tabela}
 
 
@@ -2257,7 +2523,10 @@ def llogaria_kesh(_: Optional[str] = Header(None, alias="X-Fin-Token")):
         "likuide": True, "aktiv": True,
         "shenime": "Krijuar automatikisht per pagesat ne dore.",
     }, prefer="return=representation")
-    return dalja[0] if isinstance(dalja, list) and dalja else dalja
+    e_re = dalja[0] if isinstance(dalja, list) and dalja else dalja
+    shkruaj_veprimin("shtim", "U krijua llogaria 'Kesh' (automatikisht)",
+                     "llogarite", (e_re or {}).get("id"), e_re, c)
+    return e_re
 
 
 @router.post("/buxhete-nga-historiku")
@@ -2288,6 +2557,10 @@ def buxhete_nga_historiku(trupi: dict = Body(default={}),
         }, prefer="return=representation")
         if rr:
             krijuar.append(rr[0] if isinstance(rr, list) else rr)
+    shkruaj_veprimin("buxhete",
+                     f"U krijuan {len(krijuar)} buxhete nga historiku",
+                     "buxhetet", None,
+                     {"kategorite": [b.get("kategoria") for b in krijuar]})
     return {"krijuar": krijuar, "gjithsej": len(krijuar)}
 
 
@@ -2326,7 +2599,11 @@ def ndrysho_cilesimet(trupi: dict = Body(...),
             trupi={"celes": celes, "vlera": vlera,
                    "perditesuar_me": datetime.now(timezone.utc).isoformat()},
             prefer="resolution=merge-duplicates")
-    return lexo_cilesimet()
+    e_reja = lexo_cilesimet()
+    shkruaj_veprimin("cilesime",
+                     f"Cilesimet: {', '.join(sorted(trupi))}",
+                     "cilesimet", None, {"vlerat_e_reja": trupi}, e_reja)
+    return e_reja
 
 
 # ==========================================================================
@@ -2393,9 +2670,12 @@ def regjistro_pagese(trupi: dict = Body(...),
 
     drejtimi = ("hyrje" if lloji == "te_ardhura"
                 else (burimi.get("drejtimi") or "dalje"))
+    # Data dhe ora vijne nga i njejti moment — s'kane si te ndahen.
+    vula = vula_e_kohes(trupi, c)
     rresht = {
         "user_id": USER_ID,
-        "data": trupi.get("data") or date.today().isoformat(),
+        "data": vula[:10],
+        "kryer_me": vula,
         "lloji": drejtimi,
         "shuma": shuma,
         "monedha": (trupi.get("monedha") or burimi.get("monedha")
@@ -2408,9 +2688,15 @@ def regjistro_pagese(trupi: dict = Body(...),
     }
     rresht["te_ardhura_id" if lloji == "te_ardhura" else "plani_id"] = burimi_id
 
-    dalja = _sb("fin_transaksionet", "post", trupi=rresht,
-                prefer="return=representation")
-    return {"transaksioni": dalja[0] if isinstance(dalja, list) and dalja else dalja,
+    dalja = _sb_me_kohe("fin_transaksionet", "post", trupi=rresht,
+                        prefer="return=representation")
+    trx = dalja[0] if isinstance(dalja, list) and dalja else dalja
+    shkruaj_veprimin(
+        "pagese",
+        f"{'Hyrje' if drejtimi == 'hyrje' else 'Pagese'} "
+        f"{rresht['shuma']} {rresht['monedha']} — {rresht['pershkrimi']}",
+        "transaksionet", (trx or {}).get("id"), rresht, c)
+    return {"transaksioni": trx,
             "njoftimet": gjenero_njoftimet(mbledh_gjendjen(), c)}
 
 
@@ -2493,6 +2779,10 @@ def keshilltari(trupi: dict = Body(default={}),
     )
     dalja = _thirr_claude(UDHEZIMI, mesazhi, kerko_ne_internet=internet)
     raporti_id = _ruaj_raportin("keshilltar", pyetja, foto, dalja)
+    shkruaj_veprimin("keshillim",
+                     f"Keshilltari: {pyetja or 'lexim i pergjithshem'}",
+                     "raportet", raporti_id,
+                     {"internet": internet, "modeli": dalja["modeli"]})
     return {"raporti_id": raporti_id, "pergjigja": dalja["teksti"],
             "burimet": dalja["burimet"], "modeli": dalja["modeli"],
             "tokena": dalja["tokena"], "skori": p["skori"]["totali"],
@@ -2527,6 +2817,8 @@ def skano_opsionet(trupi: dict = Body(default={}),
     propozime = [c for c in propozime if isinstance(c, dict)
                  and c.get("id") in njohur and _num(c.get("cmimi")) > 0]
 
+    shkruaj_veprimin("skanim", f"Skanim tregu: {fokusi}", "raportet",
+                     raporti_id, {"propozime": len(propozime)})
     return {"raporti_id": raporti_id, "pergjigja": dalja["teksti"],
             "burimet": dalja["burimet"], "propozime_cmimesh": propozime,
             "modeli": dalja["modeli"], "tokena": dalja["tokena"]}
@@ -2560,6 +2852,10 @@ def apliko_cmimet(trupi: dict = Body(...),
                     prefer="return=representation")
         if dalja:
             perditesuar.append(cid)
+    shkruaj_veprimin("cmime",
+                     f"U zbatuan {len(perditesuar)} cmime tregu mbi investimet",
+                     "investimet", None,
+                     {"cmimet": [c for c in lista if isinstance(c, dict)]})
     return {"perditesuar": perditesuar, "gjithsej": len(perditesuar)}
 
 
@@ -2604,9 +2900,11 @@ def paguaj_borxh(trupi: dict = Body(...),
             f"{(d.get('monedha') or '').upper()}).")
 
     eshte_borxh = (d.get("lloji") or "borxh") == "borxh"
+    vula = vula_e_kohes(trupi, c)
     trx = {
         "user_id": USER_ID,
-        "data": trupi.get("data") or date.today().isoformat(),
+        "data": vula[:10],
+        "kryer_me": vula,
         "lloji": "dalje" if eshte_borxh else "hyrje",
         "shuma": shuma, "monedha": monedha_pageses,
         "kategoria": "shlyerje_borxhi" if eshte_borxh else "arketim",
@@ -2615,8 +2913,8 @@ def paguaj_borxh(trupi: dict = Body(...),
         "personi_id": trupi.get("personi_id") or d.get("personi_id"),
         "detyrimi_id": detyrimi_id,
     }
-    dalja_trx = _sb("fin_transaksionet", "post", trupi=trx,
-                    prefer="return=representation")
+    dalja_trx = _sb_me_kohe("fin_transaksionet", "post", trupi=trx,
+                            prefer="return=representation")
 
     paguar_e_re = _num(d.get("shuma_paguar")) + shuma_ne_borxh
     e_mbyllur = paguar_e_re >= _num(d.get("shuma_totale")) - 0.005
@@ -2627,9 +2925,20 @@ def paguaj_borxh(trupi: dict = Body(...),
         params={"id": f"eq.{detyrimi_id}", "user_id": f"eq.{USER_ID}"},
         trupi=perditesimi, prefer="return=representation")
 
+    rreshti_trx = (dalja_trx[0] if isinstance(dalja_trx, list) and dalja_trx
+                   else dalja_trx)
+    shkruaj_veprimin(
+        "shlyerje",
+        f"{'Pagese borxhi' if eshte_borxh else 'Arketim'} {shuma} "
+        f"{monedha_pageses} — {d.get('pala')}"
+        + (" (u shlye plotesisht)" if e_mbyllur else ""),
+        "detyrimet", detyrimi_id,
+        {"transaksioni_id": (rreshti_trx or {}).get("id"),
+         "kryer_me": vula, "paguar_gjithsej": perditesimi["shuma_paguar"],
+         "statusi": perditesimi.get("statusi", d.get("statusi"))}, c)
+
     return {
-        "transaksioni": (dalja_trx[0] if isinstance(dalja_trx, list) and dalja_trx
-                         else dalja_trx),
+        "transaksioni": rreshti_trx,
         "mbetur": _rrum(max(0.0, mbetur - shuma_ne_borxh)),
         "monedha": (d.get("monedha") or c["monedha_baze"]).upper(),
         "shlyer": e_mbyllur,
@@ -2638,6 +2947,21 @@ def paguaj_borxh(trupi: dict = Body(...),
                     f"Mbeten {mbetur - shuma_ne_borxh:.2f} "
                     f"{(d.get('monedha') or '').upper()}."),
     }
+
+
+@router.get("/veprimet")
+def veprimet(kufi: int = Query(100, ge=1, le=1000),
+             _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Ditari i plote: cdo veprim me daten dhe oren e vet."""
+    kerko_token(_)
+    c = lexo_cilesimet()
+    mungesat: List[str] = []
+    rreshtat = _lexo_nese_ekziston("fin_veprimet", None, "kur.desc", mungesat)
+    if mungesat:
+        return {"veprimet": [], "gjithsej": 0,
+                "shenim": "Ditari mungon — ekzekuto financat_migrim_7.sql."}
+    g = {"veprimet": rreshtat}
+    return {"veprimet": permbledh_veprimet(g, c, kufi), "gjithsej": len(rreshtat)}
 
 
 @router.get("/raportet")
@@ -2655,7 +2979,8 @@ def raportet(kufi: int = Query(20, ge=1, le=100),
 # humbje e perhershme.
 TABELAT_E_EKSPORTIT = ["llogarite", "transaksionet", "detyrimet", "planet",
                        "te-ardhurat", "investimet", "objektivat", "bizneset",
-                       "zerat-e-biznesit", "buxhetet", "raportet"]
+                       "zerat-e-biznesit", "buxhetet", "personat", "veprimet",
+                       "raportet"]
 
 
 @router.get("/eksport")
@@ -2674,6 +2999,8 @@ def eksport(_: Optional[str] = Header(None, alias="X-Fin-Token")):
         except HTTPException as e:
             dalja[emri] = {"_gabim": str(e.detail)}
     emri_skedarit = f"financat-{tani.date().isoformat()}.json"
+    shkruaj_veprimin("eksport", "Kopje e plote (JSON) u shkarkua", None, None,
+                     {"skedari": emri_skedarit})
     return JSONResponse(dalja, headers={
         "Content-Disposition": f'attachment; filename="{emri_skedarit}"'})
 
@@ -2683,6 +3010,8 @@ def eksport_csv(tabela: str, _: Optional[str] = Header(None, alias="X-Fin-Token"
     """Nje tabele e vetme si CSV — per Excel ose Sheets."""
     kerko_token(_)
     rreshtat = _lexo(_tabela(tabela), None, "id.asc", 5000)
+    shkruaj_veprimin("eksport", f"CSV i '{tabela}' u shkarkua", tabela, None,
+                     {"rreshta": len(rreshtat)})
     if not rreshtat:
         return PlainTextResponse("", headers={
             "Content-Disposition": f'attachment; filename="{tabela}.csv"'})
@@ -2713,6 +3042,7 @@ def shendeti():
         "token_i_vendosur": bool(FIN_TOKEN),
         "keshilltari": bool(ANTHROPIC_API_KEY),
         "modeli": FIN_MODELI,
+        "problemet": list(PROBLEMET),
     }
 
 
