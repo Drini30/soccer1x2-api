@@ -1,4 +1,7 @@
-# Financat — moduli personal i kontrollit financiar
+# Asistenti im — moduli personal i kontrollit financiar
+
+(Skedaret dhe rrugët e API-t mbajne emrin `financat` — ndryshoi emri i
+produktit, jo i kodit.)
 
 Nje sistem i vetem per gjendjen tende financiare: balanca, borxhe, arketime qe
 priten, shpenzime urgjente dhe te planifikuara, investime, objektiva — dhe mbi
@@ -27,6 +30,8 @@ Hap SQL Editor te Supabase dhe ekzekuto, me kete radhe:
 6. `financat_migrim_6.sql` — personat, dhe lidhja e cdo levizjeje me ta.
 7. `financat_migrim_7.sql` — data **dhe ora** per cdo levizje (`kryer_me`),
    `perditesuar_me` mbi cdo tabele, dhe ditari i veprimeve (`fin_veprimet`).
+8. `financat_migrim_8.sql` — fondet e rezervuara (`fin_rezervat`) dhe biseda
+   me asistentin (`fin_mesazhet`).
 
 RLS ndizet pa asnje policy: celesi `anon` nuk lexon dot asgje — vetem
 backend-i, me service key, shkruan dhe lexon.
@@ -212,6 +217,65 @@ vende, sepse nje shifer qe levize pa u pare nuk sherben:
 - **Levizja e radhes** — cfare pritet te levize me pare, per sa dite, sa eshte
   dhe a eshte fikse apo e ndryshueshme.
 
+### Asistenti: urdhra me fjalet e tua
+Njoftimet vijne si mesazhe, dhe pergjigjesh me nje fjali. Fjalia kuptohet nga
+nje analizues **deterministik** ne `asistenti.py` — pa model gjuhesor, pa
+internet, pa vonese. Kjo eshte zgjedhje, jo kufizim: nje urdher qe leviz para
+duhet te jete i shpjegueshem, dhe kur asistenti gabon duhet te dukret cili
+rregull gaboi.
+
+Cfare kupton:
+
+| Shembull | Veprimi |
+|---|---|
+| "shto si te paguar internetin" | shenon pagesen e nje plani |
+| "shto rrogen te Ndricim Plaku 95000 lek" | shenon hyrjen ne ate llogari |
+| "shpenzova 1200 leke per ushqime dje" | shpenzim ditor, me daten e djeshme |
+| "paguaj borxhin e bankes 10000" | pagese borxhi + mbetja e re |
+| "rezervo 50 mije per taksat" | krijon nje fond te rezervuar |
+| "kalo 10000 nga Kesh te Banka" | transfer mes llogarive |
+| "vendos buxhet 30000 per ushqime" | kufi mujor per kategorine |
+| "sa kam?" · "cfare kam per te paguar" | pergjigjet, nuk shkruan asgje |
+
+Detajet qe lexon: shumat me shumezues shqip ("95 mije", "2.5 milion", "8.500"),
+monedhat ("lek/leke/euro"), datat ("sot", "dje", "me 18", "25/09", "1 shtator"),
+oret ("ne oren 14:20"), kategorite, emrat e llogarive, personave, planeve,
+te ardhurave dhe palëve te borxheve (me perafrim, qe "internetin" te gjeje
+"Interneti").
+
+**Asgje nuk shkruhet pa konfirmim.** Urdhri kthen nje propozim dhe nje fjali
+qe thote sakte cfare do te ndodhe; ti shtyp "Po, kryeje". Kush e do ndryshe e
+ndez `konfirmim_automatik` te Cilesimet — por edhe atehere kryhen vetvetiu
+vetem urdhrat me siguri ≥ 0.85; nje perafrim i dobet emri pyet gjithmone.
+
+Urdhri kryhet nga **te njejtat rruge** si butonat (`/regjistro-pagese`,
+`/paguaj-borxh`, `/te-dhena/...`). Kjo nuk eshte detaj: do te thote qe asnje
+efekt anesor — bilanci, buxheti, njoftimet, ditari, data dhe ora — nuk mund
+te harrohet vetem sepse veprimi erdhi si tekst.
+
+### Fondet e rezervuara dhe "e lira per te shpenzuar"
+Nje bilanc bruto genjen: brenda tij ka para tashme te premtuara diku. Pyetja
+qe ka rendesi per nje vendim te sotem eshte sa mbetet pasi zbriten. Prandaj
+paneli e nxjerr te paren kete shifer:
+
+```
+  Likuiditeti                         (llogarite e gatshme)
+− Rezervat                            (taksat, emergjenca — fin_rezervat)
+− Detyrimet qe skadojne               (borxhe me afat brenda horizontit)
+− Fikset e papaguara                  (qira, fatura te ketij muaji)
+− Buxhetet e mbetura                  (pjesa e pashpenzuar e kufijve te tu)
+= E LIRA PER TE SHPENZUAR
+```
+
+Horizonti nuk eshte muaji kalendarik por **deri te hyrja e radhes**: parate
+duhet te mjaftojne deri atehere, jo deri me 31.
+
+Dyfishimi shmanget me rregull te qarte: nje kategori qe ka nje plan fiks te
+papaguar brenda horizontit numerohet si plan, jo edhe si buxhet.
+
+Rezerva nuk e leviz bilancin — vetem e ul te lirën. Keshtu parate rrine aty
+ku jane, por nuk shpenzohen dy here.
+
 ### Data dhe ora e cdo gjeje
 Cdo transaksion mban **momentin e sakte** ne kolonen `kryer_me` (timestamptz),
 jo vetem daten. Rregullat:
@@ -336,6 +400,10 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `POST /api/fin/apliko-cmimet` | Zbaton cmimet e propozuara |
 | `GET /api/fin/raportet` | Arkivi i analizave |
 | `GET /api/fin/veprimet?kufi=100` | Ditari: cdo veprim me date dhe ore |
+| `GET /api/fin/mesazhet` | Biseda: njoftimet dhe urdhrat |
+| `POST /api/fin/urdher` | Nje fjali shqip → propozim (dhe veprim me `kryeje`) |
+| `POST /api/fin/konfirmo` | Kryen propozimin qe pret |
+| `POST /api/fin/anulo` | E mbyll propozimin pa e kryer |
 | `POST /api/fin/paguaj-borxh` | Pagese borxhi: transaksioni + mbetja + mbyllja |
 | `POST /api/fin/buxhete-nga-historiku` | Krijon buxhete nga mediana e kategorive |
 | `GET /api/fin/eksport` | Gjithcka ne nje JSON te vetem |
@@ -343,8 +411,8 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `GET /api/fin/shendeti` | Pa token; vetem gjendja e konfigurimit |
 
 Tabelat: `llogarite`, `transaksionet`, `detyrimet`, `planet`, `te-ardhurat`,
-`investimet`, `objektivat`, `personat`, `raportet` dhe `veprimet` (dy te
-fundit vetem lexim). Listimi pranon filtrat
+`investimet`, `objektivat`, `personat`, `rezervat`, `raportet`, `veprimet`
+dhe `mesazhet` (tri te fundit vetem lexim). Listimi pranon filtrat
 `frekuenca`, `drejtimi`, `lloji`, `biznesi_id` — mbi ta ndertohen pamjet e
 shpenzimeve fikse dhe ato te bizneseve. Tabelat e bizneseve: `bizneset` dhe
 `zerat-e-biznesit`.

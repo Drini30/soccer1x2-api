@@ -39,6 +39,8 @@ import statistics
 
 import requests
 
+import asistenti
+
 router = APIRouter(prefix="/api/fin", tags=["Financat"])
 
 # ==========================================================================
@@ -69,6 +71,8 @@ TABELAT = {
     "buxhetet":      "fin_buxhetet",
     "personat":      "fin_personat",
     "veprimet":      "fin_veprimet",
+    "rezervat":      "fin_rezervat",
+    "mesazhet":      "fin_mesazhet",
 }
 
 # Fushat qe lejohen te shkruhen nga jashte. Cdo gje tjeter ne trup shperfillet
@@ -104,8 +108,11 @@ FUSHAT = {
     "buxhetet": {"kategoria", "shuma_mujore", "monedha", "pragu_alarmit",
                  "aktiv", "shenime"},
     "personat": {"emri", "ngjyra", "shenime", "aktiv"},
+    "rezervat": {"emri", "shuma", "monedha", "llogaria_id", "lloji", "afati",
+                 "arsyeja", "aktiv"},
     "raportet": set(),   # vetem lexim; shkruhet nga keshilltari
     "veprimet": set(),   # vetem lexim; ditarin e shkruan vete moduli
+    "mesazhet": set(),   # vetem lexim; bisedes i shkruhet nga /urdher
 }
 
 # Ora ruhet gjithmone si timestamptz (me zonen brenda), por shfaqet ne zonen
@@ -116,6 +123,8 @@ ZONA_PARAZGJEDHUR = "Europe/Tirane"
 CILESIMET_PARAZGJEDHUR = {
     "monedha_baze": "EUR",
     "zona_kohore": ZONA_PARAZGJEDHUR,
+    "konfirmim_automatik": False,
+    "emri_i_asistentit": "Asistenti im",
     "kurset": {"EUR": 1.0, "ALL": 0.0102, "USD": 0.92, "GBP": 1.17, "CHF": 1.05},
     "rezerva_muaj": 3,
     "synimi_kursimit": 20,
@@ -213,6 +222,8 @@ MIGRIMET = {
     "fin_buxhetet": "financat_migrim_5.sql",
     "fin_personat": "financat_migrim_6.sql",
     "fin_veprimet": "financat_migrim_7.sql",
+    "fin_rezervat": "financat_migrim_8.sql",
+    "fin_mesazhet": "financat_migrim_8.sql",
 }
 
 
@@ -477,6 +488,10 @@ def mbledh_gjendjen() -> Dict[str, Any]:
                                              "id.asc", mungesat),
         "veprimet":      _lexo_nese_ekziston("fin_veprimet", None,
                                              "kur.desc", mungesat)[:40],
+        "rezervat":      _lexo_nese_ekziston("fin_rezervat", {"aktiv": "eq.true"},
+                                             "id.asc", mungesat),
+        "mesazhet":      _lexo_nese_ekziston("fin_mesazhet", None,
+                                             "kur.desc", mungesat)[:60],
         "_mungojne":     mungesat,
     }
 
@@ -1819,6 +1834,155 @@ def llogarit_buxhetet(g: Dict[str, Any], c: Dict[str, Any],
     }
 
 
+def _eshte_regjistruar(g: Dict[str, Any], fusha: str, burimi_id: Any,
+                       viti: int, muaji: int) -> bool:
+    """A ka tashme nje transaksion te lidhur me kete burim per ate muaj."""
+    for t in g["transaksionet"]:
+        vlera = t.get(fusha)
+        if vlera is None:
+            continue
+        try:
+            if int(vlera) != int(burimi_id):
+                continue
+        except (TypeError, ValueError):
+            continue
+        d = _dat(t.get("data"))
+        if d and d.year == viti and d.month == muaji:
+            return True
+    return False
+
+
+def hyrja_e_radhes(g: Dict[str, Any], c: Dict[str, Any]) -> Optional[dict]:
+    """Kur pritet paraja tjeter te hyje — afati i vertete i cdo vendimi sotem."""
+    sot = date.today()
+    me_e_afert = None
+    for a in g["te_ardhurat"]:
+        if not a.get("aktiv", True):
+            continue
+        dita = int(_num(a.get("dita_pageses"), 0))
+        if dita <= 0:
+            continue
+        d = _dita_e_muajit(dita, sot.year, sot.month)
+        if d < sot:
+            pas = _shto_muaj(sot, 1)
+            d = _dita_e_muajit(dita, pas.year, pas.month)
+        kandidat = {"data": d.isoformat(), "emri": a.get("emri"),
+                    "shuma": _rrum(kthe(a.get("shuma_mujore"), a.get("monedha"), c)),
+                    "dite": (d - sot).days,
+                    "e_ndryshueshme": bool(a.get("shuma_e_ndryshueshme"))}
+        if me_e_afert is None or kandidat["data"] < me_e_afert["data"]:
+            me_e_afert = kandidat
+    return me_e_afert
+
+
+def llogarit_te_liren(g: Dict[str, Any], c: Dict[str, Any], bil: Dict[str, Any],
+                      det: Dict[str, Any], buxhetet: Dict[str, Any],
+                      hyrja: Optional[dict] = None) -> Dict[str, Any]:
+    """Sa para ka VERTET te lira per te shpenzuar, sot.
+
+    Nje bilanc bruto genjen. Brenda tij ka para qe tashme jane premtuar diku:
+    rezervat qe ke vene menjane, kesti qe skadon para pages tjeter, qiraja e
+    papaguar e ketij muaji, dhe pjesa e mbetur e buxheteve qe ke vendosur vete.
+    Pyetja e vetme qe ka rendesi per nje vendim te sotem eshte sa mbetet pasi
+    te gjitha ato zbriten.
+
+    Horizonti nuk eshte muaji kalendarik por koha DERI TE HYRJA E RADHES:
+    parate duhet te mjaftojne deri atehere, jo deri me 31.
+
+    Dyfishimi shmanget me rregull te qarte: nje kategori qe ka nje plan fiks
+    te papaguar brenda horizontit numerohet si plan, jo edhe si buxhet.
+    """
+    sot = date.today()
+    fundi_i_muajit = _dita_e_muajit(31, sot.year, sot.month)
+    deri = _dat((hyrja or {}).get("data")) or fundi_i_muajit
+    if deri < sot:
+        deri = fundi_i_muajit
+    dite = max(0, (deri - sot).days)
+
+    # ── 1. Rezervat: para te zena me vullnetin tend
+    rezervat, lista_rezervave = 0.0, []
+    for r in g.get("rezervat") or []:
+        afati = _dat(r.get("afati"))
+        if afati and afati < sot:
+            continue                 # rezerve e skaduar nuk mban me asgje
+        vlera = kthe(r.get("shuma"), r.get("monedha"), c)
+        rezervat += vlera
+        lista_rezervave.append({
+            "id": r.get("id"), "emri": r.get("emri"),
+            "shuma": _rrum(_num(r.get("shuma"))),
+            "monedha": (r.get("monedha") or c["monedha_baze"]).upper(),
+            "ne_baze": _rrum(vlera), "lloji": r.get("lloji") or "tjeter",
+            "afati": afati.isoformat() if afati else None,
+        })
+
+    # ── 2. Borxhet qe skadojne brenda horizontit
+    detyrime, lista_detyrimeve = 0.0, []
+    for b in det["borxhe"]:
+        afati = _dat(b.get("afati"))
+        if not afati or afati > deri:
+            continue
+        vlera = min(b["mbetur_baze"],
+                    kthe(b.get("kesti_mujor") or b["mbetur"], b["monedha"], c)
+                    or b["mbetur_baze"])
+        detyrime += vlera
+        lista_detyrimeve.append({"emri": b.get("pala"), "ne_baze": _rrum(vlera),
+                                 "afati": afati.isoformat()})
+
+    # ── 3. Planet fikse te papaguara brenda horizontit
+    planet, lista_planeve, kategorite_e_zena = 0.0, [], set()
+    for p in g["planet"]:
+        if not p.get("aktiv", True) or (p.get("drejtimi") or "dalje") != "dalje":
+            continue
+        frek = (p.get("frekuenca") or "mujore").lower()
+        if frek not in ("mujore", "javore", "dyjavore"):
+            continue
+        dita = int(_num(p.get("dita_pageses"), 0))
+        if dita <= 0:
+            continue
+        dita_e_pageses = _dita_e_muajit(dita, sot.year, sot.month)
+        if not (sot <= dita_e_pageses <= deri):
+            continue
+        if _eshte_regjistruar(g, "plani_id", p.get("id"), sot.year, sot.month):
+            continue
+        vlera = kthe(p.get("shuma"), p.get("monedha"), c)
+        planet += vlera
+        kategorite_e_zena.add(str(p.get("kategoria") or "").strip().lower())
+        lista_planeve.append({"emri": p.get("emri"), "ne_baze": _rrum(vlera),
+                              "data": dita_e_pageses.isoformat()})
+
+    # ── 4. Pjesa e mbetur e buxheteve (pa ato qe i mbulon nje plan)
+    buxhet_i_mbetur, lista_buxheteve = 0.0, []
+    for b in buxhetet.get("rreshtat") or []:
+        if b["kategoria"] in kategorite_e_zena:
+            continue
+        mbetur = max(0.0, _num(b.get("mbetur")))
+        if mbetur <= 0:
+            continue
+        buxhet_i_mbetur += mbetur
+        lista_buxheteve.append({"kategoria": b["kategoria"],
+                                "ne_baze": _rrum(mbetur)})
+
+    likuiditeti = _num(bil.get("likuiditet"))
+    e_lira = likuiditeti - rezervat - detyrime - planet - buxhet_i_mbetur
+
+    return {
+        "likuiditeti": _rrum(likuiditeti),
+        "rezervat": _rrum(rezervat),
+        "detyrimet": _rrum(detyrime),
+        "planet": _rrum(planet),
+        "buxheti_i_mbetur": _rrum(buxhet_i_mbetur),
+        "e_lira": _rrum(e_lira),
+        "ne_dite": _rrum(e_lira / dite) if dite > 0 else None,
+        "deri": deri.isoformat(), "dite": dite,
+        "arsyeja_e_afatit": ("deri te hyrja e radhes" if hyrja
+                             else "deri ne fund te muajit"),
+        "lista": {"rezervat": lista_rezervave, "detyrimet": lista_detyrimeve,
+                  "planet": lista_planeve, "buxhetet": lista_buxheteve},
+        "gjendja": ("kritike" if e_lira < 0 else
+                    "e ngushte" if dite and e_lira < likuiditeti * 0.1 else "e qete"),
+    }
+
+
 def levizjet_e_fundit(g: Dict[str, Any], c: Dict[str, Any], sa: int = 25) -> List[dict]:
     """Ditari: cdo levizje e fundit, me emer llogarie, personi dhe burimi.
 
@@ -1897,6 +2061,37 @@ def permbledh_veprimet(g: Dict[str, Any], c: Dict[str, Any],
             "tabela": v.get("tabela"),
             "rreshti_id": v.get("rreshti_id"),
             "titulli": v.get("titulli"),
+        })
+    return rreshtat
+
+
+def permbledh_bisede(g: Dict[str, Any], c: Dict[str, Any],
+                     njoftime: Optional[List[dict]] = None) -> List[dict]:
+    """Biseda: mesazhet e ruajtura plus njoftimet e tanishme, ne nje rrjedhe.
+
+    Njoftimet nuk ruhen ne baze — rigjenerohen sa here, sepse nje pagese e
+    shenuar duhet ta heqe njoftimin vetvetiu. Prandaj hyjne ketu si mesazhe
+    te asistentit qe presin pergjigje, jo si rreshta te vjeter.
+    """
+    rreshtat = []
+    for m in reversed(g.get("mesazhet") or []):
+        kur = _shfaq_kohen(m.get("kur"), c)
+        rreshtat.append({
+            "id": m.get("id"), "kush": m.get("kush") or "une",
+            "teksti": m.get("teksti"), "lloji": m.get("lloji") or "urdher",
+            "statusi": m.get("statusi") or "i_ri",
+            "propozimi": m.get("propozimi") or {},
+            "kur": m.get("kur"),
+            "data": kur[:10] if kur else None, "ora": kur[11:] if kur else None,
+        })
+    for i, n in enumerate(njoftime or []):
+        rreshtat.append({
+            "id": f"njoftim:{n.get('id')}", "kush": "asistenti",
+            "teksti": f"{n.get('titulli')} — {n.get('detaji')}",
+            "lloji": "njoftim", "statusi": "i_ri", "propozimi": {},
+            "njoftimi": {"indeksi": i, "niveli": n.get("niveli"),
+                         "veprimi": n.get("veprimi")},
+            "kur": None, "data": None, "ora": None,
         })
     return rreshtat
 
@@ -2059,6 +2254,17 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
     njoftime = gjenero_njoftimet(g, c)
     shpenzimet = permbledh_shpenzimet(g, c, rrj, det)
     buxhetet = llogarit_buxhetet(g, c, shpenzimet)
+    hyrja = hyrja_e_radhes(g, c)
+    e_lira = llogarit_te_liren(g, c, bil, det, buxhetet, hyrja)
+    if e_lira["e_lira"] < 0:
+        alarme.insert(0, {
+            "niveli": "kritik",
+            "titulli": "Nuk del deri te hyrja e radhes",
+            "detaji": (f"Pas rezervave, detyrimeve dhe fikseve te mbetura, "
+                       f"mungojne {abs(e_lira['e_lira']):.0f} {c['monedha_baze']} "
+                       f"deri me {e_lira['deri']}."),
+            "veprimi": ("Lironje nje rezerve, shtyj nje shpenzim fiks, ose "
+                        "ul nje buxhet — asistenti mund ta beje me nje mesazh.")})
     for b in buxhetet["rreshtat"]:
         if b["gjendja"] == "kaluar":
             alarme.insert(0, {
@@ -2125,6 +2331,12 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "burimet_e_kursimit": burimet_e_kursimit,
         "levizjet": levizjet_e_fundit(g, c),
         "veprimet": permbledh_veprimet(g, c),
+        "e_lira": e_lira,
+        "hyrja_e_radhes": hyrja,
+        "rezervat": e_lira["lista"]["rezervat"],
+        "biseda": permbledh_bisede(g, c, njoftime),
+        "emri_i_asistentit": str(c.get("emri_i_asistentit") or "Asistenti im"),
+        "konfirmim_automatik": bool(c.get("konfirmim_automatik")),
         "levizja_e_radhes": levizja_e_radhes(g, c, det),
         "personat": permbledh_personat(g, c, bil),
         "bizneset": analizo_bizneset(g, c),
@@ -2949,6 +3161,200 @@ def paguaj_borxh(trupi: dict = Body(...),
     }
 
 
+def _ruaj_mesazhin(kush: str, teksti: str, lloji: str, c: Dict[str, Any],
+                   propozimi: Optional[dict] = None, statusi: str = "i_ri",
+                   veprimi_id: Any = None) -> Optional[dict]:
+    """Nje rresht i bisedes. Deshtimi ketu nuk e ndal veprimin, por nuk hesht."""
+    try:
+        dalja = _sb("fin_mesazhet", "post", trupi={
+            "user_id": USER_ID, "kur": datetime.now(zona_e(c)).isoformat(),
+            "kush": kush, "teksti": str(teksti)[:2000], "lloji": lloji,
+            "propozimi": propozimi or {}, "statusi": statusi,
+            "veprimi_id": None if veprimi_id is None else int(veprimi_id),
+        }, prefer="return=representation")
+        return dalja[0] if isinstance(dalja, list) and dalja else dalja
+    except HTTPException as e:
+        teksti_i_gabimit = str(e.detail)
+        if "PGRST205" in teksti_i_gabimit or "schema cache" in teksti_i_gabimit:
+            _shenoj_problem("Biseda mungon — ekzekuto financat_migrim_8.sql "
+                            "ne Supabase.")
+        else:
+            _shenoj_problem(f"Mesazhi nuk u ruajt: {teksti_i_gabimit[:160]}")
+        return None
+
+
+def pergjigju_pyetjes(veprimi: str, p: Dict[str, Any], c: Dict[str, Any]) -> str:
+    """Pyetjet nuk shkruajne asgje — kthejne numrin qe u kerkua, me fjale."""
+    mon = c["monedha_baze"]
+
+    def para(x):
+        return f"{_num(x):,.0f}".replace(",", ".") + f" {mon}"
+
+    if veprimi == "pyetje_gjendje":
+        el = p["e_lira"]
+        rreshta = [
+            f"Ke {para(el['likuiditeti'])} ne llogarite likuide.",
+            f"Prej tyre te lira per te shpenzuar: **{para(el['e_lira'])}** "
+            f"{el['arsyeja_e_afatit']} ({el['deri']}, {el['dite']} dite).",
+        ]
+        zbritjet = [(el["rezervat"], "rezerva"), (el["detyrimet"], "detyrime qe skadojne"),
+                    (el["planet"], "shpenzime fikse te papaguara"),
+                    (el["buxheti_i_mbetur"], "buxhete te mbetura")]
+        detaj = [f"{para(v)} {emri}" for v, emri in zbritjet if v > 0]
+        if detaj:
+            rreshta.append("Zbriten: " + ", ".join(detaj) + ".")
+        if el["ne_dite"] is not None and el["e_lira"] > 0:
+            rreshta.append(f"Kjo do te thote rreth {para(el['ne_dite'])} ne dite.")
+        return " ".join(rreshta)
+
+    if veprimi == "pyetje_detyrime":
+        el, rreshta = p["e_lira"], []
+        for x in el["lista"]["planet"][:6]:
+            rreshta.append(f"{x['emri']} {para(x['ne_baze'])} me {x['data']}")
+        for x in el["lista"]["detyrimet"][:6]:
+            rreshta.append(f"{x['emri']} {para(x['ne_baze'])} deri me {x['afati']}")
+        if not rreshta:
+            return f"Deri me {el['deri']} nuk ke asnje pagese te detyruar."
+        return (f"Deri me {el['deri']} te presin: " + "; ".join(rreshta)
+                + f". Gjithsej {para(el['planet'] + el['detyrimet'])}.")
+
+    if veprimi == "pyetje_shpenzime":
+        sh = p["shpenzimet"]
+        krye = ", ".join(f"{k['kategoria']} {para(k['totali'])}"
+                         for k in (sh.get("sipas_kategorise") or [])[:5])
+        return (f"Kete muaj: fikse mujore {para(sh['fikse_mujore'])}, "
+                f"vjetore ne muaj {para(sh['vjetore_ne_muaj'])}."
+                + (f" Kategorite kryesore: {krye}." if krye else ""))
+
+    return "Nuk e di si t'i pergjigjem kesaj."
+
+
+def kryej_propozimin(p: dict, c: Dict[str, Any]) -> dict:
+    """Ekzekuton propozimin duke perdorur te njejtat rruge si butonat.
+
+    Me qellim nuk ka rruge te dyte: cdo urdher kalon nga i njejti kod qe
+    perdor formulari, ndaj asnje efekt anesor (bilanci, buxheti, ditari,
+    njoftimet) nuk mund te harrohet vetem per urdhrat me tekst.
+    """
+    rruga, trupi = p.get("rruga"), dict(p.get("trupi") or {})
+    if rruga == "/regjistro-pagese":
+        return regjistro_pagese(trupi, FIN_TOKEN)
+    if rruga == "/paguaj-borxh":
+        return paguaj_borxh(trupi, FIN_TOKEN)
+    if rruga and rruga.startswith("/te-dhena/"):
+        return {"rreshti": shto_rresht(rruga.split("/")[-1], trupi, FIN_TOKEN)}
+    raise HTTPException(400, f"Propozim pa rruge te njohur: {rruga!r}")
+
+
+@router.get("/mesazhet")
+def mesazhet(_: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Biseda e plote: njoftimet e tanishme dhe urdhrat e dhene."""
+    kerko_token(_)
+    c = lexo_cilesimet()
+    g = mbledh_gjendjen()
+    return {"biseda": permbledh_bisede(g, c, gjenero_njoftimet(g, c)),
+            "emri_i_asistentit": str(c.get("emri_i_asistentit") or "Asistenti im"),
+            "konfirmim_automatik": bool(c.get("konfirmim_automatik"))}
+
+
+@router.post("/urdher")
+def urdher(trupi: dict = Body(...),
+           _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Nje fjali shqip → nje propozim, dhe (me konfirmim) nje veprim.
+
+    Trupi: {teksti: "shto si te paguar internetin", kryeje: false}
+    Pa 'kryeje' dhe pa cilesimin 'konfirmim_automatik', asgje nuk shkruhet:
+    kthehet vetem se cfare u kuptua. Nje gabim shtypi nuk duhet te leviz para.
+    """
+    kerko_token(_)
+    teksti = str(trupi.get("teksti") or "").strip()
+    if not teksti:
+        raise HTTPException(400, "Mesazhi eshte bosh.")
+    c = lexo_cilesimet()
+    g = mbledh_gjendjen()
+    njoftime = gjenero_njoftimet(g, c)
+    p = asistenti.kupto(teksti, g, c, date.today(), njoftime)
+    p["permbledhje"] = asistenti.permbledh(p, c)
+
+    _ruaj_mesazhin("une", teksti, "urdher", c, p,
+                   "pa_kuptuar" if p["veprimi"] == "pa_kuptuar" else "i_ri")
+
+    # Pyetjet pergjigjen menjehere: asgje nuk shkruhet, asgje s'ka per t'u
+    # konfirmuar.
+    if p["veprimi"].startswith("pyetje"):
+        pergjigja = pergjigju_pyetjes(p["veprimi"], ndertoj_panelin(3), c)
+        _ruaj_mesazhin("asistenti", pergjigja, "pergjigje", c, p, "kryer")
+        return {"propozimi": p, "pergjigja": pergjigja, "kryer": False}
+
+    if p["veprimi"] == "pa_kuptuar" or p["mungon"]:
+        _ruaj_mesazhin("asistenti", p["permbledhje"], "pergjigje", c, p,
+                       "pa_kuptuar")
+        return {"propozimi": p, "pergjigja": p["permbledhje"], "kryer": False}
+
+    # Kryerja automatike kerkon TE DYJA: cilesimin e ndezur dhe nje kuptim te
+    # qarte. Nje perputhje e dobet emri konfirmohet gjithmone me dore.
+    vete = bool(trupi.get("kryeje")) or (
+        bool(c.get("konfirmim_automatik")) and p["siguria"] >= 0.85)
+    if not vete:
+        m = _ruaj_mesazhin("asistenti", p["permbledhje"], "konfirmim", c, p, "i_ri")
+        return {"propozimi": p, "pergjigja": p["permbledhje"], "kryer": False,
+                "mesazhi_id": (m or {}).get("id"), "kerkon_konfirmim": True}
+
+    dalja = kryej_propozimin(p, c)
+    pergjigja = asistenti.si_e_kryer(p["permbledhje"])
+    _ruaj_mesazhin("asistenti", pergjigja, "pergjigje", c, p, "kryer")
+    return {"propozimi": p, "pergjigja": pergjigja, "kryer": True, "dalja": dalja}
+
+
+@router.post("/konfirmo")
+def konfirmo(trupi: dict = Body(...),
+             _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Kryen propozimin e nje mesazhi qe pret. Trupi: {mesazhi_id} ose {propozimi}."""
+    kerko_token(_)
+    c = lexo_cilesimet()
+    p = trupi.get("propozimi")
+    mesazhi_id = trupi.get("mesazhi_id")
+    if not p and mesazhi_id:
+        rreshtat = _lexo("fin_mesazhet", {"id": f"eq.{int(mesazhi_id)}"})
+        if not rreshtat:
+            raise HTTPException(404, f"Mesazhi {mesazhi_id} nuk u gjet.")
+        if (rreshtat[0].get("statusi") or "") in ("kryer", "anuluar"):
+            raise HTTPException(409, "Ky propozim eshte mbyllur tashme.")
+        p = rreshtat[0].get("propozimi") or {}
+    if not p or not p.get("rruga"):
+        raise HTTPException(400, "Pa propozim per te kryer.")
+
+    dalja = kryej_propozimin(p, c)
+    pergjigja = asistenti.si_e_kryer(str(p.get("permbledhje") or ""))
+    if mesazhi_id:
+        # Flluska e konfirmimit BEHET deshmia e veprimit: teksti kalon ne kohen
+        # e kryer dhe statusi mbyllet. Nje mesazh i dyte "U krye…" do te ishte
+        # e njejta gje dy here ne te njejten bisede.
+        _sb("fin_mesazhet", "patch",
+            params={"id": f"eq.{int(mesazhi_id)}", "user_id": f"eq.{USER_ID}"},
+            trupi={"statusi": "kryer", "teksti": pergjigja, "lloji": "pergjigje"},
+            prefer="return=minimal")
+    else:
+        _ruaj_mesazhin("asistenti", pergjigja, "pergjigje", c, p, "kryer")
+    return {"kryer": True, "pergjigja": pergjigja, "dalja": dalja}
+
+
+@router.post("/anulo")
+def anulo(trupi: dict = Body(...),
+          _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Mbyll nje propozim pa e kryer."""
+    kerko_token(_)
+    mesazhi_id = int(_num(trupi.get("mesazhi_id"), 0))
+    if not mesazhi_id:
+        raise HTTPException(400, "mesazhi_id mungon.")
+    dalja = _sb("fin_mesazhet", "patch",
+                params={"id": f"eq.{mesazhi_id}", "user_id": f"eq.{USER_ID}"},
+                trupi={"statusi": "anuluar"}, prefer="return=representation")
+    if not dalja:
+        raise HTTPException(404, f"Mesazhi {mesazhi_id} nuk u gjet.")
+    return {"anuluar": mesazhi_id}
+
+
 @router.get("/veprimet")
 def veprimet(kufi: int = Query(100, ge=1, le=1000),
              _: Optional[str] = Header(None, alias="X-Fin-Token")):
@@ -2979,8 +3385,8 @@ def raportet(kufi: int = Query(20, ge=1, le=100),
 # humbje e perhershme.
 TABELAT_E_EKSPORTIT = ["llogarite", "transaksionet", "detyrimet", "planet",
                        "te-ardhurat", "investimet", "objektivat", "bizneset",
-                       "zerat-e-biznesit", "buxhetet", "personat", "veprimet",
-                       "raportet"]
+                       "zerat-e-biznesit", "buxhetet", "personat", "rezervat",
+                       "veprimet", "mesazhet", "raportet"]
 
 
 @router.get("/eksport")
