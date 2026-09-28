@@ -124,6 +124,7 @@ CILESIMET_PARAZGJEDHUR = {
     "monedha_baze": "EUR",
     "zona_kohore": ZONA_PARAZGJEDHUR,
     "konfirmim_automatik": False,
+    "portofoli_prag": 3000,
     "emri_i_asistentit": "Asistenti im",
     "kurset": {"EUR": 1.0, "ALL": 0.0102, "USD": 0.92, "GBP": 1.17, "CHF": 1.05},
     "rezerva_muaj": 3,
@@ -2075,6 +2076,11 @@ def permbledh_bisede(g: Dict[str, Any], c: Dict[str, Any],
     """
     rreshtat = []
     for m in reversed(g.get("mesazhet") or []):
+        # Portofoli ka bisedеn e vet. Ndarja behet ne Python, jo ne filtrin e
+        # kerkeses: para migrimit 9 kolona s'ekziston, dhe nje filtër mbi nje
+        # kolone qe mungon do ta rrezonte gjithe panelin.
+        if (m.get("konteksti") or "asistenti") == "portofol":
+            continue
         kur = _shfaq_kohen(m.get("kur"), c)
         rreshtat.append({
             "id": m.get("id"), "kush": m.get("kush") or "une",
@@ -3244,6 +3250,340 @@ def kryej_propozimin(p: dict, c: Dict[str, Any]) -> dict:
     if rruga and rruga.startswith("/te-dhena/"):
         return {"rreshti": shto_rresht(rruga.split("/")[-1], trupi, FIN_TOKEN)}
     raise HTTPException(400, f"Propozim pa rruge te njohur: {rruga!r}")
+
+
+# ==========================================================================
+# PORTOFOLI — xhepi
+# ==========================================================================
+# Portofoli eshte paraja e ndare menjane per shpenzimet e perditshme. Nuk
+# eshte tabele e re: eshte nje llogari me lloj 'portofol', qe te trashegoje
+# pa asnje rresht te ri bilancin e llogaritur nga transaksionet, ditarin,
+# daten dhe oren, raportet dhe eksportin.
+#
+# Dallimi i vetem nga llogarite e tjera eshte se lejohet te shkoje ne minus,
+# dhe se minusi eshte informacion, jo gabim: te thote qe ke shpenzuar me
+# shume se sa kishe ndare.
+EMRI_I_PORTOFOLIT = "Portofoli"
+
+
+def portofoli_im(g: Optional[Dict[str, Any]] = None,
+                 c: Optional[Dict[str, Any]] = None,
+                 krijo: bool = True) -> Optional[dict]:
+    """Llogaria e portofolit, e krijuar ne heresine e pare qe kerkohet."""
+    burimi = (g or {}).get("llogarite") if g else _lexo(
+        "fin_llogarite", {"lloji": "eq.portofol"}, "id.asc", 1)
+    for l in burimi or []:
+        if (l.get("lloji") or "") == "portofol":
+            return l
+    if not krijo:
+        return None
+    c = c or lexo_cilesimet()
+    dalja = _sb("fin_llogarite", "post", trupi={
+        "user_id": USER_ID, "emri": EMRI_I_PORTOFOLIT, "lloji": "portofol",
+        "monedha": c["monedha_baze"], "bilanci_fillestar": 0,
+        "likuide": True, "aktiv": True,
+        "shenime": "Paraja e xhepit. Rimbushet nga llogarite; lejohet minusi.",
+    }, prefer="return=representation")
+    e_re = dalja[0] if isinstance(dalja, list) and dalja else dalja
+    shkruaj_veprimin("shtim", "U krijua portofoli", "llogarite",
+                     (e_re or {}).get("id"), e_re, c)
+    return e_re
+
+
+def ngjyra_e_portofolit(gjendja: float, pragu: float) -> str:
+    """Jeshile sa kohe ka; portokalli kur afrohet; e kuqe ne zero ose minus."""
+    if gjendja <= 0:
+        return "e_kuqe"
+    if gjendja <= pragu:
+        return "portokalli"
+    return "jeshile"
+
+
+def gjendja_e_portofolit(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
+    """Sa ka portofoli, sa ka ikur sot e kete muaj, dhe ne c'ngjyre eshte."""
+    p = portofoli_im(g, c, krijo=False)
+    if not p:
+        return {"ka": False}
+    pid = int(p["id"])
+    monedha = (p.get("monedha") or c["monedha_baze"]).upper()
+    kursi = kursi_i(c, monedha) or 1.0
+    gjendja = _num(p.get("bilanci_fillestar"))
+    sot = date.today()
+    sot_dalje = muaji_dalje = 0.0
+
+    for t in g["transaksionet"]:
+        lloji = (t.get("lloji") or "dalje").lower()
+        ne_portofol = t.get("llogaria_id") is not None and int(t["llogaria_id"]) == pid
+        drejt_portofolit = (t.get("llogaria_dest_id") is not None
+                            and int(t["llogaria_dest_id"]) == pid)
+        if not (ne_portofol or drejt_portofolit):
+            continue
+        vlera = kthe(t.get("shuma"), t.get("monedha"), c) / kursi
+        if drejt_portofolit and lloji == "transfer":
+            gjendja += vlera
+            continue
+        if lloji == "hyrje":
+            gjendja += vlera
+            continue
+        gjendja -= vlera
+        d = _dat(t.get("data"))
+        if d and lloji != "transfer":
+            if d == sot:
+                sot_dalje += vlera
+            if (d.year, d.month) == (sot.year, sot.month):
+                muaji_dalje += vlera
+
+    pragu = _num(c.get("portofoli_prag"), 3000)
+    return {
+        "ka": True, "id": pid, "emri": p.get("emri"), "monedha": monedha,
+        "gjendja": _rrum(gjendja),
+        "ngjyra": ngjyra_e_portofolit(gjendja, pragu),
+        "pragu": _rrum(pragu),
+        "dalje_sot": _rrum(sot_dalje), "dalje_muaji": _rrum(muaji_dalje),
+        "ne_baze": _rrum(gjendja * kursi),
+    }
+
+
+def _biseda_e_portofolit(c: Dict[str, Any], kufi: int = 60) -> List[dict]:
+    mungesat: List[str] = []
+    try:
+        rreshtat = _lexo_nese_ekziston(
+            "fin_mesazhet", {"konteksti": "eq.portofol"}, "kur.desc", mungesat)
+    except HTTPException as e:
+        # Para migrimit 9 kolona 'konteksti' s'ekziston. Portofoli mbetet i
+        # perdorshem — vetem biseda rri bosh — dhe mungesa raportohet.
+        if "konteksti" not in str(e.detail):
+            raise
+        _shenoj_problem("Portofoli kerkon financat_migrim_9.sql ne Supabase.")
+        rreshtat = []
+    dalja = []
+    for m in reversed((rreshtat or [])[:kufi]):
+        kur = _shfaq_kohen(m.get("kur"), c)
+        dalja.append({
+            "id": m.get("id"), "kush": m.get("kush") or "une",
+            "teksti": m.get("teksti"), "lloji": m.get("lloji") or "urdher",
+            "statusi": m.get("statusi") or "i_ri",
+            "propozimi": m.get("propozimi") or {},
+            "transaksioni_id": m.get("transaksioni_id"),
+            "kur": m.get("kur"),
+            "data": kur[:10] if kur else None, "ora": kur[11:] if kur else None,
+        })
+    return dalja
+
+
+def _shkruaj_ne_portofol(kush: str, teksti: str, lloji: str,
+                         c: Dict[str, Any], propozimi: Optional[dict] = None,
+                         statusi: str = "kryer",
+                         transaksioni_id: Any = None) -> Optional[dict]:
+    try:
+        dalja = _sb("fin_mesazhet", "post", trupi={
+            "user_id": USER_ID, "kur": datetime.now(zona_e(c)).isoformat(),
+            "kush": kush, "teksti": str(teksti)[:2000], "lloji": lloji,
+            "konteksti": "portofol", "propozimi": propozimi or {},
+            "statusi": statusi,
+            "transaksioni_id": (None if transaksioni_id is None
+                                else int(transaksioni_id)),
+        }, prefer="return=representation")
+        return dalja[0] if isinstance(dalja, list) and dalja else dalja
+    except HTTPException as e:
+        teksti_i_gabimit = str(e.detail)
+        if ("PGRST205" in teksti_i_gabimit or "schema cache" in teksti_i_gabimit
+                or "konteksti" in teksti_i_gabimit
+                or "transaksioni_id" in teksti_i_gabimit):
+            _shenoj_problem("Portofoli kerkon financat_migrim_9.sql ne Supabase.")
+        else:
+            _shenoj_problem(f"Mesazhi i portofolit nuk u ruajt: "
+                            f"{teksti_i_gabimit[:150]}")
+        return None
+
+
+def _para_e_portofolit(x: Any, monedha: str) -> str:
+    return f"{_num(x):,.0f}".replace(",", ".") + f" {monedha}"
+
+
+@router.get("/portofoli")
+def portofoli(_: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Gjendja, biseda, dhe llogarite nga te cilat mund te rimbushet."""
+    kerko_token(_)
+    c = lexo_cilesimet()
+    portofoli_im(None, c)                    # krijohet ne heresine e pare
+    g = mbledh_gjendjen()
+    gj = gjendja_e_portofolit(g, c)
+    burimet = [{"id": l.get("id"), "emri": l.get("emri"),
+                "monedha": (l.get("monedha") or c["monedha_baze"]).upper()}
+               for l in g["llogarite"] if (l.get("lloji") or "") != "portofol"]
+    return {"portofoli": gj, "biseda": _biseda_e_portofolit(c),
+            "llogarite": burimet, "monedha_baze": c["monedha_baze"]}
+
+
+@router.post("/portofoli/urdher")
+def portofoli_urdher(trupi: dict = Body(...),
+                     _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Nje fjali ne portofol → nje levizje e kryer menjehere.
+
+    Ndryshe nga /urdher, ketu nuk pyetet per konfirmim: shpenzimi ka ndodhur
+    tashme kur shkruhet, dhe shuma ne loje eshte ajo e nje xhepi. Kthimi
+    behet me /portofoli/anulo mbi vete mesazhin.
+    """
+    kerko_token(_)
+    teksti = str(trupi.get("teksti") or "").strip()
+    if not teksti:
+        raise HTTPException(400, "Mesazhi eshte bosh.")
+    c = lexo_cilesimet()
+    llogaria = portofoli_im(None, c)
+    g = mbledh_gjendjen()
+    gj = gjendja_e_portofolit(g, c)
+    monedha_e_xhepit = gj.get("monedha") or c["monedha_baze"]
+
+    p = asistenti.kupto_portofolin(teksti, g, c, date.today())
+    _shkruaj_ne_portofol("une", teksti, "urdher", c, p, "kryer")
+
+    if p["veprimi"] == "pyetje":
+        pergjigja = (
+            f"Ke **{_para_e_portofolit(gj['gjendja'], monedha_e_xhepit)}** ne "
+            f"portofol. Sot kane ikur {_para_e_portofolit(gj['dalje_sot'], monedha_e_xhepit)}, "
+            f"kete muaj {_para_e_portofolit(gj['dalje_muaji'], monedha_e_xhepit)}.")
+        _shkruaj_ne_portofol("asistenti", pergjigja, "pergjigje", c, p, "kryer")
+        return {"propozimi": p, "pergjigja": pergjigja, "kryer": False,
+                "portofoli": gj}
+
+    if p["mungon"]:
+        _shkruaj_ne_portofol("asistenti", p["pyetja"], "pergjigje", c, p,
+                             "pa_kuptuar")
+        return {"propozimi": p, "pergjigja": p["pyetja"], "kryer": False,
+                "portofoli": gj}
+
+    if p["veprimi"] == "rimbushje":
+        dalja = _rimbush(int(p["llogaria"]["id"]), _num(p["shuma"]),
+                         p["monedha"], c, llogaria, p)
+        return dalja
+
+    # Shpenzim: i zbritet portofolit, dhe asgje tjeter nuk preket.
+    vula = vula_e_kohes(p, c)
+    trx = {
+        "user_id": USER_ID, "data": vula[:10], "kryer_me": vula,
+        "lloji": "dalje", "shuma": _num(p["shuma"]), "monedha": p["monedha"],
+        "kategoria": p["kategoria"] or "tjeter",
+        "pershkrimi": p["arsyeja"] or teksti[:120],
+        "llogaria_id": llogaria["id"],
+    }
+    dalja = _sb_me_kohe("fin_transaksionet", "post", trupi=trx,
+                        prefer="return=representation")
+    i_riu = dalja[0] if isinstance(dalja, list) and dalja else dalja
+
+    kursi = kursi_i(c, monedha_e_xhepit) or 1.0
+    ne_xhep = kthe(p["shuma"], p["monedha"], c) / kursi
+    e_re = gj["gjendja"] - ne_xhep
+    pergjigja = (f"−{_para_e_portofolit(ne_xhep, monedha_e_xhepit)} · "
+                 f"{p['arsyeja']}. Mbeten "
+                 f"**{_para_e_portofolit(e_re, monedha_e_xhepit)}**.")
+    if e_re < 0:
+        pergjigja += (" Portofoli shkoi ne minus — rimbushe, ose dije qe kaq "
+                      "ke shpenzuar mbi ate qe kishe ndare.")
+    m = _shkruaj_ne_portofol("asistenti", pergjigja, "pergjigje", c, p, "kryer",
+                             (i_riu or {}).get("id"))
+    shkruaj_veprimin("pagese", f"Portofol: {p['arsyeja']} "
+                               f"{_num(p['shuma']):.0f} {p['monedha']}",
+                     "transaksionet", (i_riu or {}).get("id"), trx, c)
+    return {"propozimi": p, "pergjigja": pergjigja, "kryer": True,
+            "mesazhi_id": (m or {}).get("id"),
+            "portofoli": dict(gj, gjendja=_rrum(e_re),
+                              ngjyra=ngjyra_e_portofolit(e_re, gj["pragu"]))}
+
+
+def _rimbush(llogaria_id: int, shuma: float, monedha: str,
+             c: Dict[str, Any], portofoli_rr: dict,
+             p: Optional[dict] = None) -> dict:
+    """Transfer nga nje llogari ne portofol. Shuma i zbritet asaj llogarie."""
+    if shuma <= 0:
+        raise HTTPException(400, "Shuma duhet me e madhe se zero.")
+    burimet = _lexo("fin_llogarite", {"id": f"eq.{llogaria_id}"})
+    if not burimet:
+        raise HTTPException(404, f"Llogaria {llogaria_id} nuk u gjet.")
+    burimi = burimet[0]
+    if (burimi.get("lloji") or "") == "portofol":
+        raise HTTPException(400, "Portofoli nuk rimbushet nga vetja.")
+
+    vula = vula_e_kohes(p or {}, c)
+    trx = {
+        "user_id": USER_ID, "data": vula[:10], "kryer_me": vula,
+        "lloji": "transfer", "shuma": shuma,
+        "monedha": (monedha or burimi.get("monedha") or c["monedha_baze"]).upper(),
+        "kategoria": "rimbushje", "pershkrimi": f"Rimbushje portofoli nga "
+                                                f"{burimi.get('emri')}",
+        "llogaria_id": burimi["id"], "llogaria_dest_id": portofoli_rr["id"],
+    }
+    dalja = _sb_me_kohe("fin_transaksionet", "post", trupi=trx,
+                        prefer="return=representation")
+    i_riu = dalja[0] if isinstance(dalja, list) and dalja else dalja
+
+    g = mbledh_gjendjen()
+    gj = gjendja_e_portofolit(g, c)
+    mon = gj.get("monedha") or c["monedha_baze"]
+    pergjigja = (f"+{_para_e_portofolit(shuma, trx['monedha'])} nga "
+                 f"{burimi.get('emri')}. Portofoli ka tani "
+                 f"**{_para_e_portofolit(gj['gjendja'], mon)}**.")
+    m = _shkruaj_ne_portofol("asistenti", pergjigja, "pergjigje", c, p or {},
+                             "kryer", (i_riu or {}).get("id"))
+    shkruaj_veprimin("pagese", f"Rimbushje portofoli nga {burimi.get('emri')}: "
+                               f"{shuma:.0f} {trx['monedha']}",
+                     "transaksionet", (i_riu or {}).get("id"), trx, c)
+    return {"kryer": True, "pergjigja": pergjigja, "portofoli": gj,
+            "mesazhi_id": (m or {}).get("id")}
+
+
+@router.post("/portofoli/rimbush")
+def portofoli_rimbush(trupi: dict = Body(...),
+                      _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Rimbushje me buton: {llogaria_id, shuma, monedha?}."""
+    kerko_token(_)
+    c = lexo_cilesimet()
+    llogaria = portofoli_im(None, c)
+    try:
+        llogaria_id = int(trupi.get("llogaria_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "llogaria_id mungon ose s'eshte numer.")
+    return _rimbush(llogaria_id, _num(trupi.get("shuma")),
+                    (trupi.get("monedha") or "").strip().upper() or None,
+                    c, llogaria, {"data": trupi.get("data"),
+                                  "ora": trupi.get("ora")})
+
+
+@router.post("/portofoli/anulo")
+def portofoli_anulo(trupi: dict = Body(...),
+                    _: Optional[str] = Header(None, alias="X-Fin-Token")):
+    """Kthen mbrapsht nje levizje te portofolit dhe e shenon si te anuluar.
+
+    Nje xhep ku cdo shkrim kryhet menjehere duhet te kete nje hap mbrapa,
+    perndryshe nje gabim shtypi mbetet perjetesisht ne raport.
+    """
+    kerko_token(_)
+    c = lexo_cilesimet()
+    mesazhi_id = int(_num(trupi.get("mesazhi_id"), 0))
+    if not mesazhi_id:
+        raise HTTPException(400, "mesazhi_id mungon.")
+    rreshtat = _lexo("fin_mesazhet", {"id": f"eq.{mesazhi_id}"})
+    if not rreshtat:
+        raise HTTPException(404, f"Mesazhi {mesazhi_id} nuk u gjet.")
+    m = rreshtat[0]
+    if (m.get("statusi") or "") == "anuluar":
+        raise HTTPException(409, "Kjo levizje eshte anuluar tashme.")
+    trx_id = m.get("transaksioni_id")
+    if not trx_id:
+        raise HTTPException(400, "Ky mesazh nuk ka nje levizje per te kthyer.")
+
+    e_fshira = _sb("fin_transaksionet", "delete",
+                   params={"id": f"eq.{int(trx_id)}", "user_id": f"eq.{USER_ID}"},
+                   prefer="return=representation")
+    _sb("fin_mesazhet", "patch",
+        params={"id": f"eq.{mesazhi_id}", "user_id": f"eq.{USER_ID}"},
+        trupi={"statusi": "anuluar"}, prefer="return=minimal")
+    shkruaj_veprimin("fshirje", "Portofol: levizja u kthye mbrapsht",
+                     "transaksionet", trx_id,
+                     {"rreshti": (e_fshira[0] if isinstance(e_fshira, list)
+                                  and e_fshira else e_fshira)}, c)
+    g = mbledh_gjendjen()
+    return {"anuluar": mesazhi_id, "portofoli": gjendja_e_portofolit(g, c)}
 
 
 @router.get("/mesazhet")

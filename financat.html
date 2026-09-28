@@ -166,6 +166,23 @@ svg{display:block;width:100%;overflow:visible}
 .menu .rrezik{color:var(--kritik)}
 
 /* ── Njoftimet ─────────────────────────────────────────────────────────── */
+/* ── Portofoli ──────────────────────────────────────────────────────────── */
+.portofol-koke{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;
+  padding-bottom:14px;border-bottom:1px solid var(--vija);margin-bottom:12px}
+.portofol-koke .kolone{min-width:0}
+.portofol-shuma{font-size:2.7rem;font-weight:650;letter-spacing:-.03em;
+  line-height:1.05;font-variant-numeric:tabular-nums;
+  transition:color .25s ease}
+.portofol-shuma.jeshile{color:var(--mire)}
+.portofol-shuma.portokalli{color:var(--paralajmerim)}
+.portofol-shuma.e_kuqe{color:var(--kritik)}
+.portofol-koke .nen{font-size:.82rem;color:var(--bojë-2);margin-top:4px}
+.portofol-koke .veprimet{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+@media (max-width:520px){
+  .portofol-koke .veprimet{margin-left:0;width:100%}
+  .portofol-shuma{font-size:2.2rem}
+}
+
 /* ── Biseda me asistentin ───────────────────────────────────────────────── */
 .biseda{display:flex;flex-direction:column;gap:10px;max-height:min(58vh,480px);
   overflow-y:auto;padding:6px 2px}
@@ -287,7 +304,35 @@ svg{display:block;width:100%;overflow:visible}
   <div class="skedat" role="tablist" id="skedat"></div>
 
   <!-- ── PANELI ── -->
-  <section id="pj-panel">
+  <!-- ── PORTOFOLI ── -->
+  <section id="pj-portofoli">
+    <div class="karte">
+      <div class="portofol-koke">
+        <div class="kolone">
+          <div class="etikete" style="font-size:.74rem;text-transform:uppercase;
+               letter-spacing:.06em;color:var(--bojë-3)">Portofoli</div>
+          <div class="portofol-shuma" id="portofol-shuma">—</div>
+          <div class="nen" id="portofol-nen">Paraja e xhepit, e ndare nga
+            llogarite.</div>
+        </div>
+        <div class="veprimet">
+          <button class="kryesor" onclick="hapRimbushjen()">Rimbush</button>
+        </div>
+      </div>
+      <div id="portofol-biseda" class="biseda"></div>
+      <form class="shkrues" onsubmit="dergoNePortofol(event)" autocomplete="off">
+        <input id="portofol-urdhri" placeholder="20 mije benzin…"
+               aria-label="Shkruaj cfare shpenzove">
+        <button class="kryesor" type="submit" id="portofol-btn">Shto</button>
+      </form>
+      <p class="i-heshtur" style="font-size:.8rem;margin-top:9px">
+        Shkruaj shumen dhe arsyen — "20 mije benzin", "500 lek kafe". Zbritet
+        vetem nga portofoli, dhe ruhet me date, ore dhe arsye per raportin.
+        Nese portofoli nuk perballon, shkon ne minus.</p>
+    </div>
+  </section>
+
+  <section id="pj-panel" class="fshihu">
     <div class="pllaka" id="pllakat"></div>
     <div class="karte" id="karta-bisedes" style="margin-top:16px">
       <h2 id="titulli-bisedes">Asistenti im</h2>
@@ -619,8 +664,9 @@ try {
    SKEDAT
    ═══════════════════════════════════════════════════════════════════════ */
 const SKEDAT = [
-  ['panel', 'Paneli'], ['regjistri', 'Regjistri'], ['bizneset', 'Bizneset'],
-  ['skenari', 'Po sikur?'], ['keshilltari', 'Keshilltari'],
+  ['portofoli', 'Portofoli'], ['panel', 'Paneli'], ['regjistri', 'Regjistri'],
+  ['bizneset', 'Bizneset'], ['skenari', 'Po sikur?'],
+  ['keshilltari', 'Keshilltari'],
 ];
 // Cilesimet nuk kane skede — hapen nga menuja.
 const PJESET = [...SKEDAT.map(([id]) => id), 'cilesimet'];
@@ -636,6 +682,7 @@ async function hapSkeden(id){
     b.setAttribute('aria-selected', SKEDAT[i][0] === id));
   mbyllMenune();
   window.scrollTo({top: 0, behavior: 'smooth'});
+  if (id === 'portofoli') ngarkoPortofolin();
   if (id === 'keshilltari') ngarkoRaportet();
   if (id === 'regjistri') await hapRegjistrin(REG_AKTIV);
   if (id === 'cilesimet') hapCilesimet();
@@ -1126,6 +1173,132 @@ function vizatoELiren(el){
     + `<div class="rr total"><span>E lira per te shpenzuar</span>
         <span class="num ${el.e_lira >= 0 ? 'pozitiv' : 'negativ'}">${
           para(el.e_lira)}</span></div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PORTOFOLI — xhepi
+   ═══════════════════════════════════════════════════════════════════════ */
+let PORTOFOLI = null;
+
+async function ngarkoPortofolin(){
+  try {
+    PORTOFOLI = await api('/portofoli');
+    vizatoPortofolin();
+  } catch (e) {
+    $('#portofol-nen').innerHTML =
+      `<span style="color:var(--kritik)">${esc(e.message)}</span>`;
+  }
+}
+
+function vizatoPortofolin(){
+  if (!PORTOFOLI) return;
+  const x = PORTOFOLI.portofoli || {};
+  const shuma = $('#portofol-shuma');
+  shuma.textContent = `${nr(x.gjendja ?? 0, 0)} ${esc(x.monedha || '')}`;
+  shuma.className = 'portofol-shuma ' + (x.ngjyra || '');
+
+  const pjeset = [];
+  if (x.dalje_sot) pjeset.push(`sot ${nr(x.dalje_sot, 0)}`);
+  if (x.dalje_muaji) pjeset.push(`kete muaj ${nr(x.dalje_muaji, 0)}`);
+  $('#portofol-nen').textContent = x.gjendja < 0
+    ? `Ke shpenzuar ${nr(-x.gjendja, 0)} ${x.monedha} mbi ate qe kishe ndare.`
+    : (pjeset.length ? 'Kane ikur ' + pjeset.join(', ') + '.'
+                     : 'Paraja e xhepit, e ndare nga llogarite.');
+
+  const kutia = $('#portofol-biseda');
+  const lista = PORTOFOLI.biseda || [];
+  kutia.innerHTML = lista.length ? lista.map(flluskaEPortofolit).join('')
+    : `<p class="i-heshtur">Ende bosh. Rimbushe portofolin, pastaj shkruaj
+       cdo shpenzim ketu — "20 mije benzin" — dhe zbritet vetvetiu.</p>`;
+  kutia.scrollTop = Math.max(0, kutia.scrollHeight - kutia.clientHeight);
+}
+
+function flluskaEPortofolit(m){
+  const klasa = ['flluske', m.kush === 'une' ? 'une' : 'asistenti'];
+  if (m.statusi === 'anuluar') klasa.push('anuluar');
+  // "Anulo" del vetem mbi mesazhin qe krijoi nje levizje, dhe vetem nje here.
+  const mund = m.transaksioni_id && m.statusi !== 'anuluar';
+  const veprimet = mund
+    ? `<div class="veprimet"><button class="vogel"
+         onclick="anuloNePortofol(${m.id})">Anulo</button></div>` : '';
+  const shenja = m.statusi === 'anuluar' ? ' · u anulua' : '';
+  const kur = [m.data, m.ora].filter(Boolean).join(' ');
+  return `<div class="${klasa.join(' ')}">${theks(m.teksti)}
+    <span class="koha">${esc(kur || 'tani')}${shenja}</span>${veprimet}</div>`;
+}
+
+async function dergoNePortofol(ev){
+  ev?.preventDefault();
+  const fusha = $('#portofol-urdhri'), teksti = (fusha.value || '').trim();
+  if (!teksti) return;
+  fusha.value = '';
+  fusha.disabled = $('#portofol-btn').disabled = true;
+  try {
+    await api('/portofoli/urdher', {metoda: 'POST', trupi: {teksti}});
+    await ngarkoPortofolin();
+    ngarko();                     // gjendja e llogarive dhe "e lira" levizin bashke
+  } catch (e) {
+    njofto('Gabim: ' + e.message, 5000);
+    fusha.value = teksti;         // teksti nuk humbet nga nje gabim rrjeti
+  } finally {
+    fusha.disabled = $('#portofol-btn').disabled = false;
+    fusha.focus();
+  }
+}
+
+async function anuloNePortofol(id){
+  try {
+    await api('/portofoli/anulo', {metoda: 'POST', trupi: {mesazhi_id: id}});
+    await ngarkoPortofolin();
+    ngarko();
+  } catch (e) { njofto('Gabim: ' + e.message, 5000); }
+}
+
+function hapRimbushjen(){
+  const llogarite = PORTOFOLI?.llogarite || [];
+  if (!llogarite.length){
+    njofto('Shto nje llogari me pare — prej saj merret shuma.', 4500);
+    return;
+  }
+  const kutia = document.createElement('div');
+  kutia.className = 'mbulese'; kutia.id = 'mbulesa';
+  kutia.onclick = e => { if (e.target === kutia) mbyllModalin(); };
+  kutia.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+    <h2>Rimbush portofolin</h2>
+    <p class="i-heshtur">Shuma i zbritet llogarise qe zgjedh dhe i shtohet
+      portofolit. Eshte nje transferim, jo nje shpenzim — totali yt nuk
+      ndryshon.</p>
+    <div class="fusha">
+      <div><label for="rb-shuma">Shuma</label>
+        <input id="rb-shuma" type="number" step="any" autofocus></div>
+      <div><label for="rb-llogaria">Nga llogaria</label>
+        <select id="rb-llogaria">${llogarite.map(l =>
+          `<option value="${l.id}">${esc(l.emri)} (${esc(l.monedha)})</option>`
+        ).join('')}</select></div>
+    </div>
+    <div class="rresht">
+      <button class="kryesor" onclick="ruajRimbushjen()">Rimbush</button>
+      <button onclick="mbyllModalin()">Anulo</button>
+    </div>
+    <p id="rb-gabimi" class="i-heshtur" style="color:var(--kritik)"></p>
+  </div>`;
+  document.body.appendChild(kutia);
+  setTimeout(() => $('#rb-shuma')?.focus(), 30);
+}
+
+async function ruajRimbushjen(){
+  const shuma = Number($('#rb-shuma').value);
+  if (!shuma || shuma <= 0){
+    $('#rb-gabimi').textContent = 'Fut nje shume me te madhe se zero.'; return;
+  }
+  try {
+    const r = await api('/portofoli/rimbush', {metoda: 'POST', trupi: {
+      llogaria_id: Number($('#rb-llogaria').value), shuma}});
+    mbyllModalin();
+    njofto(r.pergjigja.replace(/\*\*/g, ''), 4500);
+    await ngarkoPortofolin();
+    ngarko();
+  } catch (e) { $('#rb-gabimi').textContent = e.message; }
 }
 
 /* ── Modali i pageses ─────────────────────────────────────────────────── */
@@ -1672,7 +1845,7 @@ const REGJISTRI = {
     titull: 'Llogarite', totali: 'bilanci_fillestar', ndihme: 'Ku rri paraja. Bilanci fillestar eshte gjendja ne momentin qe e shton — transaksionet llogariten mbi te.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
-      lloji: {tip: 'select', opsione: [['bank', 'Banke'], ['cash', 'Cash'], ['kursim', 'Kursim'], ['kartekredit', 'Karte krediti'], ['investim', 'Investim'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
+      lloji: {tip: 'select', opsione: [['bank', 'Banke'], ['cash', 'Cash'], ['kursim', 'Kursim'], ['kartekredit', 'Karte krediti'], ['investim', 'Investim'], ['portofol', 'Portofol (xhepi)'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
       monedha: MONEDHA,
       bilanci_fillestar: {tip: 'number', param: 0, eti: 'Bilanci fillestar'},
       likuide: {tip: 'bool', param: true, eti: 'Likuide (numerohet ne rezerve)'},
@@ -2395,6 +2568,7 @@ if (TOKEN){
   $('#hyrja').classList.add('fshihu');
   $('#apja').classList.remove('fshihu');
   ngarko();
+  ngarkoPortofolin();
 }
 </script>
 </body>
