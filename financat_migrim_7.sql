@@ -31,8 +31,14 @@ update fin_transaksionet
        end
  where kryer_me is null;
 
+-- PA 'default now()' me qellim. Nje default aplikohet PARA se te ndizet
+-- trigeri BEFORE INSERT, ndaj 'new.kryer_me is null' nuk do te ishte kurre e
+-- vertete — dhe nje shkrim qe jep vetem daten (nje rresht i futur me dore ne
+-- Supabase, p.sh. "20 shtator") do t'i vidhte asaj daten e sotme ne heshtje.
+-- Trigeri eshte autori i vetem i kesaj kolone; NOT NULL mbetet, sepse
+-- kufizimet kontrollohen PAS trigerave.
 alter table fin_transaksionet
-    alter column kryer_me set default now();
+    alter column kryer_me drop default;
 alter table fin_transaksionet
     alter column kryer_me set not null;
 
@@ -42,7 +48,7 @@ create index if not exists idx_fin_trx_kryer
 -- 'data' dhe 'kryer_me' nuk guxojne te ndahen nga njera-tjetra: e para eshte
 -- baza e cdo grupimi mujor, e dyta e renditjes brenda dites. Trigeri i mban
 -- te lidhura pavaresisht se cilen prek shkrimi.
-create or replace function fin_vulos_kohen() returns trigger as $$
+create or replace function fin_vulos_kohen() returns trigger as $fn$
 declare
     zona text := coalesce(current_setting('fin.zona', true), 'Europe/Tirane');
 begin
@@ -66,7 +72,7 @@ begin
     end if;
     return new;
 end;
-$$ language plpgsql;
+$fn$ language plpgsql;
 
 drop trigger if exists trg_fin_trx_koha on fin_transaksionet;
 create trigger trg_fin_trx_koha
@@ -76,36 +82,110 @@ create trigger trg_fin_trx_koha
 -- ── 2. KUR U PREK PER HERE TE FUNDIT CDO RRESHT ───────────────────────────
 -- Nje fushe qe mbushet nga kodi harrohet nje dite; nje fushe qe e mbush baza
 -- nuk harrohet kurre.
-create or replace function fin_vulos_perditesimin() returns trigger as $$
+create or replace function fin_vulos_perditesimin() returns trigger as $fn$
 begin
     new.perditesuar_me := now();
     return new;
 end;
-$$ language plpgsql;
+$fn$ language plpgsql;
 
-do $$
-declare
-    t text;
-begin
-    foreach t in array array[
-        'fin_llogarite', 'fin_transaksionet', 'fin_detyrimet', 'fin_planet',
-        'fin_te_ardhurat', 'fin_investimet', 'fin_objektivat', 'fin_raportet',
-        'fin_bizneset', 'fin_biznes_zerat', 'fin_buxhetet', 'fin_personat',
-        'fin_cilesimet'
-    ] loop
-        -- Migrimet 4-6 mund te mos jene ekzekutuar ende; ato qe mungojne thjesht
-        -- kapercehen, dhe ky migrim mund te ri-ekzekutohet pas tyre.
-        if to_regclass(t) is null then
-            continue;
-        end if;
-        execute format(
-            'alter table %I add column if not exists perditesuar_me timestamptz', t);
-        execute format('drop trigger if exists trg_%s_perditesuar on %I', t, t);
-        execute format(
-            'create trigger trg_%s_perditesuar before update on %I '
-            'for each row execute function fin_vulos_perditesimin()', t, t);
-    end loop;
-end $$;
+-- Te trembedhjeta tabelat, te shkruara nje nga nje. Nje cikel 'do $$'
+-- do te ishte me i shkurter, por nje bllok i tille i kopjuar gjysme
+-- deshton me nje gabim sintakse qe s'thote asgje per shkakun — dhe
+-- ketu gjysma do te thoshte 'ora u ruajt vetem ne disa tabela'.
+-- Kerkon qe migrimet 1-6 te jene ekzekutuar; nese jo, deshton me emrin
+-- e tabeles qe mungon, ne vend qe ta kapercente ne heshtje.
+
+alter table if exists fin_llogarite
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_llogarite_perditesuar on fin_llogarite;
+create trigger trg_fin_llogarite_perditesuar
+    before update on fin_llogarite
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_transaksionet
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_transaksionet_perditesuar on fin_transaksionet;
+create trigger trg_fin_transaksionet_perditesuar
+    before update on fin_transaksionet
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_detyrimet
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_detyrimet_perditesuar on fin_detyrimet;
+create trigger trg_fin_detyrimet_perditesuar
+    before update on fin_detyrimet
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_planet
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_planet_perditesuar on fin_planet;
+create trigger trg_fin_planet_perditesuar
+    before update on fin_planet
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_te_ardhurat
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_te_ardhurat_perditesuar on fin_te_ardhurat;
+create trigger trg_fin_te_ardhurat_perditesuar
+    before update on fin_te_ardhurat
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_investimet
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_investimet_perditesuar on fin_investimet;
+create trigger trg_fin_investimet_perditesuar
+    before update on fin_investimet
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_objektivat
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_objektivat_perditesuar on fin_objektivat;
+create trigger trg_fin_objektivat_perditesuar
+    before update on fin_objektivat
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_raportet
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_raportet_perditesuar on fin_raportet;
+create trigger trg_fin_raportet_perditesuar
+    before update on fin_raportet
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_bizneset
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_bizneset_perditesuar on fin_bizneset;
+create trigger trg_fin_bizneset_perditesuar
+    before update on fin_bizneset
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_biznes_zerat
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_biznes_zerat_perditesuar on fin_biznes_zerat;
+create trigger trg_fin_biznes_zerat_perditesuar
+    before update on fin_biznes_zerat
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_buxhetet
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_buxhetet_perditesuar on fin_buxhetet;
+create trigger trg_fin_buxhetet_perditesuar
+    before update on fin_buxhetet
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_personat
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_personat_perditesuar on fin_personat;
+create trigger trg_fin_personat_perditesuar
+    before update on fin_personat
+    for each row execute function fin_vulos_perditesimin();
+
+alter table if exists fin_cilesimet
+    add column if not exists perditesuar_me timestamptz;
+drop trigger if exists trg_fin_cilesimet_perditesuar on fin_cilesimet;
+create trigger trg_fin_cilesimet_perditesuar
+    before update on fin_cilesimet
+    for each row execute function fin_vulos_perditesimin();
 
 -- ── 3. DITARI I VEPRIMEVE ─────────────────────────────────────────────────
 -- Cdo shtim, ndryshim, fshirje dhe pagese le nje gjurme me daten dhe oren.
