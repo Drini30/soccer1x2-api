@@ -47,6 +47,15 @@ select '· funksioni i vules',
                           where proname = 'fin_vulos_perditesimin')
             then 'OK' else 'mungon (migrimi 7, pjesa 2)' end
 union all
+select '· portofoli (migrimi 9)',
+       case when exists (select 1 from information_schema.columns
+                          where table_name = 'fin_mesazhet'
+                            and column_name = 'konteksti')
+             and exists (select 1 from information_schema.columns
+                          where table_name = 'fin_mesazhet'
+                            and column_name = 'transaksioni_id')
+            then 'OK' else 'mungon (migrimi 9)' end
+union all
 select '· cilesimet e asistentit',
        case when (select count(*) from fin_cilesimet
                    where celes in ('konfirmim_automatik', 'emri_i_asistentit',

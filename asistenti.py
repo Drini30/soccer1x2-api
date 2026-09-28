@@ -276,12 +276,16 @@ def gjej_entitetin(teksti: str, kandidatet: List[dict],
 # KATEGORITE E SHPENZIMEVE
 # ==========================================================================
 KATEGORITE = {
-    "ushqime": ["ushqim", "ushqime", "supermarket", "market", "buke", "shpenzime ushqimore"],
-    "karburant": ["karburant", "benzine", "nafte", "gazoil", "pike karburanti"],
-    "kafe": ["kafe", "dreke", "darke", "restorant", "lokal", "byrek"],
+    "ushqime": ["ushqim", "supermarket", "market", "buke", "bukë", "mish",
+                "fruta", "perime", "qumesht", "spesa"],
+    "karburant": ["karburant", "benzin", "nafte", "naft", "gazoil", "gazoil",
+                  "pike karburanti", "mbush makinen"],
+    "kafe": ["kafe", "dreke", "drek", "darke", "dark", "mengjes", "restorant",
+             "lokal", "byrek", "pice", "sanduic"],
     "veshje": ["veshje", "rroba", "kepuce", "xhaketa"],
     "farmaci": ["farmaci", "ilac", "ilace", "mjek", "doktor", "spital", "analiza"],
-    "transport": ["transport", "taksi", "autobus", "bilete", "furgon"],
+    "transport": ["transport", "taksi", "autobus", "bilet", "furgon",
+                  "parkim", "parking"],
     "argetim": ["argetim", "kinema", "dalje", "festë", "feste", "abonim"],
     "higjiene": ["higjiene", "detergjent", "pastrim", "shtepiake"],
     "shtepia": ["shtepia", "mobilje", "riparim", "hidraulik", "elektricist"],
@@ -708,3 +712,97 @@ def si_e_kryer(permbledhje: str) -> str:
         if teksti.startswith(e_ardhme):
             return e_shkuar + teksti[len(e_ardhme):]
     return teksti
+
+
+# ==========================================================================
+# PORTOFOLI — xhepi, me rregulla te vetat
+# ==========================================================================
+# Ne portofol logjika eshte tjeter nga ajo e asistentit te pergjithshem.
+# Aty cdo urdher konfirmohet, sepse mund te leviz gjithe ekonomine. Ketu jo:
+# portofoli eshte nje shume e vogel e ndare menjane, dhe kush shkruan
+# "20 mije benzin" ka bere tashme shpenzimin — s'ka cfare te konfirmoje.
+# Prandaj kryhet menjehere, dhe kthimi behet me "Anulo" mbi vete mesazhin.
+#
+# Po per te njejten arsye analizuesi eshte me i gjere: nje fjali me shifer,
+# qe nuk eshte as rimbushje as pyetje, eshte shpenzim. Nje xhep nuk ka
+# nevoje per folje.
+SHENJAT_E_PORTOFOLIT = [
+    ("rimbushje", r"\brimbush|\bmbush(e|je)?\b|\bfut\b|\bshto ne portofol\b"
+                  r"|\bmora nga\b|\bterhoqa\b|\bterhiq\b"),
+    ("pyetje", r"\bsa kam\b|\bsa me ka mbetur\b|\bsa ka\b|\bgjendja\b"
+               r"|\bsa mbeti\b|\bsa jam\b"),
+    ("kthim", r"\bktheva\b|\bmora prapa\b|\bm(e|ë) erdhi prapa\b"),
+]
+
+
+def kupto_portofolin(teksti: str, g: dict, c: dict,
+                     sot: Optional[date] = None) -> dict:
+    """Nje fjali e shkruar ne portofol → cfare i ndodh xhepit.
+
+    Kthen gjithmone nje propozim. Kur s'ka shume, pyet per te — sepse nje
+    shpenzim pa shifer nuk eshte shpenzim, eshte nje shenim.
+    """
+    sot = sot or date.today()
+    t = normalizo(teksti)
+    veprimi = None
+    for emri, shprehja in SHENJAT_E_PORTOFOLIT:
+        if re.search(shprehja, t):
+            veprimi = emri
+            break
+
+    p: dict = {
+        "teksti": str(teksti or "").strip(),
+        "veprimi": veprimi or "shpenzim",
+        "shuma": lexo_shumen(teksti),
+        "monedha": lexo_monedhen(teksti) or str(c.get("monedha_baze") or "EUR"),
+        "data": (lexo_daten(teksti, sot) or sot).isoformat(),
+        "ora": (lexo_oren(teksti).strftime("%H:%M")
+                if lexo_oren(teksti) else None),
+        "kategoria": lexo_kategorine(teksti),
+        "arsyeja": None, "llogaria": None, "mungon": [], "pyetja": None,
+    }
+
+    if p["veprimi"] == "pyetje":
+        return p
+
+    if not p["shuma"]:
+        p["mungon"].append("shuma")
+        p["pyetja"] = ("Sa? Shkruaj shumen bashke me arsyen — p.sh. "
+                       "\"20 mije benzin\" ose \"500 lek kafe\".")
+        return p
+
+    if p["veprimi"] == "rimbushje":
+        llogaria, siguria = _gjej_llogarine(teksti, g)
+        if llogaria and (llogaria.get("lloji") or "") != "portofol":
+            p["llogaria"] = {"id": llogaria.get("id"),
+                             "emri": llogaria.get("emri"), "siguria": siguria}
+        else:
+            p["mungon"].append("llogaria")
+            p["pyetja"] = ("Nga cila llogari ta marr? Shkruaje emrin, ose "
+                           "perdor butonin \"Rimbush\".")
+        return p
+
+    # Shpenzim (ose kthim, qe eshte nje shpenzim me shenje te kundert).
+    p["arsyeja"] = _arsyeja_e_shpenzimit(teksti) or p["kategoria"] or "shpenzim"
+    if not p["kategoria"]:
+        p["kategoria"] = "tjeter"
+    return p
+
+
+# Fjalet qe s'jane arsye: shifra, monedha, dhe foljet e zakonshme. Ajo qe
+# mbetet eshte pershkrimi qe do te lexosh ne raport pas tre muajsh.
+PA_VLERE_NE_ARSYE = {
+    "i", "e", "te", "ne", "per", "nga", "me", "dhe", "nje", "hodha", "dhashe",
+    "shpenzova", "bleva", "harxhova", "pagova", "paguajta", "iken", "shkoi",
+    "lek", "leke", "euro", "eur", "mije", "mij", "milion", "sot", "dje",
+    "pardje", "ora", "oren", "kam", "kishe", "u", "ia", "ja", "mora",
+}
+
+
+def _arsyeja_e_shpenzimit(teksti: str) -> Optional[str]:
+    fjalet_e_mbetura = [f for f in fjalet(teksti)
+                        if f not in PA_VLERE_NE_ARSYE
+                        and not re.fullmatch(r"[\d.,:-]+", f)]
+    if not fjalet_e_mbetura:
+        return None
+    return " ".join(fjalet_e_mbetura)[:120]

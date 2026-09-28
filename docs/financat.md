@@ -32,6 +32,10 @@ Hap SQL Editor te Supabase dhe ekzekuto, me kete radhe:
    `perditesuar_me` mbi cdo tabele, dhe ditari i veprimeve (`fin_veprimet`).
 8. `financat_migrim_8.sql` — fondet e rezervuara (`fin_rezervat`) dhe biseda
    me asistentin (`fin_mesazhet`).
+9. `financat_migrim_9.sql` — portofoli: biseda e vet dhe pragu i ngjyres.
+
+Pas tyre, `financat_kontroll.sql` thote tabele per tabele cfare ka kaluar dhe
+cfare jo. Cdo rresht duhet te thote OK. Eshte vetem lexim.
 
 RLS ndizet pa asnje policy: celesi `anon` nuk lexon dot asgje — vetem
 backend-i, me service key, shkruan dhe lexon.
@@ -217,6 +221,35 @@ vende, sepse nje shifer qe levize pa u pare nuk sherben:
 - **Levizja e radhes** — cfare pritet te levize me pare, per sa dite, sa eshte
   dhe a eshte fikse apo e ndryshueshme.
 
+### Portofoli — xhepi
+Portofoli eshte paraja e ndare menjane per shpenzimet e perditshme. Nuk eshte
+tabele e re: eshte nje llogari me lloj `portofol`, qe te trashegoje pa asnje
+rresht te ri bilancin e llogaritur nga transaksionet, ditarin, daten dhe oren,
+raportet dhe eksportin. Nje tabele e dyte do te thoshte te njejtat rregulla te
+shkruara dy here — dhe njera nga te dyja do te mbetej prapa.
+
+Faqja ka tre pjese: **shuma ne krye**, **biseda ne mes**, **shkrimi ne fund**.
+
+- Shkruan "20 mije benzin" ose "500 lek kafe" dhe zbritet menjehere. Ruhet
+  shuma, arsyeja, kategoria, data dhe ora — pra del ne raport.
+- Zbritet **vetem nga portofoli**. Asnje llogari tjeter nuk preket.
+- Nese portofoli nuk perballon, shkon **ne minus**. Minusi nuk fshihet: eshte
+  informacioni kryesor, sepse te thote sa ke shpenzuar mbi ate qe kishe ndare.
+- **Rimbushja** merr nje shume nga nje llogari qe zgjedh ti. Eshte transferim,
+  jo shpenzim — totali yt nuk ndryshon, vetem vendi ku rri paraja.
+- Ngjyra e shumes: **jeshile** sa kohe eshte mbi pragun, **portokalli** kur bie
+  nen te (parazgjedhur 3000, cilesimi `portofoli_prag`), **e kuqe** ne zero ose
+  ne minus.
+
+Ndryshe nga asistenti i pergjithshem, ketu **nuk pyetet per konfirmim**: kur
+shkruan "20 mije benzin", shpenzimi ka ndodhur tashme — s'ka cfare te
+konfirmosh. Kthimi behet me **Anulo** mbi vete mesazhin, qe e fshin levizjen
+dhe e shenon mesazhin si te anuluar. Pa kete, nje gabim shtypi do te mbetej
+perjetesisht ne raport.
+
+Biseda e portofolit eshte e ndare nga ajo e asistentit (`konteksti` te
+`fin_mesazhet`): te dyja jane biseda, por nuk jane e njejta bisede.
+
 ### Asistenti: urdhra me fjalet e tua
 Njoftimet vijne si mesazhe, dhe pergjigjesh me nje fjali. Fjalia kuptohet nga
 nje analizues **deterministik** ne `asistenti.py` — pa model gjuhesor, pa
@@ -401,6 +434,10 @@ Te gjitha kerkojne `X-Fin-Token`, pervec `/api/fin/shendeti` dhe faqes.
 | `GET /api/fin/raportet` | Arkivi i analizave |
 | `GET /api/fin/veprimet?kufi=100` | Ditari: cdo veprim me date dhe ore |
 | `GET /api/fin/mesazhet` | Biseda: njoftimet dhe urdhrat |
+| `GET /api/fin/portofoli` | Gjendja, biseda dhe llogarite per rimbushje |
+| `POST /api/fin/portofoli/urdher` | Nje fjali → levizje e kryer menjehere |
+| `POST /api/fin/portofoli/rimbush` | Transferim nga nje llogari ne portofol |
+| `POST /api/fin/portofoli/anulo` | Kthen mbrapsht nje levizje te portofolit |
 | `POST /api/fin/urdher` | Nje fjali shqip → propozim (dhe veprim me `kryeje`) |
 | `POST /api/fin/konfirmo` | Kryen propozimin qe pret |
 | `POST /api/fin/anulo` | E mbyll propozimin pa e kryer |
