@@ -203,12 +203,20 @@ create table if not exists fin_veprimet (
     titulli     text        not null,
     -- fushat e prekura, ne menyre qe nje ndryshim i gabuar te mund te kthehet
     detaje      jsonb       not null default '{}'::jsonb,
-    krijuar_me  timestamptz not null default now()
+    krijuar_me  timestamptz not null default now(),
+    -- Ditari krijohet PAS pjeses 2, ndaj vulen e merr ketu — rregulli "cdo
+    -- ndryshim mban oren" nuk ka perjashtim as per vete ditarin.
+    perditesuar_me timestamptz
 );
 create index if not exists idx_fin_veprimet_user
     on fin_veprimet(user_id, kur desc);
 create index if not exists idx_fin_veprimet_rreshti
     on fin_veprimet(user_id, tabela, rreshti_id);
+
+drop trigger if exists trg_fin_veprimet_perditesuar on fin_veprimet;
+create trigger trg_fin_veprimet_perditesuar
+    before update on fin_veprimet
+    for each row execute function fin_vulos_perditesimin();
 
 alter table fin_veprimet enable row level security;
 
