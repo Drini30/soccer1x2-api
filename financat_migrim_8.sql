@@ -62,19 +62,28 @@ create index if not exists idx_fin_mesazhet_pritje
     on fin_mesazhet(user_id, statusi) where statusi = 'i_ri';
 
 -- ── 3. VULA E PERDITESIMIT EDHE PER TABELAT E REJA ────────────────────────
--- fin_vulos_perditesimin() vjen nga migrimi 7; ketu vetem lidhet me dy
--- tabelat e reja, qe rregulli "cdo ndryshim mban oren" te mos kete perjashtim.
-do $$
-declare
-    t text;
+-- Rregulli "cdo ndryshim mban oren" nuk ka perjashtim. Funksioni vjen nga
+-- migrimi 7, por rishkruhet edhe ketu qe ky skedar te mos varet nga radha.
+--
+-- Pa bllok 'do $$ … $$': dy tabela te njohura nuk kane nevoje per nje cikel,
+-- dhe nje bllok i kopjuar gjysme (pa rreshtin e pare) deshton me nje gabim
+-- sintakse qe nuk thote asgje per shkakun.
+create or replace function fin_vulos_perditesimin() returns trigger as $fn$
 begin
-    foreach t in array array['fin_rezervat', 'fin_mesazhet'] loop
-        execute format('drop trigger if exists trg_%s_perditesuar on %I', t, t);
-        execute format(
-            'create trigger trg_%s_perditesuar before update on %I '
-            'for each row execute function fin_vulos_perditesimin()', t, t);
-    end loop;
-end $$;
+    new.perditesuar_me := now();
+    return new;
+end;
+$fn$ language plpgsql;
+
+drop trigger if exists trg_fin_rezervat_perditesuar on fin_rezervat;
+create trigger trg_fin_rezervat_perditesuar
+    before update on fin_rezervat
+    for each row execute function fin_vulos_perditesimin();
+
+drop trigger if exists trg_fin_mesazhet_perditesuar on fin_mesazhet;
+create trigger trg_fin_mesazhet_perditesuar
+    before update on fin_mesazhet
+    for each row execute function fin_vulos_perditesimin();
 
 alter table fin_rezervat  enable row level security;
 alter table fin_mesazhet  enable row level security;
