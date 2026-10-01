@@ -1935,11 +1935,16 @@ def llogarit_te_liren(g: Dict[str, Any], c: Dict[str, Any], bil: Dict[str, Any],
         if not p.get("aktiv", True) or (p.get("drejtimi") or "dalje") != "dalje":
             continue
         frek = (p.get("frekuenca") or "mujore").lower()
-        if frek not in ("mujore", "javore", "dyjavore"):
+        if frek not in ("mujore", "javore", "dyjavore", "vjetore"):
             continue
         dita = int(_num(p.get("dita_pageses"), 0))
         if dita <= 0:
             continue
+        # Nje shpenzim vjetor nuk eshte mujor, por kur i bie radha KETE muaj
+        # eshte po aq i vertete sa qeraja. Ne muajt e tjere nuk numerohet fare.
+        if frek == "vjetore":
+            if int(_num(p.get("muaji_pageses"), 0)) != sot.month:
+                continue
         dita_e_pageses = _dita_e_muajit(dita, sot.year, sot.month)
         if not (sot <= dita_e_pageses <= deri):
             continue
@@ -1981,6 +1986,66 @@ def llogarit_te_liren(g: Dict[str, Any], c: Dict[str, Any], bil: Dict[str, Any],
                   "planet": lista_planeve, "buxhetet": lista_buxheteve},
         "gjendja": ("kritike" if e_lira < 0 else
                     "e ngushte" if dite and e_lira < likuiditeti * 0.1 else "e qete"),
+    }
+
+
+# Nje muaj matet me 30 dite, jo me gjatesine e vertete te muajit. Nje
+# mesatare ditore qe luhatet nga 28 ne 31 nuk krahasohet dot me ate te muajit
+# te kaluar — dhe pikerisht krahasimi eshte arsyeja pse ekziston.
+DITE_NE_MUAJ = 30.0
+
+
+def rrjedha_ditore(g: Dict[str, Any], c: Dict[str, Any], rrj: Dict[str, Any],
+                   shpenzimet: Dict[str, Any], det: Dict[str, Any]) -> Dict[str, Any]:
+    """Sa hyn dhe sa del ne dite, javë e muaj — dhe sa mbetet.
+
+    Shpenzimet fikse VJETORE nuk mblidhen me ato mujore: nje taksë qe paguhet
+    nje here ne vit nuk eshte nje shpenzim mujor. Hyn ne mesataren ditore e
+    pjesetuar me 12 (pra me 360 dite), sepse ashtu e ndjen vertet xhepi, dhe
+    mbetet e shenuar vecmas qe te dukret sa prej saj eshte.
+    """
+    hyrje_mujore = _num(rrj.get("te_ardhura_totale"))
+    zberthimi_i_daljes = [
+        ("Fikse mujore", _num(shpenzimet.get("fikse_mujore")),
+         f"{shpenzimet.get('nr_fikse_mujore', 0)} zera, cdo muaj"),
+        ("Fikse vjetore", _num(shpenzimet.get("vjetore_ne_muaj")),
+         f"{shpenzimet.get('nr_fikse_vjetore', 0)} zera · "
+         f"{_num(shpenzimet.get('fikse_vjetore')):,.0f}".replace(",", ".")
+         + " ne vit, i bie ne muaj"),
+        ("Te tjera te perseritshme", _num(shpenzimet.get("te_tjera_mujore")),
+         f"{shpenzimet.get('nr_te_tjera', 0)} zera"),
+        ("Keste borxhesh", _num(det.get("kestet_mujore")), "detyrime me afat"),
+        ("Ditore (nga sjellja jote)", _num(shpenzimet.get("ditore_baze")),
+         "mesatarja e transaksioneve reale"),
+    ]
+    dalje_mujore = sum(v for _, v, _ in zberthimi_i_daljes)
+
+    def rrathet(mujore: float) -> Dict[str, float]:
+        ditore = mujore / DITE_NE_MUAJ
+        return {"ditore": _rrum(ditore), "javore": _rrum(ditore * 7),
+                "mujore": _rrum(mujore)}
+
+    hyrje = rrathet(hyrje_mujore)
+    dalje = rrathet(dalje_mujore)
+    bilanci = {k: _rrum(hyrje[k] - dalje[k]) for k in ("ditore", "javore", "mujore")}
+
+    return {
+        "hyrje": hyrje, "dalje": dalje, "bilanci": bilanci,
+        "dite_ne_muaj": DITE_NE_MUAJ,
+        "zberthimi_i_daljes": [
+            {"emri": e, "mujore": _rrum(v), "ditore": _rrum(v / DITE_NE_MUAJ),
+             "shenim": sh}
+            for e, v, sh in zberthimi_i_daljes if abs(v) > 0.005],
+        "zberthimi_i_hyrjes": [
+            {"emri": "Te ardhura te deklaruara",
+             "mujore": _rrum(_num(rrj.get("te_ardhura_deklaruara"))),
+             "ditore": _rrum(_num(rrj.get("te_ardhura_deklaruara")) / DITE_NE_MUAJ),
+             "shenim": "rroga dhe burimet e shenuara"},
+            {"emri": "Plane hyrjesh",
+             "mujore": _rrum(_num(rrj.get("plane_hyrje_mujore"))),
+             "ditore": _rrum(_num(rrj.get("plane_hyrje_mujore")) / DITE_NE_MUAJ),
+             "shenim": "arketime te pritshme te perseritshme"},
+        ],
     }
 
 
@@ -2335,6 +2400,7 @@ def ndertoj_panelin(muaj: int = 12) -> Dict[str, Any]:
         "projeksioni": proj, "skori": skor, "kapaciteti": kap,
         "shpenzimet": shpenzimet,
         "burimet_e_kursimit": burimet_e_kursimit,
+        "rrjedha_ditore": rrjedha_ditore(g, c, rrj, shpenzimet, det),
         "levizjet": levizjet_e_fundit(g, c),
         "veprimet": permbledh_veprimet(g, c),
         "e_lira": e_lira,
@@ -3290,6 +3356,33 @@ def portofoli_im(g: Optional[Dict[str, Any]] = None,
     return e_re
 
 
+def kontrollo_totalin(g: Dict[str, Any], c: Dict[str, Any],
+                      dalja_ne_baze: float) -> None:
+    """Portofoli guxon te shkoje ne minus; gjendja totale jo.
+
+    Rregulli vjen nga realiteti, jo nga programi: portofoli eshte vetem nje
+    ndarje e brendshme — kur ai shkon ne minus, do te thote qe ke marre me
+    shume nga xhepi se sa kishe vene aty, dhe parat jane ende diku tjeter.
+    Por kur TOTALI i likuiditetit shkon nen zero, do te thote qe po shenon
+    para qe nuk ekzistojne askund. Kjo nuk eshte nje gjendje, eshte nje gabim
+    i te dhenave — dhe duhet ndalur aty ku behet, jo raportuar me vone.
+    """
+    bil = llogarit_bilancet(g, c)
+    e_tanishme = _num(bil.get("likuiditet"))
+    pas = e_tanishme - _num(dalja_ne_baze)
+    if pas >= -0.005:
+        return
+    mon = c["monedha_baze"]
+    raise HTTPException(400,
+        f"Gjendja totale nuk shkon dot ne minus. Ke "
+        f"{e_tanishme:,.0f} {mon} ne te gjitha llogarite; kjo levizje do ta "
+        f"conte ne {pas:,.0f} {mon}. "
+        f"Portofoli mund te jete ne minus, por vetem derisa totali e mbulon. "
+        f"Nese parat ekzistojne vertet, shenoji te Regjistri → Llogarite "
+        f"(bilanci fillestar), ose rregullo levizjen qe e coi totalin ketu."
+        .replace(",", "."))
+
+
 def ngjyra_e_portofolit(gjendja: float, pragu: float) -> str:
     """Jeshile sa kohe ka; portokalli kur afrohet; e kuqe ne zero ose minus."""
     if gjendja <= 0:
@@ -3458,7 +3551,9 @@ def portofoli_urdher(trupi: dict = Body(...),
                          p["monedha"], c, llogaria, p)
         return dalja
 
-    # Shpenzim: i zbritet portofolit, dhe asgje tjeter nuk preket.
+    # Shpenzim: i zbritet portofolit, dhe asgje tjeter nuk preket — por jo
+    # nese totali i llogarive do te binte nen zero.
+    kontrollo_totalin(g, c, kthe(p["shuma"], p["monedha"], c))
     vula = vula_e_kohes(p, c)
     trx = {
         "user_id": USER_ID, "data": vula[:10], "kryer_me": vula,
