@@ -221,6 +221,24 @@ vende, sepse nje shifer qe levize pa u pare nuk sherben:
 - **Levizja e radhes** — cfare pritet te levize me pare, per sa dite, sa eshte
   dhe a eshte fikse apo e ndryshueshme.
 
+### Shiritat INCOMING / OUTCOMING
+Ne krye te panelit, dy shirita te zinj dhe nje kuadrat me tri kolona.
+
+Mesataret ditore llogariten me **muajin 30-ditesh**, jo me gjatesine e vertete
+te muajit: nje mesatare qe luhatet nga 28 ne 31 nuk krahasohet dot me ate te
+muajit te kaluar — dhe pikerisht krahasimi eshte arsyeja pse ekziston.
+
+- **INCOMING** (jeshile) — te ardhurat e deklaruara plus planet e hyrjeve.
+- **OUTCOMING** (e kuqe) — fikse mujore + fikse vjetore/12 + te tjera te
+  perseritshme + keste borxhesh + mesatarja ditore nga transaksionet reale.
+- **Kuadrati** — bilanci (hyrje − dalje) per dite, jave dhe muaj.
+
+Shpenzimet fikse **vjetore nuk mblidhen me ato mujore**: nje takse qe paguhet
+nje here ne vit nuk eshte shpenzim mujor. Hyn ne mesataren e pjesetuar me 12,
+sepse ashtu e ndjen vertet xhepi, por mbetet rresht me vete ne zberthim me
+shumen vjetore te shenuar. Te "e lira per te shpenzuar" nje shpenzim vjetor
+numerohet vetem kur i bie radha brenda horizontit — jo cdo muaj.
+
 ### Portofoli — xhepi
 Portofoli eshte paraja e ndare menjane per shpenzimet e perditshme. Nuk eshte
 tabele e re: eshte nje llogari me lloj `portofol`, qe te trashegoje pa asnje
@@ -235,6 +253,11 @@ Faqja ka tre pjese: **shuma ne krye**, **biseda ne mes**, **shkrimi ne fund**.
 - Zbritet **vetem nga portofoli**. Asnje llogari tjeter nuk preket.
 - Nese portofoli nuk perballon, shkon **ne minus**. Minusi nuk fshihet: eshte
   informacioni kryesor, sepse te thote sa ke shpenzuar mbi ate qe kishe ndare.
+- Por **gjendja totale nuk shkon dot ne minus**. Portofoli eshte vetem nje
+  ndarje e brendshme: kur ai shkon nen zero, parat jane ende diku tjeter. Kur
+  totali i likuiditetit do te binte nen zero, shpenzimi ndalohet — ajo nuk
+  eshte nje gjendje, eshte nje gabim i te dhenave, dhe duhet ndalur aty ku
+  behet, jo raportuar me vone.
 - **Rimbushja** merr nje shume nga nje llogari qe zgjedh ti. Eshte transferim,
   jo shpenzim — totali yt nuk ndryshon, vetem vendi ku rri paraja.
 - Ngjyra e shumes: **jeshile** sa kohe eshte mbi pragun, **portokalli** kur bie
