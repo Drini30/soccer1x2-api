@@ -1,6 +1,6 @@
 # Zinxhiri i llogaritjes — çdo hallkë, çdo vlerë, çdo rol
 
-Gjendja më 24 shtator 2026. Çdo hallkë është aty ku e gjen te `soccer_api.py`,
+Gjendja më 24 shtator 2026, rishikuar më 4 tetor. Çdo hallkë është aty ku e gjen te `soccer_api.py`,
 në funksionin `analizo_ndeshjen_premium_master()` përveç kur shënohet ndryshe.
 
 Tri lloje vlerash:
@@ -103,7 +103,7 @@ Në kod të dyja shkruhen si `XG_FLOOR + p × (tavan − XG_FLOOR)`. Tavani i tr
 
 ## HALLKA 3 — hibridi me XGBoost
 
-`llogarit_xg_hybrid()`, rreshti 5330.
+`llogarit_xg_hybrid()`, rreshti 5324.
 
 Nëse modelet janë të ngarkuara, xG-ja matematike përzihet me parashikimin e
 XGBoost-it. **`W_XGB = 0.55`** *(K)* — pra XGBoost peshon pak më shumë se
@@ -218,6 +218,13 @@ _xg2_norm = A_AWAY + B_AWAY × xg_2
 
 ⚠️ **Pasojë e matur:** `training_data.xg_1` nuk është λ që simulohet. Çdo
 analizë që e trajton si të tillë mat gjënë e gabuar — gabim që e kemi bërë.
+Shembull: xG 1.30/1.30 me P(Over 2.5) = 0.45 simulohet si **1.279/1.348** —
+mysafiri del përpara, sepse pjerrësitë live janë 1.15 (vendas) dhe 0.87
+(mysafir). Për xG të barabarta nën ~1.56, λ e mysafirit del gjithmonë më e madhe.
+
+⚠️ **E dyta, më e rëndë:** `training_data` vjen nga gjenerimi i **FUNDIT** para
+fillimit, ndërsa skori i publikuar nga i **PARI**. Shih seksionin *Gjenerimet*
+në fund.
 
 ---
 
@@ -246,7 +253,7 @@ drejtimi i skorit. E ndezur asnjëherë deri sot.
 
 ## HALLKA 10 — Monte Carlo
 
-`simulim_monte_carlo_v2()`, rreshti 5987.
+`simulim_monte_carlo_v2()`, rreshti 6097.
 
 **50,000 simulime** *(E)*. Për çdo simulim:
 
@@ -260,8 +267,10 @@ Ai shtresim — Poisson me λ që vetë luhatet — jep **mbi-shpërndarje**, pr
 më të trashë se Poisson-i i thjeshtë. `kaos_lige` vjen nga volatiliteti i të dy
 ekipeve dhe nga liga.
 
-**Fara** është `sha256(id_ndeshja)` — pra **e njëjta ndeshje jep gjithmonë të
-njëjtin rezultat**. Pa rastësi mes rigjenerimeve.
+**Fara** është `sha256(id_ndeshja)` — pra **me të njëjtat inpute** e njëjta
+ndeshje jep të njëjtin rezultat. Por kuotat, lëndimet, forma dhe `model_config`
+lëvizin mes rigjenerimeve, dhe një λ që ndryshon edhe në shifrën e katërt jep
+një realizim tjetër të simulimit.
 
 **`DIST_TOP_N = 40`** *(E)* — sa skore ruhen te `dist_gola`. Ishte 15, dhe me 15
 ruhej vetëm **89.5%** e probabilitetit: në **9.1%** të ndeshjeve skori real kishte
@@ -298,10 +307,20 @@ Merren **5 skoret më të mundshme** nga matrica, pastaj renditen me:
 pikët = frekuenca × 1 / (1 + |total_skori − total_pritur| × AFF)
 ```
 
-**`AFF_FIKS = 0.15`** *(K)*.
+**`AFF_FIKS = 0.15`** *(K)*. `total_pritur = λ1 + λ2` **pas** blendit të tregut.
 
 **Roli:** ndëshkon skoret larg totalit të pritur. Me λ≈2.8, një `1-1` (total 2)
 ndëshkohet kundrejt `2-1` (total 3).
+
+**Fuqia e saj është e kufizuar:** mes dy skoreve me total që ndryshon me 1, AFF
+përmbys një diferencë frekuence **deri në 15%**; me total që ndryshon me 2,
+deri në **30%**. Kurrë më shumë. Dhe nuk zgjedh dot asgjë jashtë top-5.
+
+> **Simulim i plotë mbi 2,401 çifte λ:** një skor me **4+ gola** hyn në top-5
+> vetëm kur λ1+λ2 ≥ **3.10**, dhe publikohet vetëm kur λ1+λ2 ≥ **3.85**
+> (ndeshjet e balancuara: ≥ **4.65**). λ jonë p95 është **3.46**. Pra totali
+> ≥ 4 është mekanikisht i paarritshëm për ~97% të ndeshjeve — jo zgjedhje e
+> modelit, por pasojë e "zgjidh brenda top-5".
 
 > **I matur:** kjo hallkë **nuk e zgjedh modën**. Moda e λ-ve tona do të ishte
 > `1-1` në 46.9% të ndeshjeve; ne publikojmë `1-1` në 19.3% dhe `2-1` në 26.0%.
@@ -327,13 +346,26 @@ ndryshe                              →  barazimi lejohet
 > skor dhe +2.15pp drejtim njëkohësisht.**
 
 Mbrojtje: nëse asnjë nga top-5 s'e plotëson drejtimin, lista mbetet e paprekur.
+⚠️ Atëherë mund të dalë barazim, dhe draw→LEAN (hallka 14) e kthen drejtimin
+sipas λ-së, jo sipas tregut — pra **edhe kundër** favoritit të tregut. Rast i
+rrallë: kërkon që tregu dhe λ të mos pajtohen fare.
 
 ---
 
 ## HALLKA 14 — draw→LEAN
 
-Nëse skori del barazim **dhe** `|xg1 − xg2| ≥ 0.30`, zëvendësohet me skorin
-jo-barazim të rrumbullakosur nga xG — **pa +1**, që totali të mos fryhet.
+Nëse skori del barazim **dhe** `|λ1 − λ2| ≥ 0.30`, zëvendësohet me λ-të e
+rrumbullakosura (gjysma lart). Nëse edhe ato dalin barazim, **anës me λ më të
+madhe i shtohet +1** (vendasit kur janë të barabarta). Komenti në kod thotë
+"PA +1" — kodi e bën.
+
+Shembuj: λ 1.55/1.15 → `2-1`; λ 1.45/1.10 → `1-1` → **+1** → `2-1`;
+λ 0.60/0.95 → `1-1` → **+1** → `1-2` (nga moda `0-0` me 23%, te një skor me
+5.5% që as s'është në top-5).
+
+Përdor λ-të e **normalizuara** (pas tregut), jo `training_data.xg_*`. Prandaj
+një analizë e LEAN-it mbi `xg_1/xg_2` i klasifikon gabim ndeshjet në të dy
+drejtimet.
 
 **`PRAG_LEAN = 0.30`** *(E)*. Fiket me 99.
 
@@ -424,7 +456,7 @@ p_kalibruar = 1 / (1 + e^(−(A + B × logit(p))))
 
 ## HALLKA 19 — `best_bet`
 
-`_best_bet_value()`, rreshti 5527.
+`_best_bet_value()`, rreshti 5519.
 
 ```
 aftësia = p_kalibruar − norma_bazë(tregu)
@@ -451,7 +483,7 @@ Konsensus mes modelit dhe tregut, plus forma. `BES_W_SINJAL = 0.75`,
 
 ## HALLKA 21 — filtri PPM
 
-`_gjenero_pf()`, rreshti 4103. **Jashtë zinxhirit** — zgjedh cilat ndeshje
+`_gjenero_pf()`, rreshti 4143. **Jashtë zinxhirit** — zgjedh cilat ndeshje
 publikohen si premium.
 
 1. Renditja mbi **gjithë ditën**, edhe ndeshjet e mbaruara
@@ -506,3 +538,44 @@ e drejtimit. I njëjti fqinj e gjen realitetin vetëm në **6.2%**.
 | totali real | 0.00 | 3.00 | 6.00 | **1.773** |
 
 λ i dallon ndeshjet. **Zgjedhja e modës e vret atë dallim.**
+
+---
+
+# Gjenerimet — çfarë ngrihet dhe çfarë mbishkruhet
+
+Gjetur më 4 tetor. Ndryshon mënyrën si duhen lexuar **të gjitha** analizat
+"ndeshje për ndeshje" të deritanishme.
+
+Çdo ndeshje VIP **rigjenerohet** çdo ~30 min (`HEAVY_GEN_INTERVAL`), nga
+gjenerimi i parë (24–48 orë para, ose më herët nëse dikush hap atë datë) deri
+në fillim të ndeshjes. Çdo gjenerim e kalon gjithë zinxhirin nga e para me
+kuotat e asaj kohe. Pastaj `task_ruaj_skedinen_ne_db` bën këtë:
+
+| fusha | cili gjenerim mbetet |
+|---|---|
+| `rezultati_sakt`, `dist_gola`, `koef_rez_sakt`, `parashikimi_origjinal_ai`, hash-i PF | i **PARI** (ngrihen) |
+| `training_data` (bashkë me `xg_1`, `build`), `tregjet`, `best_bet`, `besueshmeria`, `analiza_custom`, `is_value`, `is_premium` | i **FUNDIT** (mbishkruhen) |
+
+Në FT, arkivi kopjon një herë një rresht që i **përzien**: `parashikimi` dhe
+`dist_gola` nga i pari; `training_data`, `tregjet_full`, `prob_1/x/2` dhe
+`parashikimi_ht` nga i fundit.
+
+**Pasojat:**
+
+1. Çdo analizë që vendos `xg_1` krah skorit të publikuar mund të krahasojë dy
+   gjenerime të ndryshme. Kur kuotat lëvizin, skori shpesh mbetet i njëjti por
+   λ lëviz gjithmonë.
+2. `training_data.build` është vula e gjenerimit të **fundit**. Pyetja "a u
+   gjenerua me modelin e ri?" merr përgjigje të gabuar për çdo ndeshje që
+   kaloi mes dy deploy-eve.
+3. Faqja (`/api/skedina`) e merr skorin nga cache-i i gjenerimit të **fundit**,
+   kurse arkivi, PF-ja dhe B2B notojnë skorin e **ngrirë**. Një vizitor mund të
+   shohë një skor dhe historiku ta notojë një tjetër.
+4. `is_premium` ka dy shkrues: `_gjenero_pf` (top-10 PPM) dhe çdo rigjenerim
+   (top-3 sipas besueshmërisë, `VALUE_FILTER_ON = 0`). Grupi "premium" del
+   10 + deri në ~3 ndeshje që filtri PPM s'i zgjodhi. PPM-ja e pastër njihet
+   nga hash-i te `provably_fair`.
+
+**Matja:** `sql/gjenerimet/1_sa_rreshta_perziejne_gjenerime.sql` (sa rreshta
+arkivi janë të përzier, sipas muajve) dhe `sql/filtri/6_ppm_sipas_hashit.sql`
+(testi i filtrit PPM pa ndotjen e `is_premium`).

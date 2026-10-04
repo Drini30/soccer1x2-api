@@ -1,0 +1,47 @@
+==============================================================================
+T0  py_compile
+  OK /home/user/soccer1x2-api/soccer_api.py
+  OK /tmp/claude-0/-home-user-soccer1x2-api/87feb7fc-081d-50cc-a480-29f8ae9ad12a/scratchpad/lambda/soccer_api.patched.py
+⚠️ KUJDES: env vars mungojnë → ['API_SPORTS_KEY', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_KEY']. Vendosi te Render → Environment.
+⚠️ Moduli i financave nuk u ngarkua (No module named 'financat') — parashikimet vazhdojne normalisht.
+⚠️ KUJDES: env vars mungojnë → ['API_SPORTS_KEY', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_KEY']. Vendosi te Render → Environment.
+⚠️ Moduli i financave nuk u ngarkua (No module named 'financat') — parashikimet vazhdojne normalisht.
+  nyje te pa-ekzekutueshme (te njejtat ne te dy?): 0 / 0 PO
+  BUILD orig: 2026-09-18-premium-nje-kuptim | patch: 2026-10-03-lambda-e-simuluar
+==============================================================================
+T1  simulim_monte_carlo_v2: origjinali vs patch (pa/me gjurma)
+  10080 raste x 3 thirrje; deshtime deri tani: 0
+  mbulimi i degeve: {'lean': 1320, 'lean_plus1': 1080, 'mbrojtja': 840, 'cs': 36, 'drejtimi_None': 3360, 'drejtimi_1': 4800, 'drejtimi_2': 1920, 'burimi_mc': 3360, 'burimi_treg': 5376, 'burimi_treg_korr': 1344}
+  shembull gjurme: {"top5": [["1-1", 0.13651, 0.12477], ["1-2", 0.07829, 0.07415], ["0-1", 0.08387, 0.06742], ["0-0", 0.09186, 0.0659], ["1-0", 0.07953, 0.06393]], "p_mc": [0.3389, 0.2893, 0.3718], "drejtimi": null, "burimi": "treg", "mbrojtja": false, "rez_fit": "1-1", "lean": false, "lean_plus1": false, "cs": false, "rez_sim": "1-1"}
+==============================================================================
+T2  analizo_ndeshjen_premium_master: origjinali vs patch
+  raste: 290, identike + gjurme e rregullt: 290
+  mbulimi: {'ok': 290, 'fb': 5, 'lean': 18, 'plus1': 6, 'boost': 15, 'pa_treg': 70, 'mbrojtja': 0, 'derbi': 30, 'replay_dist': 290, 'replay_rez': 290, 'replay_top5': 290, 'shenja_ok': 290}
+  devijimi max i rindertimit lam nga xg_1(3 shifra)+A/B+shk_treg: 0.000157
+  shembull: xg_1/xg_2 = 1.693/0.692  ->  gjurma_db =
+    {"lam_1": 1.6911172705287567, "lam_2": 0.8424994100867272, "lam_n_1": 1.8043, "lam_n_2": 0.8989, "xg_norm": {"a_1": -0.1438, "b_1": 1.1505, "a_2": 0.2989, "b_2": 0.8666}, "lam_treg": 2.364, "shk_treg": 0.9373, "w_treg": 0.5, "boost": 0.0, "aff": 0.15, "gjeneruar_ne": "2026-10-03T21:14:04+00:00", "zgjedhja": {"top5": [["1-1", 0.12052, 0.11158], ["2-0", 0.11126, 0.10302], ["1-0", 0.11944, 0.0971], ["2-1", 0.08846, 0.08268], ["0-0", 0.10016, 0.07258]], "p_mc": [0.5569, 0.2654, 0.1777], "drejtimi": "1", "burimi": "treg", "mbrojtja": false, "rez_fit": "2-0", "lean": false, "lean_plus1": false, "cs": false, "rez_sim": "2-0", "fb": false, "rez": "2-0", "prob": 0.1113, "dist_shenja": {"1-1": 6026, "2-0": 5563, "1-0": 5972, "2-1": 4423, "0-0": 5008}}}
+  madhesia e gjurmes ne JSON: ~752 bajte
+  shembulli i komentit: xg 1.30/1.30, P(O2.5)=0.45 -> λ 1.279/1.348 (lam_treg=2.476)
+==============================================================================
+T3  task_ruaj_skedinen_ne_db: payload-i i DB-se dhe cache-i
+  rresht i ri: payload identik pervec training_data (+12 celesa); rezultati_sakt ne payload: True; cache i paprekur: PO
+  rresht i ngrire: payload identik pervec training_data (+12 celesa); rezultati_sakt ne payload: False; cache i paprekur: PO
+  perparesia: nje gjurme me 'xg_1' s'e mbishkruan xg_1 e training_data: PO
+==============================================================================
+T4  re-simulim me lam_1/lam_2 te ruajtura (4 shifra) kundrejt λ te plote
+  λ e rrumbullakuar 4 shifra: skori i njejte 300/300; dist_gola identike 49/300; diferenca max ne nje qelize: 128 nga 50000
+  (prandaj lam_1/lam_2 ruhen te plota; riprodhimi i sakte matet te T2: replay_dist/replay_rez)
+==============================================================================
+T5  dy gjenerime me task_ruaj te VERTETE: gjenerimi 1 ngrin skorin/dist_gola/koef,
+    gjenerimi 2 (kuota te levizura ose identike) rishkruan training_data
+   {"ndeshje": 160, "inpute_identike": 40, "gjurme_e_publikimit_e_vertete": 40, "shenja_pranon": 40, "shenja_pranim_i_gabuar": 0, "shenja_refuzim_i_gabuar": 0, "skori_pranon": 152, "skori_pranim_i_gabuar": 112, "skori_ndryshoi_ne_gjen2": 8, "ngrirja_e_shkelur": 0}
+   prova e vjeter (vetem skori) do t'i pranonte gabimisht 112 rreshta; |Δλ1|+|Δλ2| mes tyre: mesorja 0.0273, max 0.0532
+  fixture_2gjen.sql: 173 rreshta. PRITET nga kontrolli_lambda.sql: rreshta_pas_deploy=169, me_lam=164, gjurma_e_publikimit=40, gjurma_e_mevonshme=124
+  PRITET nga sql/filtri/3 ndeshje_gjithsej: origjinali=8, me filtri_build.patch=170
+==============================================================================
+T6  AFF NaN (model_config) + gjurme jo-json: rreshti ruhet gjithmone
+  25 ndeshje me AFF NaN: output identik me origjinalin; gjurme json e paster 25/25; piket AFF -> null 25/25; rreshta te ruajtur 25/25
+  gjurme e prishur (NaN): rreshti ruhet, payload identik me origjinalin: PO
+  gjurme e prishur (numpy): rreshti ruhet, payload identik me origjinalin: PO
+==============================================================================
+REZULTATI: TE GJITHA KONTROLLET KALUAN

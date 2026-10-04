@@ -1,0 +1,285 @@
+--- a/soccer_api.py
++++ b/soccer_api.py
+@@ -130,7 +130,16 @@
+ # Etiketa e ndërtimit — shfaqet te /api/status dhe është mënyra e vetme e shpejtë
+ # për të konfirmuar se një deploy manual te Render e kapi vërtet kodin e ri.
+ # NDRYSHOJE me çdo dislokim që prek sjelljen, përndryshe s'thotë asgjë.
+-BUILD = "2026-09-18-premium-nje-kuptim"
++# 2026-10-03: training_data merr λ-n qe SIMULOHET (lam_1/lam_2) + gjurmen e zgjedhjes.
++# Asnje output i publikuar s'ndryshon; vula ndryshon qe rreshtat me celesat e rinj
++# te dallohen nga `build` (vendos daten e dites kur behet deploy-i, jo kete).
++# KUJDES, sa here ndryshon kjo vule: training_data.build rishkruhet ne CDO rigjenerim,
++# kurse sql/filtri/2_qe_nga_rregullimi.sql dhe 3_totali_deri_tani.sql numerojne vetem
++# vulat LIKE '2026-09-1%' + listen e tyre `IN (...)`. Nje vule qe s'futet ne ate liste
++# i nxjerr jashte testit Fisher te gjitha ndeshjet e reja (edhe ato me skor te ngrire nga
++# kodi i vjeter) PA ASNJE GABIM. Futet VETEM vula qe s'e ndryshon zgjedhjen e skorit.
++# Kontrolli para cdo deploy-i: grep -rn "training_data->>'build'" sql/
++BUILD = "2026-10-03-lambda-e-simuluar"
+ 
+ def _env_int(emri: str, parazgjedhje: int) -> int:
+     """Numer i plote nga env-var, i sigurt ndaj vlerave te prishura."""
+@@ -6102,12 +6111,15 @@
+     rho: float = RHO_DC,
+     seed: int = None,
+     aff: float = 0.5,
+-    mkt_1x2=None
++    mkt_1x2=None,
++    gjurma: dict = None
+ ) -> tuple:
+     """
+     Monte Carlo vectorized me numpy — 50,000 simulime në ~60ms.
+     Zëvendëson: loop Python me 10,000 iteracione (~800ms).
+     Kthen: (rezultati_sakt, prob_max, rezultatet_freq, prob_1x2)
++    `gjurma` (opsional): dict qe mbushet me hapat e zgjedhjes. Vetem lexon — kthimi,
++    RNG-ja dhe tregjet jane identike me ose pa te.
+     """
+     if is_derbi:
+         kaos_factor *= 1.15
+@@ -6183,11 +6195,12 @@
+         _score = _freq * (1.0 / (1.0 + _difft * aff))
+         kandidatet.append((_i, _j, _freq, _score))
+     kandidatet.sort(key=lambda x: x[3], reverse=True)
++    _top5_aff = kandidatet                 # gjurma: top-5 sipas AFF, PARA filtrit (lista s'ndryshohet me pas)
+     # ── MODULI I FITUESIT: skori respekton favoritin e QARTE (shih lart). ──
+     # NUK prek frekuencat/Dixon-Coles; vetem filtron kandidatet kur ka favorit te qarte.
+     # Burimi i vendimit eshte tregu i devigosur (varianti B), me rikthim te MC-se
+     # kur ndeshja s'ka kuota 1X2.
+-    _drejtimi, _ = _moduli_i_fituesit(prob_1x2, mkt_1x2)
++    _drejtimi, _burimi_fit = _moduli_i_fituesit(prob_1x2, mkt_1x2)
+     if _drejtimi == "1":
+         _fkand = [_k for _k in kandidatet if _k[0] > _k[1]]   # favorit vendas -> vetem fitore vendase
+     elif _drejtimi == "2":
+@@ -6197,6 +6210,8 @@
+     if _fkand:
+         kandidatet = _fkand                                    # mbrojtje: mos zbraz listen
+     rez_g1, rez_g2, freq_zgjedhur, _ = kandidatet[0]
++    _rez_fit = f"{rez_g1}-{rez_g2}"        # gjurma: skori pas AFF + filtrit, PARA LEAN/CS
++    _lean_gj = None                        # gjurma: None = LEAN s'veproi; True = +1 i favoritit
+     # ── RREGULLI DRAW→LEAN (i kalibruar): kur skori del BARAZIM dhe ka lean të qartë në xG
+     #    (|xg1-xg2| >= PRAG_LEAN), zëvendëso me skorin jo-barazim të rrumbullakosur nga xG — PA +1
+     #    (që totali të mos fryhet). Ndeshjet vërtet të balancuara e mbajnë barazimin.
+@@ -6204,6 +6219,7 @@
+     if (rez_g1 == rez_g2 and abs(xg_1 - xg_2) >= PRAG_LEAN):
+         _rhu = lambda _x: int(_x + 0.5)   # round half-up
+         _a1 = _rhu(xg_1); _a2 = _rhu(xg_2)
++        _lean_gj = (_a1 == _a2)
+         if _a1 == _a2:                     # rrumbullakosja prapë barazim -> favoritit +1
+             if xg_1 >= xg_2:
+                 _a1 += 1
+@@ -6216,6 +6232,7 @@
+     #    xg_1/xg_2 këtu janë vlerat e NORMALIZUARA që përdor simulimi (jo ato të loguara).
+     #    MBROJTJE: kërkohet fituesi >= 2 gola, që konvertimi të MOS e kthejë fitoren në barazim
+     #    (1-0 → 1-1 do të prishte rregullin e fituesit; prova jonë mbulon vetëm X>=2).
++    _rez_para_cs = (rez_g1, rez_g2)        # gjurma
+     if CS_LEAN_XG < 90.0:
+         if rez_g2 == 0 and rez_g1 >= 2 and xg_2 >= CS_LEAN_XG:
+             rez_g2 = 1                                   # X-0 → X-1 (mysafiri shënon)
+@@ -6225,6 +6242,27 @@
+             freq_zgjedhur = float(H[rez_g1, rez_g2])
+     rez_str  = f"{rez_g1}-{rez_g2}"
+     prob_max = float(freq_zgjedhur)
++    # ── GJURMA E ZGJEDHJES (vetem kur thirresi jep `gjurma`) ──
++    # Skori i publikuar e fsheh rrugen: nje 2-1 mund te vije nga AFF-ja, nga filtri i
++    # fituesit ose nga +1 i LEAN-it — tri shkaqe te ndryshme qe s'dallohen me pas.
++    # top5 = [skori, P e qelizes pas Dixon-Coles, piket e AFF-se], renditur sipas AFF.
++    # p_mc = 1X2 e PASTER e simulimit (training_data.prob_1x2_mc eshte e perzier 35% me tregun).
++    if gjurma is not None:
++        def _f5(_x):
++            # NaN -> null: me AFF NaN (model_config/env) piket e AFF-se dalin NaN, dhe nje NaN
++            # ne json do ta rrezonte gjithe rreshtin te task_ruaj (origjinali e ruan).
++            _x = float(_x)
++            return round(_x, 5) if math.isfinite(_x) else None
++        gjurma.update({
++            "top5": [[f"{_k[0]}-{_k[1]}", _f5(_k[2]), _f5(_k[3])] for _k in _top5_aff],
++            "p_mc": [prob_1x2["p1"], prob_1x2["px"], prob_1x2["p2"]],
++            "drejtimi": _drejtimi, "burimi": _burimi_fit,
++            "mbrojtja": bool(not _fkand),          # filtri e zbrazi listen -> u mbajt lista e plote
++            "rez_fit": _rez_fit,
++            "lean": _lean_gj is not None, "lean_plus1": bool(_lean_gj),
++            "cs": (rez_g1, rez_g2) != _rez_para_cs,
++            "rez_sim": rez_str,
++        })
+ 
+     # ── TREGJET nga matrica (Dixon-Coles e perfshire) ──
+     _tot = _ii + _jj
+@@ -6607,13 +6645,20 @@
+     _seed_ndeshja = int(hashlib.sha256(str(id_ndeshja).encode()).hexdigest()[:8], 16)
+     # ── NORMALIZIMI I xG (regresion A + B*xG): hiq bias-in sistematik. ──
+     # Perdoret VETEM per perzgjedhjen e skorit; xg_1/xg_2 origjinale ruhen per logim/tregje.
+-    _xg1_norm = float(np.clip(_konf("XG_NORM_A_HOME", XG_NORM_A_HOME)
+-                              + _konf("XG_NORM_B_HOME", XG_NORM_B_HOME) * xg_1, XG_FLOOR, 5.00))
+-    _xg2_norm = float(np.clip(_konf("XG_NORM_A_AWAY", XG_NORM_A_AWAY)
+-                              + _konf("XG_NORM_B_AWAY", XG_NORM_B_AWAY) * xg_2, XG_FLOOR, 5.00))
++    # A/B lexohen ne variabla (po ato 4 thirrje _konf, ne po ate radhe): autokalibrimi i
++    # rishkruan ne vend dhe model_config s'mban histori, ndaj pa i ruajtur per ndeshje
++    # λ e nje rreshti te vjeter s'rindertohet dot (kalimi i 19/09 e leviz ~0.2 gola).
++    _xgn_a1 = _konf("XG_NORM_A_HOME", XG_NORM_A_HOME)
++    _xgn_b1 = _konf("XG_NORM_B_HOME", XG_NORM_B_HOME)
++    _xgn_a2 = _konf("XG_NORM_A_AWAY", XG_NORM_A_AWAY)
++    _xgn_b2 = _konf("XG_NORM_B_AWAY", XG_NORM_B_AWAY)
++    _xg1_norm = float(np.clip(_xgn_a1 + _xgn_b1 * xg_1, XG_FLOOR, 5.00))
++    _xg2_norm = float(np.clip(_xgn_a2 + _xgn_b2 * xg_2, XG_FLOOR, 5.00))
++    _lam_n_1, _lam_n_2 = _xg1_norm, _xg2_norm      # gjurma: λ pas XG_NORM, PARA tregut
+     # ── SINJALI I TREGUT: ri-syno totalin e skorit drejt asaj qe pret TREGU (odds O/U). ──
+     # Kjo fut VARIACIONIN: kur tregu pret shume gola -> skori behet 3-0/2-1 ne vend te 2-0.
+     # Rishkallezon te dyja xG me te njejtin faktor -> DREJTIMI (raporti) s'ndryshon.
++    _tot_mkt = _shk_mkt = None                     # gjurma: None = pa O/U ose blendi s'u aplikua
+     if MKT_TOTAL_W > 0.0 and _ou_o and _ou_u:
+         try:
+             _p_ov_sk = (1.0 / float(_ou_o)) / (1.0 / float(_ou_o) + 1.0 / float(_ou_u))
+@@ -6636,17 +6681,21 @@
+     # ── BOOST MYSAFIRI (formë): mysafiri me formë më të mirë se vendasi -> zhvendos xG-në
+     #    drejt tij PËR SKORIN. ZERO-SHUMË: +b/2 te mysafiri, -b/2 te vendasi, që totali i
+     #    kalibruar (dhe bashkë me të çdo treg O/U) të mbetet i paprekur. Fikur si default. ──
++    _boost_apl = False                             # gjurma
+     try:
+         _boost = _konf("BOOST_MYSAFIR", BOOST_MYSAFIR)
+         if _boost > 0.0 and float(forma_2.get("piket_forma", 7.0)) > float(forma_1.get("piket_forma", 7.0)):
+             _xg2_norm = float(np.clip(_xg2_norm + _boost / 2.0, XG_FLOOR, 5.00))
+             _xg1_norm = float(np.clip(_xg1_norm - _boost / 2.0, XG_FLOOR, 5.00))
++            _boost_apl = True
+     except Exception:
+         pass
++    _gj_sim = {}                                   # gjurma: e mbush simulimi (top-5, fituesi, LEAN)
+     rez_sakt, prob_rez_sakt, rezultatet_freq, prob_1x2_mc, tregjet_mc = simulim_monte_carlo_v2(
+         _xg1_norm, _xg2_norm, kaosi_liges, is_derbi, iteracione=MC_ITERACIONE,
+         seed=_seed_ndeshja, aff=_aff_dyn,
+-        mkt_1x2=((p1_real, px_real, p2_real) if None not in (p1_real, px_real, p2_real) else None)
++        mkt_1x2=((p1_real, px_real, p2_real) if None not in (p1_real, px_real, p2_real) else None),
++        gjurma=_gj_sim
+     )
+ 
+     # ── BLEND FINAL I 1X2 ME TREGUN ──
+@@ -6952,6 +7001,63 @@
+                 "koef": round(1.0 / _best_p, 2) if _best_p > 0 else None}
+     best_bet["margjina"] = _marg
+ 
++    # ── GJURMA E λ-s QE SIMULOHET + E ZGJEDHJES (shkon VETEM ne predictions.training_data) ──
++    # training_data.xg_1/xg_2 merren PARA XG_NORM dhe PARA blendit me totalin O/U, pra
++    # NUK jane λ e simuluar: me A/B live, xg 1.30/1.30 me P(O2.5)=0.45 simulohet
++    # 1.279/1.348 (mysafiri del me i forte). Analizat qe i moren si λ maten gjene tjeter.
++    # xg_1/xg_2 MBETEN te pandryshuara: _kalibro_nga_arkivi regreson mbi to, dhe po te
++    # ishin pas A/B kalibrimi do te ushqente veten.
++    # PSE jo te payload-i i /api/skedina: _fshih_premium s'e heq training_data, dhe
++    # zgjedhja.rez/top5 do ta zbulonin skorin premium para ndeshjes. Ndaj kalon si
++    # `gjurma_db` dhe bashkohet vetem te task_ruaj_skedinen_ne_db.
++    # PSE `dist_shenja`: training_data rishkruhet ne cdo rigjenerim deri ne fillim (s'eshte
++    # te FUSHA_NGRIRA), ndersa rezultati_sakt, dist_gola dhe koef_rez_sakt ngrihen nga
++    # gjenerimi i PARE. Skori i njejte NUK e provon gjenerimin: kur kuotat levizin pak, λ
++    # ndryshon ndersa skori modal zakonisht mbetet. Gjurma i perket skorit te publikuar
++    # VETEM kur zgjedhja.rez = rezultati_sakt DHE dist_gola e ngrire i permban numrat e
++    # dist_shenja (SQL: dist_gola::jsonb @> (training_data->'zgjedhja'->'dist_shenja'), me kllapa);
++    # perndryshe eshte gjurma e nje gjenerimi te mevonshem (λ e fundit para fillimit).
++    # E njejta prove vlen ne arkiv_rezultatesh (dist_gola + parashikimi kopjohen te ngrira).
++    def _rgj(v, n=4):
++        # Vetem float i paster: NaN/inf ose tip numpy e rrezojne json-in, dhe bare-except-i
++        # i task_ruaj e humb NE HESHTJE gjithe rreshtin (edhe ngrirjen e skorit), jo vetem gjurmen.
++        try:
++            v = float(v)
++            if not math.isfinite(v):
++                return None
++            return v if n is None else round(v, n)
++        except Exception:
++            return None
++    # SHENJA E GJENERIMIT: po ata int qe ky gjenerim shkruan te dist_gola (rezultatet_freq =
++    # round(P*50000)), per qelizat e top-5 + skorin e publikuar. Me te njejtat inpute dalin
++    # bit-per-bit njesoj; me λ te levizur ndryshojne (realizim tjeter MC) — ndaj, ndryshe
++    # nga skori, e dallon gjenerimin qe e prodhoi dist_gola-n e ngrire.
++    try:
++        _dist_shenja = {_c: int(rezultatet_freq[_c])
++                        for _c in [_t[0] for _t in _gj_sim.get("top5", ())] + [rez_sakt]
++                        if _c in rezultatet_freq}
++    except Exception:
++        _dist_shenja = {}
++    _gjurma_db = {
++        # λ qe hyri ne simulim, E PLOTE (jo e rrumbullakuar): Poisson-i i numpy konsumon nje
++        # numer te ndryshueshem uniformesh, ndaj me λ ne 4 shifra re-simulimi del nje tjeter
++        # realizim MC (dist_gola identike vetem 49/300, deri 128/50000 ne nje qelize). E plota
++        # + kaos_liges + is_derbi + seed=sha256(id) + aff + p_market_* e riprodhon KETE gjenerim
++        # (top5, dist_shenja, rez_sim). Rreshtin e DB-se (dist_gola/koef te ngrira nga gjenerimi
++        # i pare) e riprodhon VETEM kur dist_shenja perputhet me dist_gola (shih me lart).
++        "lam_1": _rgj(_xg1_norm, None), "lam_2": _rgj(_xg2_norm, None),
++        "lam_n_1": _rgj(_lam_n_1), "lam_n_2": _rgj(_lam_n_2),      # pas XG_NORM, para tregut
++        "xg_norm": {"a_1": _rgj(_xgn_a1), "b_1": _rgj(_xgn_b1), "a_2": _rgj(_xgn_a2), "b_2": _rgj(_xgn_b2)},
++        "lam_treg": _rgj(_tot_mkt, 3), "shk_treg": _rgj(_shk_mkt), "w_treg": _rgj(MKT_TOTAL_W, 3),
++        "boost": _rgj(_boost, 3) if _boost_apl else 0.0,
++        "aff": _rgj(_aff_dyn),
++        "gjeneruar_ne": datetime.now(timezone.utc).isoformat(timespec="seconds"),
++        # fb = fallback-u "loje e hapur" e zevendesoi skorin e simulimit (i vetmi qe e ndryshon pas tij)
++        "zgjedhja": {**_gj_sim, "fb": rez_sakt != _gj_sim.get("rez_sim"),
++                     "rez": rez_sakt, "prob": _rgj(prob_rez_sakt, 5),
++                     "dist_shenja": _dist_shenja},
++    }
++
+     extradb = {
+         "is_bllof":     eshte_bllof,
+         "koef_plote":   f"1:{k1_str} | X:{kx_str} | 2:{k2_str}",
+@@ -7031,6 +7137,8 @@
+             "lendime_1": _lend_1, "lendime_2": _lend_2,
+             "total_form": round(float(_total_form), 3), "total_target": round(float(_total_target), 3),
+         },
++        # Jashte training_data me qellim: shih "GJURMA E λ-s" me lart.
++        "gjurma_db": _gjurma_db,
+     }
+ 
+     return anal_dict, besueshmeria, rez_sakt, f"{koef_rez_sakt:.2f}", extradb
+@@ -7039,11 +7147,12 @@
+ # RUAJTJA NË DB — PA MANIPULIM REZULTATESH
+ # ==========================================
+ 
+-def task_ruaj_skedinen_ne_db(ndeshjet_premium):
++def task_ruaj_skedinen_ne_db(ndeshjet_premium, gjurmet=None):
+     """
+     Ruan vetëm 3 ndeshjet PPM në Supabase.
+     Dërgon VETËM kolonat që ekzistojnë në tabelën predictions.
+     Ruan analiza_custom (jsonb) për historikun.
++    `gjurmet` (opsional): {id: gjurma_db} nga analizo — bashkohet VETEM te training_data i DB-se.
+     """
+     headers = SUPABASE_SERVICE_HEADERS.copy()
+     headers["Prefer"] = "resolution=merge-duplicates"
+@@ -7087,6 +7196,20 @@
+         for _f in ekziston_fusha.get(str(pako.get("id")), ()):
+             pako.pop(_f, None)
+ 
++        # GJURMA E λ: dict i RI (nd["training_data"] eshte i njejti objekt qe shkon te cache-i
++        # i /api/skedina dhe s'duhet prekur). Celesat ekzistues kane perparesi, qe xg_1/xg_2
++        # te mos mbishkruhen kurre — kalibrimi varet prej tyre.
++        # ROJE: gjurma bashkohet VETEM nese eshte json i paster. Perndryshe (NaN, tip numpy)
++        # requests.post do te hidhte perjashtim, bare-except-i me poshte do ta gelltiste dhe
++        # do te humbte GJITHE rreshtin; keshtu humbet vetem gjurma, rreshti ruhet si me pare.
++        _gj = (gjurmet or {}).get(str(pako.get("id")))
++        if isinstance(_gj, dict) and _gj and isinstance(pako.get("training_data"), dict):
++            try:
++                json.dumps(_gj, allow_nan=False)
++                pako["training_data"] = {**_gj, **pako["training_data"]}
++            except Exception:
++                pass
++
+         try:
+             r = requests.post(SUPABASE_URL_PREDS, headers=headers, json=pako, timeout=5)
+             # Nëse insert dështon (p.sh. kolonë e panjohur), provo update
+@@ -8422,6 +8545,7 @@
+         STANDINGS_CACHE  = {}
+         lista_e_te_gjithave = []
+         vip_kandidatet   = []
++        gjurmet_db       = {}   # id -> gjurma e λ/zgjedhjes; shkon VETEM ne DB, jo ne cache/API
+ 
+         for emri_liges, ndeshjet_liges in ligat_raw.items():
+             eshte_liga_vip = is_vip_league(emri_liges)
+@@ -8544,6 +8668,7 @@
+                             base_match["is_value"] = _iv
+                         except Exception:
+                             base_match["is_value"] = None
++                        gjurmet_db[str(id_ndeshja)] = extradb.get("gjurma_db")
+                         vip_kandidatet.append(base_match)
+                     except Exception as eval_err:
+                         lista_e_te_gjithave.append(base_match)
+@@ -8583,7 +8708,7 @@
+         # Ruaj TË GJITHA ndeshjet VIP të analizuara (për daily products + historik PPM)
+         if vip_kandidatet:
+             try:
+-                task_ruaj_skedinen_ne_db(vip_kandidatet)
++                task_ruaj_skedinen_ne_db(vip_kandidatet, gjurmet=gjurmet_db)
+             except Exception:
+                 pass
+ 

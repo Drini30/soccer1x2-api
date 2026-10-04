@@ -1,0 +1,32 @@
+--- a/sql/filtri/2_qe_nga_rregullimi.sql
++++ b/sql/filtri/2_qe_nga_rregullimi.sql
+@@ -22,7 +22,12 @@
+     AND p.rezultati IS NOT NULL
+     AND replace(p.rezultati,' ','') ~ '^[0-9]+-[0-9]+$'
+     AND p.statusi IN ('FT','AET','PEN','AWD','WO')
+-    AND COALESCE(p.training_data->>'build','') LIKE '2026-09-1%'
++    AND (COALESCE(p.training_data->>'build','') LIKE '2026-09-1%'
++         -- Vulat e mevonshme qe NUK e ndryshojne zgjedhjen e skorit (vetem sa shtojne
++         -- te dhena ne training_data). training_data.build rishkruhet ne cdo rigjenerim,
++         -- ndaj pa kete liste cdo ndeshje pas deploy-it del jashte ne heshtje. Nje vule
++         -- qe e NDRYSHON modelin nuk shtohet ketu.
++         OR COALESCE(p.training_data->>'build','') IN ('2026-10-03-lambda-e-simuluar'))
+ ),
+ d AS (
+   SELECT *,
+--- a/sql/filtri/3_totali_deri_tani.sql
++++ b/sql/filtri/3_totali_deri_tani.sql
+@@ -27,7 +27,12 @@
+     AND p.rezultati IS NOT NULL
+     AND replace(p.rezultati,' ','') ~ '^[0-9]+-[0-9]+$'
+     AND p.statusi IN ('FT','AET','PEN','AWD','WO')
+-    AND COALESCE(p.training_data->>'build','') LIKE '2026-09-1%'
++    AND (COALESCE(p.training_data->>'build','') LIKE '2026-09-1%'
++         -- Vulat e mevonshme qe NUK e ndryshojne zgjedhjen e skorit (vetem sa shtojne
++         -- te dhena ne training_data). training_data.build rishkruhet ne cdo rigjenerim,
++         -- ndaj pa kete liste cdo ndeshje pas deploy-it del jashte ne heshtje. Nje vule
++         -- qe e NDRYSHON modelin nuk shtohet ketu.
++         OR COALESCE(p.training_data->>'build','') IN ('2026-10-03-lambda-e-simuluar'))
+ )
+ SELECT
+   count(*)                                              AS ndeshje_gjithsej,
