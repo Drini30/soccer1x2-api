@@ -365,6 +365,18 @@ def _pjesa_pas(teksti: str, fjala: str) -> Optional[str]:
     return m.group(1).strip() if m else None
 
 
+def _pa_llogari(p: dict, llogaria_id: Any, drejtimi: str) -> bool:
+    """Nje levizje pa llogari nuk ndikon asnje gjendje — pyet, mos e dergo."""
+    if llogaria_id not in (None, "", 0):
+        return False
+    _boshllek(p, "llogaria",
+              ("Ne cilen llogari hyri? " if drejtimi == "hyrje"
+               else "Nga cila llogari doli? ")
+              + "Shkruaje emrin — p.sh. \"... te Ndricim Plaku\" ose "
+                "\"... nga Kesh\".")
+    return True
+
+
 def _boshllek(p: dict, emri: str, pyetja: str) -> None:
     p["mungon"].append(emri)
     if not p.get("pyetja"):
@@ -454,6 +466,9 @@ def _urdher_plan(p: dict, teksti: str, g: dict, c: dict) -> None:
     if not lexo_monedhen(teksti):
         p["monedha"] = (burimi.get("monedha") or p["monedha"]).upper()
     p["kategoria"] = burimi.get("kategoria") or "tjeter"
+    if _pa_llogari(p, (p["llogaria"] or {}).get("id") or burimi.get("llogaria_id"),
+                   burimi.get("drejtimi") or "dalje"):
+        return
     p["siguria"] = round(min(0.97, 0.6 + 0.37 * pikja), 3)
     p["rruga"] = "/regjistro-pagese"
     p["trupi"] = {
@@ -480,9 +495,29 @@ def _urdher_hyrje(p: dict, teksti: str, g: dict, c: dict) -> None:
         burimi, pikja = burimet[0], 0.7
 
     if not burimi:
-        _boshllek(p, "burimi",
-                  "Cila te ardhur? Shkruaj emrin si e ke te regjistri "
-                  "(p.sh. \"Rroga\").")
+        # Pa nje burim te deklaruar, nje fjali me shume dhe llogari eshte
+        # prapeseprape nje hyrje e vertete. Me pare ketu pyetej "cila te
+        # ardhur?" — nje rruge pa dalje per kë s'ka krijuar ende burimin. Tani
+        # shenohet si hyrje e thjeshte, dhe motori e numeron kudo (shih
+        # hyrjet_jashte_burimeve).
+        if not p["shuma"]:
+            _boshllek(p, "shuma", "Sa more?")
+            return
+        if _pa_llogari(p, (p["llogaria"] or {}).get("id"), "hyrje"):
+            return
+        p["kategoria"] = ("page" if re.search(r"\brrog|\bpag[ae]n?\b",
+                                              normalizo(teksti)) else "tjeter")
+        p["burimi"] = {"tabela": None, "id": None,
+                       "emri": "Rroga" if p["kategoria"] == "page" else "Hyrje"}
+        p["siguria"] = 0.85
+        p["rruga"] = "/te-dhena/transaksionet"
+        p["trupi"] = {
+            "lloji": "hyrje", "shuma": p["shuma"], "monedha": p["monedha"],
+            "kategoria": p["kategoria"], "data": p["data"], "ora": p["ora"],
+            "pershkrimi": p["teksti"][:120],
+            "llogaria_id": p["llogaria"]["id"],
+            "personi_id": (p["personi"] or {}).get("id"),
+        }
         return
 
     p["burimi"] = {"tabela": "te-ardhurat", "id": burimi.get("id"),
@@ -496,6 +531,9 @@ def _urdher_hyrje(p: dict, teksti: str, g: dict, c: dict) -> None:
     if not lexo_monedhen(teksti):
         p["monedha"] = (burimi.get("monedha") or p["monedha"]).upper()
     p["kategoria"] = burimi.get("lloji") or "page"
+    if _pa_llogari(p, (p["llogaria"] or {}).get("id") or burimi.get("llogaria_id"),
+                   "hyrje"):
+        return
     p["siguria"] = round(min(0.97, 0.6 + 0.37 * pikja), 3)
     p["rruga"] = "/regjistro-pagese"
     p["trupi"] = {
@@ -525,6 +563,8 @@ def _urdher_shpenzim(p: dict, teksti: str, g: dict, c: dict) -> None:
             llogaria = {"id": per_dore[0].get("id"),
                         "emri": per_dore[0].get("emri"), "siguria": 0.5}
             p["llogaria"] = llogaria
+    if _pa_llogari(p, (llogaria or {}).get("id"), "dalje"):
+        return
     p["siguria"] = 0.85 if kategoria != "tjeter" else 0.7
     p["rruga"] = "/te-dhena/transaksionet"
     p["trupi"] = {
@@ -560,6 +600,8 @@ def _urdher_borxh(p: dict, teksti: str, g: dict, c: dict) -> None:
     p["shuma"] = shuma
     if not lexo_monedhen(teksti):
         p["monedha"] = (burimi.get("monedha") or p["monedha"]).upper()
+    if _pa_llogari(p, (p["llogaria"] or {}).get("id"), "dalje"):
+        return
     p["siguria"] = round(min(0.95, 0.55 + 0.4 * pikja), 3)
     p["rruga"] = "/paguaj-borxh"
     p["trupi"] = {
