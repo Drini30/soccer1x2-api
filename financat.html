@@ -1928,7 +1928,7 @@ const REGJISTRI = {
       ora: {tip: 'ora', param: oraTani, eti: 'Ora'},
       lloji: {tip: 'select', opsione: [['dalje', 'Dalje'], ['hyrje', 'Hyrje'], ['transfer', 'Transfer']], eti: 'Lloji'},
       shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
-      llogaria_id: {tip: 'llogari', eti: 'Llogaria'},
+      llogaria_id: {tip: 'llogari', eti: 'Llogaria', kerkohet: true},
       llogaria_dest_id: {tip: 'llogari', eti: 'Destinacioni (transfer)'},
       personi_id: {tip: 'person', eti: 'Kush e beri'},
       kategoria: {tip: 'text', param: 'tjeter', eti: 'Kategoria'},
@@ -2010,7 +2010,7 @@ const REGJISTRI = {
       ora: {tip: 'ora', param: oraTani, eti: 'Ora'},
       kategoria: {tip: 'kategori', opsione: [['ushqime','Ushqime'],['karburant','Karburant'],['kafe','Kafe / dreka'],['veshje','Veshje'],['farmaci','Farmaci / shendet'],['transport','Transport'],['argetim','Argetim'],['higjiene','Higjiene / shtepiake'],['shtepia','Shtepia'],['dhurata','Dhurata'],['femijet','Femijet'],['cigare','Duhan / pije'],['tjeter','Tjeter']], eti: 'Kategoria'},
       shuma: {tip: 'number', eti: 'Shuma'}, monedha: MONEDHA,
-      llogaria_id: {tip: 'llogari', eti: 'Paguar nga'},
+      llogaria_id: {tip: 'llogari', eti: 'Paguar nga', kerkohet: true},
       personi_id: {tip: 'person', eti: 'Kush e beri'},
       pershkrimi: {tip: 'text', eti: 'Pershkrimi (opsional)'},
     },
@@ -2076,7 +2076,7 @@ const REGJISTRI = {
              'horizonti', 'domosdoshmeria'],
   },
   'te-ardhurat': {
-    titull: 'Te ardhurat', totali: 'shuma_mujore', ndihme: 'Burimet e rregullta. Oret mujore = 0 do te thote e ardhur pasive.',
+    titull: 'Te ardhurat', totali: 'shuma_mujore', ndihme: 'Ketu shenon ate qe PRET te vije cdo muaj — jo paren qe ka ardhur. Kur e shton, nese pagesa e ketij muaji ka ardhur tashme, te pyet menjehere ne cilen llogari ra. Oret mujore = 0 do te thote e ardhur pasive.',
     fusha: {
       emri: {tip: 'text', eti: 'Emri'},
       lloji: {tip: 'select', opsione: [['page', 'Page'], ['freelance', 'Freelance'], ['qira', 'Qira'], ['biznes', 'Biznes'], ['dividend', 'Dividend'], ['tjeter', 'Tjeter']], eti: 'Lloji'},
@@ -2180,9 +2180,16 @@ const REGJISTRI = {
 
 /* Lista e llogarive + "Kesh". Nese s'ke hapur kurre nje llogari cash, ajo
    krijohet ne çastin qe e zgjedh — nuk ke pse ta parapergatitesh. */
+/* Portofoli nuk del ne listat e llogarive: mbushet vetem me "Rimbush" nga
+   nje llogari, dhe shpenzimet e tij shkruhen ne skeden e vet. Nje rroge qe
+   bie direkt aty e kthen ne banke te dyte dhe e prish ate rregull.
+   Perjashtim: kur ndryshon nje levizje qe eshte TASHME e portofolit, ai
+   mbetet ne liste dhe i zgjedhur — perndryshe ruajtja do ta zhvendoste ne
+   heshtje ne llogarine e pare. */
 function opsionetELlogarive(zgjedhur){
   const ka_kesh = LLOGARITE.some(l => l.lloji === 'cash');
-  return LLOGARITE.map(l =>
+  return LLOGARITE.filter(l => l.lloji !== 'portofol'
+                              || String(l.id) === String(zgjedhur)).map(l =>
     `<option value="${l.id}" ${String(l.id) === String(zgjedhur) ? 'selected' : ''}
      >${esc(l.emri)} (${esc(l.monedha)})</option>`).join('')
     + (ka_kesh ? '' : '<option value="__kesh__">Kesh (para ne dore)</option>');
@@ -2294,6 +2301,10 @@ function redakto(id, rreshtiId){
       kutia.value = ne_liste ? '' : (vlera || '');
       kutia.classList.toggle('fshihu', ne_liste);
     }
+    else if (f.tip === 'llogari'){
+      v.innerHTML = '<option value="">—</option>' + opsionetELlogarive(vlera);
+      v.value = (vlera === null || vlera === undefined) ? '' : vlera;
+    }
     else if (f.tip === 'bool') v.checked = !!vlera;
     else if (f.tip === 'dite'){
       const fund = rresht[emri + '_fund'];
@@ -2372,6 +2383,16 @@ async function ngarkoTabelen(id){
 async function ruajRreshtin(){
   const id = REG_AKTIV, k = REGJISTRI[id], trupi = {};
   const po_ndryshon = REG_REDAKTIM !== null;
+  // Nje hyrje ose dalje pa llogari ruhej, dilte te totali i tabeles, dhe
+  // pastaj nuk ndikonte asgje tjeter. Ndalohet ketu, me emrin e fushes.
+  for (const [emri, f] of Object.entries(k.fusha)){
+    if (!f.kerkohet) continue;
+    const v = $(`#f-${id}-${emri}`);
+    if (v && !v.value){
+      njofto(`Zgjidh "${f.eti}" — pa te, kjo levizje nuk ndikon asnje gjendje.`, 5000);
+      v.focus(); return;
+    }
+  }
   for (const [emri, f] of Object.entries(k.fusha)){
     const v = $(`#f-${id}-${emri}`);
     if (!v) continue;
@@ -2440,14 +2461,26 @@ async function ruajRreshtin(){
       REG_REDAKTIM = null;
       hapRegjistrin(id);
     } else {
-      await api('/te-dhena/' + tabelaE(id), {metoda: 'POST', trupi});
+      const iRi = await api('/te-dhena/' + tabelaE(id), {metoda: 'POST', trupi});
       njofto('U shtua.');
+      if (tabelaE(id) === 'te-ardhurat' && iRi?.id) pyetPerPagesenEBurimit(iRi.id);
       // Formulari rindertohet nga e para: pa kete, fushat e mbetura te
       // plotesuara e bejne te lehte shtimin e nje dublikate pa e kuptuar.
       hapRegjistrin(id);
     }
     ngarko();
   } catch (e) { njofto('Gabim: ' + e.message, 5000); }
+}
+
+/* Nje burim i ri te ardhurash eshte nje plan, jo para qe hyne. Kush shton
+   "Rroga" me 7 tetor, pasi e mori me 5, pret qe ajo te dale ne llogari — dhe
+   pa kete hap nuk dilte askund. Nese pagesa e ketij muaji pritet tashme,
+   hapet menjehere i njejti modal si nga njoftimi, me llogarine e zgjedhur. */
+async function pyetPerPagesenEBurimit(burimiId){
+  await ngarko();
+  const i = (PANEL.njoftimet || []).findIndex(n =>
+    n.veprimi?.lloji === 'te_ardhura' && n.veprimi?.burimi_id === burimiId);
+  if (i >= 0) hapPagesen(i);
 }
 
 async function fshiRreshtin(id, rreshtiId){

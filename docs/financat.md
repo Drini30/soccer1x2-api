@@ -221,6 +221,43 @@ vende, sepse nje shifer qe levize pa u pare nuk sherben:
 - **Levizja e radhes** — cfare pritet te levize me pare, per sa dite, sa eshte
   dhe a eshte fikse apo e ndryshueshme.
 
+### Nje e ardhur arrin kudo, nga cilado rruge
+Nje rroge mund te shenohet ne katër menyra: si burim (Regjistri → Te
+ardhurat), si transaksion (Regjistri → Transaksionet), nga njoftimi, ose me
+fjale te asistenti. Cdonjera duhet te arrije ne te njejtat hallka: llogarine,
+likuiditetin, "e lira", INCOMING-un, rrjedhen mujore, personin, objektivat dhe
+skorin. Me pare jo:
+
+- **Burimi** levizte vetem planin; paraja s'arrinte askund. Nese shtohej pas
+  dites se pageses, as njoftimi nuk dilte — rroga e shtuar nuk shkonte askund.
+- **Transaksioni** levizte paren, por INCOMING-u dhe objektivat nuk e shihnin:
+  motori lexonte "te deklaruarat OSE historikun", dhe historiku numeronte
+  vetem muajt e plote.
+- **Transaksioni pa llogari** ruhej, dilte te totali i tabeles, dhe pastaj
+  nuk ndikonte asgje tjeter.
+
+Rregullat tani:
+
+1. **Te ardhurat = burimet e deklaruara + hyrjet jashte burimeve.** Te dyja
+   mblidhen. Hyrjet jashte burimeve vleresohen me te madhen nga mesatarja e 3
+   muajve te plote dhe ajo qe ka hyre kete muaj — qe rroga e sapo shenuar te
+   ndikoje menjehere, dhe nje rroge e perseritshme te mos zhduket ditet e para
+   te muajit. Personi merret nga transaksioni, ose nga pronari i llogarise.
+2. **Pa dyfishim.** Nje hyrje qe eshte qarte pagesa e nje burimi te deklaruar
+   lidhet me te vete: e njejta llogari, burimi i papaguar per ate muaj, shuma
+   brenda ±50% te asaj te deklaruar, dhe nje kandidat i vetem. Nje dhurate ne
+   llogarine e rroges nuk behet rroge; dy burime ne te njejten llogari nuk
+   hamendesohen.
+3. **Cdo hyrje dhe dalje ka nje llogari.** Pa te, refuzohet me arsye — ne
+   formular, ne server, dhe te asistenti (qe pyet ne vend qe te dergoje).
+   Levizjet e vjetra pa llogari dalin si alarm. Levizjet e biznesit
+   perjashtohen me qellim.
+4. **Burimi i shtuar kete muaj pyet per pagesen e ketij muaji.** Dhe kur e
+   shton nga regjistri, modali i pageses hapet menjehere.
+5. **Portofoli nuk del ne listat e llogarive.** Mbushet vetem me "Rimbush";
+   nje rroge qe bie aty e kthen ne banke te dyte. Kur ndryshon nje levizje qe
+   eshte tashme e portofolit, ai mbetet i zgjedhur.
+
 ### Shiritat INCOMING / OUTCOMING
 Ne krye te panelit, dy shirita te zinj dhe nje kuadrat me tri kolona.
 
@@ -510,6 +547,22 @@ humbje e perhershme.
 
 Token-i udheton si header, ndaj shkarkimi behet me `fetch` dhe nje blob — nje
 link i thjeshte do te merrte 401.
+
+## 4c. Per t'u bere
+
+- **Mbajtja zgjuar e Supabase dhe Render.** Te dyja jane ne planin falas dhe
+  jane NJE projekt per soccer-in dhe financat (e njejta `SUPABASE_URL`,
+  financat montohen brenda `soccer_api.py`). Supabase pezullohet pas ~7 ditesh
+  pa asnje kerkese; Render fle pas ~15 minutash dhe kerkesa e pare zgjat 30-50
+  sekonda. Zgjidhja e rene dakord: nje GitHub Action qe therret `/api/ping`
+  cdo 6 ore dhe deshton me ze kur pergjigja s'eshte 200.
+- **`.github/workflows/telegram-ditore.yml`** niset cdo dite ne 09:00 UTC dhe
+  ekzekuton `telegram_bot_ditore.py` — skedar qe NUK ekziston ne repo. Cdo dite
+  deshton ne hapin e fundit pa derguar asgje. Duhet ose rikthyer skripti, ose
+  hequr workflow-i. Kujdes: GitHub i fik vete workflow-et me orar pas 60
+  ditesh pa commit ne repo.
+- **Thjeshtimi i faqes.** Paneli ka 3 shirita, 8 pllaka dhe 17 karta; qellimi
+  eshte kontrolli i hyrjeve dhe daljeve ndaj objektivave. Pritet pershkrimi.
 
 ## 5. Kufijte e njohur
 

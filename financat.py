@@ -600,6 +600,63 @@ def llogarit_bilancet(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
             "likuiditet": _rrum(likuiditet)}
 
 
+def hyrjet_jashte_burimeve(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
+    """Paraja qe hyri vertet, por qe s'eshte e lidhur me asnje burim te deklaruar.
+
+    Nje rroge e shenuar si transaksion i thjeshte — pa e lidhur me burimin
+    "Rroga" — eshte prapeseprape rroge. Me pare ajo ndikonte bilancin, por jo
+    INCOMING-un, rrjedhen, kapacitetin dhe objektivat, sepse keto lexonin VETEM
+    burimet e deklaruara. Kjo ishte hallka e keputur.
+
+    Vlerësimi mujor per secilen kove eshte me i madhi nga:
+      • mesatarja e 3 muajve te fundit te plote — qe nje rroge e perseritshme
+        te mos zhduket ditet e para te muajit, para se te vije;
+      • ajo qe ka hyre KETE muaj — qe rroga e sapo shenuar te ndikoje menjehere,
+        pa pritur qe muaji te mbyllet.
+
+    Nuk ka numerim te dyfishte: hyrjet e lidhura me nje burim (te_ardhura_id)
+    ose me nje plan (plani_id) jane tashme brenda atyre shifrave.
+    """
+    sot = date.today()
+    muaji_tani = f"{sot.year:04d}-{sot.month:02d}"
+    pronari = {int(l["id"]): l.get("personi_id") for l in g["llogarite"]}
+    kova: Dict[Any, Dict[str, float]] = {}       # personi -> muaji -> shuma
+    muajt_me_te_dhena = set()
+
+    for t in g["transaksionet"]:
+        d = _dat(t.get("data"))
+        if not d or d > sot or (sot - d).days > 130:
+            continue
+        muaji = f"{d.year:04d}-{d.month:02d}"
+        muajt_me_te_dhena.add(muaji)
+        if (t.get("lloji") or "dalje").lower() != "hyrje":
+            continue
+        if t.get("te_ardhura_id") or t.get("plani_id") or t.get("biznesi_id"):
+            continue
+        # Personi: ai i transaksionit, ose — nese mungon — pronari i llogarise.
+        # Nje rroge e rene ne llogarine e Ndricimit eshte e Ndricimit edhe kur
+        # fusha "Kush e beri" eshte lene bosh.
+        personi = t.get("personi_id")
+        if personi is None and t.get("llogaria_id") is not None:
+            try:
+                personi = pronari.get(int(t["llogaria_id"]))
+            except (TypeError, ValueError):
+                personi = None
+        k = kova.setdefault(personi, {})
+        k[muaji] = k.get(muaji, 0.0) + kthe(t.get("shuma"), t.get("monedha"), c)
+
+    te_plotet = sorted(m for m in muajt_me_te_dhena if m != muaji_tani)[-3:]
+    sipas_personit: Dict[Any, float] = {}
+    for personi, muajt in kova.items():
+        mesatarja = (statistics.fmean([muajt.get(m, 0.0) for m in te_plotet])
+                     if te_plotet else 0.0)
+        sipas_personit[personi] = max(mesatarja, muajt.get(muaji_tani, 0.0))
+
+    return {"totali": _rrum(sum(sipas_personit.values())),
+            "sipas_personit": {k: _rrum(v) for k, v in sipas_personit.items()},
+            "kete_muaj": _rrum(sum(m.get(muaji_tani, 0.0) for m in kova.values()))}
+
+
 def llogarit_rrjedhen(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
     """Hyrje/dalje mujore nga historiku real i transaksioneve.
 
@@ -667,7 +724,12 @@ def llogarit_rrjedhen(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
 
     dalje_baze = _mes("dalje_baze")
     dalje_mes = _mes("dalje")
-    te_ardhura_baze = te_ardhurat_deklaruara or hyrje_historike
+    # Me pare: "te deklaruarat OSE historiku". Sapo deklarohej nje burim i
+    # vetem, cdo hyrje reale e palidhur me te injorohej plotesisht. Tani te
+    # dyja mblidhen — pa dyfishim, sepse hyrjet jashte burimeve perjashtojne
+    # ato qe paguajne nje burim te deklaruar.
+    jashte = hyrjet_jashte_burimeve(g, c)
+    te_ardhura_baze = te_ardhurat_deklaruara + jashte["totali"]
 
     return {
         "muajt": [{"muaji": m, **{k: _rrum(v) for k, v in kova[m].items()}}
@@ -683,9 +745,9 @@ def llogarit_rrjedhen(g: Dict[str, Any], c: Dict[str, Any]) -> Dict[str, Any]:
         "shpenzim_pa_keste": _rrum((dalje_baze + plane_dalje) or dalje_mes),
         "te_ardhura_totale": _rrum(te_ardhura_baze + plane_hyrje),
         "te_ardhura_deklaruara": _rrum(te_ardhurat_deklaruara),
-        # Burimi i te ardhurave: deklarimi yt ka perparesi; nese s'ke deklaruar
-        # asnje burim, bie te mesatarja e hyrjeve reale.
-        "te_ardhura_mujore": _rrum(te_ardhurat_deklaruara or hyrje_historike),
+        "te_ardhura_jashte_burimeve": jashte["totali"],
+        "te_ardhura_jashte_sipas_personit": jashte["sipas_personit"],
+        "te_ardhura_mujore": _rrum(te_ardhura_baze),
         "paqendrueshmeria": _rrum(paqendrueshmeria, 3),
         "muaj_te_plote": len(i_plote),
     }
@@ -1168,6 +1230,18 @@ def gjenero_alarme(c: Dict[str, Any], g: Dict[str, Any], bil: Dict[str, Any],
              f"{c['monedha_baze']}.",
              "Menu → Cilesimet → Kurset e kembimit.")
 
+    jetime = [t for t in g["transaksionet"]
+              if (t.get("lloji") or "dalje").lower() in ("hyrje", "dalje")
+              and t.get("llogaria_id") is None and not t.get("biznesi_id")]
+    if jetime:
+        shuma_jetime = sum(kthe(t.get("shuma"), t.get("monedha"), c) for t in jetime)
+        shto("paralajmerim",
+             f"{len(jetime)} levizje pa llogari",
+             f"Gjithsej {shuma_jetime:,.0f} {c['monedha_baze']} qe nuk ndikojne "
+             f"asnje gjendje — as llogarite, as totalin, as \"e lira\"."
+             .replace(",", "."),
+             "Regjistri → Transaksionet → Ndrysho, dhe zgjidh llogarine.")
+
     for tabela in g.get("_mungojne") or []:
         shto("paralajmerim", f"Tabela '{tabela}' mungon ne baze",
              f"Pjesa perkatese e faqes rri bosh derisa te krijohet.",
@@ -1335,8 +1409,13 @@ def gjenero_njoftimet(g: Dict[str, Any], c: Dict[str, Any]) -> List[dict]:
         if (fillimi_d - sot).days > 3:
             return
         # Mos pyet per nje periudhe kur burimi ende s'ekzistonte.
+        # Mos pyet per nje muaj kur burimi ende s'ekzistonte. Por muaji i
+        # krijimit numerohet: kush shton rrogen me 7 tetor, pasi e mori me 5,
+        # e ka shtuar pikerisht qe ajo te shenohet. Rregulli i meparshem
+        # (krijuar > dita e pageses) e heshte pikerisht kete rast — rroga e
+        # shtuar nuk shkonte askund dhe asgje nuk pyeste per te.
         krijuar = _dat(burimi.get("krijuar_me"))
-        if krijuar and krijuar > fundi_d:
+        if krijuar and (krijuar.year, krijuar.month) > (viti, muaji):
             return
         if u_regjistrua(fusha, burimi["id"], viti, muaji):
             return
@@ -2041,6 +2120,11 @@ def rrjedha_ditore(g: Dict[str, Any], c: Dict[str, Any], rrj: Dict[str, Any],
              "mujore": _rrum(_num(rrj.get("te_ardhura_deklaruara"))),
              "ditore": _rrum(_num(rrj.get("te_ardhura_deklaruara")) / DITE_NE_MUAJ),
              "shenim": "rroga dhe burimet e shenuara"},
+            {"emri": "Hyrje jashte burimeve",
+             "mujore": _rrum(_num(rrj.get("te_ardhura_jashte_burimeve"))),
+             "ditore": _rrum(_num(rrj.get("te_ardhura_jashte_burimeve"))
+                             / DITE_NE_MUAJ),
+             "shenim": "para te hyra pa u lidhur me nje burim te regjistruar"},
             {"emri": "Plane hyrjesh",
              "mujore": _rrum(_num(rrj.get("plane_hyrje_mujore"))),
              "ditore": _rrum(_num(rrj.get("plane_hyrje_mujore")) / DITE_NE_MUAJ),
@@ -2276,6 +2360,9 @@ def permbledh_personat(g: Dict[str, Any], c: Dict[str, Any],
     for a in g["te_ardhurat"]:
         k = kutia(a.get("personi_id"))
         k["te_ardhura_mujore"] += vleresimet.get(int(a["id"]), {}).get("mujore_baze", 0.0)
+    # Rroga qe hyri pa u lidhur me burimin i takon prapeseprape dikujt.
+    for personi, vlera in hyrjet_jashte_burimeve(g, c)["sipas_personit"].items():
+        kutia(personi)["te_ardhura_mujore"] += vlera
 
     # Shpenzimet: mesatarja mujore e muajve te plote te fundit
     muajt: Dict[Any, set] = {}
@@ -2667,6 +2754,69 @@ def _emri_i_rreshtit(rresht: Optional[dict]) -> str:
     return f"#{(rresht or {}).get('id', '?')}"
 
 
+def _kerko_llogarine(rresht: dict) -> None:
+    """Nje hyrje ose dalje pa llogari nuk leviz asnje gjendje.
+
+    Pa kete kontroll, nje rroge e shenuar pa zgjedhur llogarine ruhej, dilte
+    te totali i tabeles, dhe pastaj nuk ndikonte asgje tjeter: as llogarine,
+    as likuiditetin, as "e lira". Paraja zhdukej ne heshtje. Me mire te
+    pyesesh ne ate moment se te kesh nje shifer qe s'ekziston askund.
+
+    Perjashtim: levizjet e biznesit, qe me qellim nuk preken nga gjendja jote
+    personale (shih llogarit_rrjedhen).
+    """
+    lloji = (rresht.get("lloji") or "dalje").lower()
+    if lloji not in ("hyrje", "dalje") or rresht.get("biznesi_id"):
+        return
+    if rresht.get("llogaria_id") in (None, "", 0):
+        raise HTTPException(400,
+            "Zgjidh llogarine: nje "
+            + ("hyrje" if lloji == "hyrje" else "dalje")
+            + " pa llogari nuk ndikon asnje gjendje — as llogarite, as "
+              "totalin, as \"e lira\". Ne cilen llogari hyri (ose nga cila "
+              "doli) paraja?")
+
+
+def _lidh_me_burimin(rresht: dict, c: Dict[str, Any]) -> Optional[dict]:
+    """Nje hyrje qe eshte qarte pagesa e nje burimi te deklaruar lidhet me te.
+
+    Pa kete, kush ka "Rroga" te deklaruar dhe pastaj e shenon rrogen si
+    transaksion te thjeshte, e merr dy here: njehere si burim, njehere si hyrje
+    jashte burimeve — dhe njoftimi "konfirmo pagesen" mbetet hapur per nje
+    rroge te marre tashme.
+
+    Lidhet vetem kur s'ka dyshim: e njejta llogari, burimi ende i papaguar per
+    ate muaj, shuma brenda ±50% te asaj te deklaruar (per burimet me shume te
+    ndryshueshme, cdo shume), dhe NJE kandidat i vetem. Nje dhurate 5.000 ne
+    llogarine e rroges nuk behet rroge; dy burime ne te njejten llogari nuk
+    hamendesohen — mbeten hyrje te lira, dhe njoftimet i pyesin vec e vec.
+    """
+    if (rresht.get("lloji") or "").lower() != "hyrje":
+        return None
+    if rresht.get("te_ardhura_id") or rresht.get("plani_id") or rresht.get("biznesi_id"):
+        return None
+    try:
+        lid = int(rresht.get("llogaria_id"))
+    except (TypeError, ValueError):
+        return None
+    d = _dat(rresht.get("data")) or date.today()
+    shuma = kthe(rresht.get("shuma"), rresht.get("monedha"), c)
+
+    kandidatet = []
+    for b in _lexo("fin_te_ardhurat", {"aktiv": "eq.true", "llogaria_id": f"eq.{lid}"}):
+        deklaruar = b.get("shuma_mujore")
+        if deklaruar not in (None, "") and _num(deklaruar) > 0:
+            pritur = kthe(deklaruar, b.get("monedha"), c)
+            if not (0.5 * pritur <= shuma <= 1.5 * pritur):
+                continue
+        te_paguara = _lexo("fin_transaksionet", {"te_ardhura_id": f"eq.{b['id']}"})
+        if any((x := _dat(t.get("data"))) and (x.year, x.month) == (d.year, d.month)
+               for t in te_paguara):
+            continue
+        kandidatet.append(b)
+    return kandidatet[0] if len(kandidatet) == 1 else None
+
+
 def _me_kohen(tabela: str, trupi: dict, cilesimet: Dict[str, Any],
               ekzistues: Optional[dict] = None) -> dict:
     """Per transaksionet: {data, ora} → momenti i sakte 'kryer_me'.
@@ -2738,11 +2888,21 @@ def shto_rresht(tabela: str, trupi: dict = Body(...),
     kerko_token(_)
     c = lexo_cilesimet()
     rresht = _pastro(tabela, _me_kohen(tabela, trupi, c))
+    burimi_i_lidhur = None
+    if tabela == "transaksionet":
+        _kerko_llogarine(rresht)
+        burimi_i_lidhur = _lidh_me_burimin(rresht, c)
+        if burimi_i_lidhur:
+            rresht["te_ardhura_id"] = burimi_i_lidhur["id"]
+            if rresht.get("personi_id") is None:
+                rresht["personi_id"] = burimi_i_lidhur.get("personi_id")
     rresht["user_id"] = USER_ID
     dalja = _sb_me_kohe(_tabela(tabela), "post", trupi=rresht,
                         prefer="return=representation")
     e_re = dalja[0] if isinstance(dalja, list) and dalja else dalja
-    shkruaj_veprimin("shtim", f"Shtim te {tabela}: {_emri_i_rreshtit(e_re)}",
+    shkruaj_veprimin("shtim", f"Shtim te {tabela}: {_emri_i_rreshtit(e_re)}"
+                     + (f" (u lidh me burimin \"{burimi_i_lidhur.get('emri')}\")"
+                        if burimi_i_lidhur else ""),
                      tabela, (e_re or {}).get("id"), rresht, c)
     return e_re
 
@@ -2756,6 +2916,8 @@ def ndrysho_rresht(tabela: str, rreshti_id: int, trupi: dict = Body(...),
     # zhduk, jo vetem ate qe zuri vendin e tij.
     i_vjetri = (_lexo(_tabela(tabela), {"id": f"eq.{rreshti_id}"}) or [None])[0]
     rresht = _pastro(tabela, _me_kohen(tabela, trupi, c, i_vjetri or {}))
+    if tabela == "transaksionet":
+        _kerko_llogarine({**(i_vjetri or {}), **rresht})
     dalja = _sb_me_kohe(_tabela(tabela), "patch",
                         params={"id": f"eq.{rreshti_id}", "user_id": f"eq.{USER_ID}"},
                         trupi=rresht, prefer="return=representation")
@@ -2971,6 +3133,7 @@ def regjistro_pagese(trupi: dict = Body(...),
         "personi_id": trupi.get("personi_id") or burimi.get("personi_id"),
     }
     rresht["te_ardhura_id" if lloji == "te_ardhura" else "plani_id"] = burimi_id
+    _kerko_llogarine(rresht)
 
     dalja = _sb_me_kohe("fin_transaksionet", "post", trupi=rresht,
                         prefer="return=representation")
@@ -3197,6 +3360,7 @@ def paguaj_borxh(trupi: dict = Body(...),
         "personi_id": trupi.get("personi_id") or d.get("personi_id"),
         "detyrimi_id": detyrimi_id,
     }
+    _kerko_llogarine(trx)
     dalja_trx = _sb_me_kohe("fin_transaksionet", "post", trupi=trx,
                             prefer="return=representation")
 
