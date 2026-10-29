@@ -310,6 +310,24 @@ perjetesisht ne raport.
 Biseda e portofolit eshte e ndare nga ajo e asistentit (`konteksti` te
 `fin_mesazhet`): te dyja jane biseda, por nuk jane e njejta bisede.
 
+### Urdhrat me ze
+Pranë kutise se shkrimit, ne portofol dhe te asistenti, ka nje mikrofon. Shtyp,
+fol ("dy mije e peseqind leke benzine"), dhe teksti del ne kuti nderkohe qe
+flet. Kur mbaron, dergohet nga e njejta rruge si butoni "Shto" — asnje rregull
+i dyte. Ne portofol nje gabim kthehet me "Anulo"; te asistenti cdo levizje
+parash kerkon konfirmim, si gjithmone.
+
+- Perdor njohjen e zerit te shfletuesit (Web Speech API, gjuha `sq-AL`). Nuk
+  kushton dhe nuk kerkon server. Zeri perpunohet nga shërbimi i shfletuesit
+  (Google ne Chrome, Apple ne Safari) — njesoj si mikrofoni i tastieres.
+- Butoni del vetem kur shfletuesi e mbeshtet. Nese shqipja nuk njihet, del nje
+  mesazh qe sugjeron mikrofonin e tastieres, qe e shkruan tekstin ne te njejten
+  kuti.
+- Shumat lexohen ashtu si i shkruan zeri: "20 000" (me hapesire), "peseqind",
+  "dy mije e peseqind", "njezet e pese mije", "nje mije e gjysme". Kur ka disa
+  numra, fitimtar eshte ai qe pasohet nga monedha ("bleva nje kafe 150 leke" →
+  150, jo 1).
+
 ### Asistenti: urdhra me fjalet e tua
 Njoftimet vijne si mesazhe, dhe pergjigjesh me nje fjali. Fjalia kuptohet nga
 nje analizues **deterministik** ne `asistenti.py` — pa model gjuhesor, pa
@@ -547,6 +565,18 @@ humbje e perhershme.
 
 Token-i udheton si header, ndaj shkarkimi behet me `fetch` dhe nje blob — nje
 link i thjeshte do te merrte 401.
+
+## 4b2. Provat
+
+```
+pip install fastapi httpx requests tzdata
+python3 tests/financat/run.py
+```
+
+Nente suita, 249 pohime, pa prekur Supabase: `tests/financat/baza_prove.py`
+eshte nje baze e rreme me te njejtat rregulla si migrimet (trigeri i ores,
+`aktiv` me parazgjedhje, mungesa e migrimit 7). Me pare provat jetonin jashte
+repo-s dhe humben kur procesi u rinis — prandaj tani rrine ketu.
 
 ## 4c. Per t'u bere
 

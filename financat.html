@@ -240,6 +240,17 @@ svg{display:block;width:100%;overflow:visible}
 .flluske b{font-weight:650}
 .shkrues{display:flex;gap:8px;margin-top:12px}
 .shkrues input{flex:1;min-width:0}
+/* Mikrofoni. Ngjyra e kuqe dhe pulsi tregojne qe po degjon — pa to, nuk
+   dihet nese telefoni po te degjon apo nese prekja nuk u kap. */
+.mikrofon{flex:0 0 auto;width:40px;padding:0;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--siperfaqja-2);color:var(--bojë)}
+.mikrofon svg{width:19px;height:19px}
+.mikrofon.degjon{background:var(--kritik);border-color:var(--kritik);
+  color:var(--bg);animation:pulson 1.2s ease-in-out infinite}
+@keyframes pulson{0%,100%{box-shadow:0 0 0 0 rgba(185,28,28,.45)}
+  50%{box-shadow:0 0 0 8px rgba(185,28,28,0)}}
+@media (prefers-reduced-motion:reduce){.mikrofon.degjon{animation:none}}
 .shembuj{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
 .shembuj button{font-size:.78rem;padding:5px 10px;border-radius:999px;
   background:var(--siperfaqja-2);border:1px solid var(--vija);color:var(--bojë-2)}
@@ -362,10 +373,14 @@ svg{display:block;width:100%;overflow:visible}
       <form class="shkrues" onsubmit="dergoNePortofol(event)" autocomplete="off">
         <input id="portofol-urdhri" placeholder="20 mije benzin…"
                aria-label="Shkruaj cfare shpenzove">
+        <button type="button" class="mikrofon fshihu" id="portofol-mik"
+                aria-label="Fol shpenzimin" aria-pressed="false"
+                onclick="degjo('portofol-urdhri', () => dergoNePortofol(), this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v4"/><path d="M8 21h8"/></svg></button>
         <button class="kryesor" type="submit" id="portofol-btn">Shto</button>
       </form>
       <p class="i-heshtur" style="font-size:.8rem;margin-top:9px">
-        Shkruaj shumen dhe arsyen — "20 mije benzin", "500 lek kafe". Zbritet
+        Shkruaj ose fol shumen dhe arsyen — "20 mije benzin", "dy mije e
+        peseqind leke ushqime". Zbritet
         vetem nga portofoli, dhe ruhet me date, ore dhe arsye per raportin.
         Nese portofoli nuk perballon, shkon ne minus.</p>
     </div>
@@ -396,6 +411,9 @@ svg{display:block;width:100%;overflow:visible}
       <form class="shkrues" onsubmit="dergoUrdhrin(event)" autocomplete="off">
         <input id="urdhri" placeholder="Shkruaj cfare ndodhi…"
                aria-label="Urdhri per asistentin">
+        <button type="button" class="mikrofon fshihu" id="asistent-mik"
+                aria-label="Fol urdhrin" aria-pressed="false"
+                onclick="degjo('urdhri', () => dergoUrdhrin(), this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v4"/><path d="M8 21h8"/></svg></button>
         <button class="kryesor" type="submit" id="btn-dergo">Dergo</button>
       </form>
       <div class="shembuj" id="shembujt"></div>
@@ -1395,6 +1413,79 @@ async function ruajRimbushjen(){
     await ngarkoPortofolin();
     ngarko();
   } catch (e) { $('#rb-gabimi').textContent = e.message; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ZERI — urdhrat me te folur
+   ═══════════════════════════════════════════════════════════════════════
+   Njohja e zerit e shfletuesit (Chrome, Safari) e kthen fjaline ne tekst, dhe
+   teksti ndjek pastaj TE NJEJTEN rruge si ai i shkruar: asnje rregull i dyte.
+   Ne portofol nje gabim kthehet me "Anulo"; te asistenti cdo levizje parash
+   kerkon konfirmim, si gjithmone. */
+const NjohjaEZerit = window.SpeechRecognition || window.webkitSpeechRecognition;
+let DEGJIMI = null;
+
+const GABIMET_E_ZERIT = {
+  'not-allowed': 'Lejo mikrofonin per kete faqe (cilesimet e shfletuesit → Mikrofoni).',
+  'service-not-allowed': 'Shfletuesi nuk e lejon njohjen e zerit ketu.',
+  'no-speech': 'Nuk degjova asgje. Shtyp perseri dhe fol.',
+  'audio-capture': 'Nuk gjej mikrofon ne kete pajisje.',
+  'network': 'Njohja e zerit kerkon internet.',
+  'language-not-supported': 'Ky shfletues nuk e njeh shqipen me ze. Perdor ' +
+    'mikrofonin e tastieres se telefonit — teksti del njesoj ketu.',
+};
+
+/* Butoni shfaqet vetem aty ku shfletuesi e njeh zerin: nje buton qe nuk
+   ben asgje eshte me keq se asnje buton. */
+function pergatitMikrofonat(){
+  document.querySelectorAll('.mikrofon')
+    .forEach(b => b.classList.toggle('fshihu', !NjohjaEZerit));
+}
+
+function degjo(fushaId, dergo, butoni){
+  if (!NjohjaEZerit){ njofto(GABIMET_E_ZERIT['language-not-supported'], 6000); return; }
+  if (DEGJIMI){ DEGJIMI.stop(); return; }          // prekja e dyte ndalon
+  const fusha = document.getElementById(fushaId);
+  const vendi = fusha.placeholder;
+  const r = new NjohjaEZerit();
+  r.lang = 'sq-AL';
+  r.interimResults = true;                         // teksti del nderkohe qe flet
+  r.continuous = false;
+  r.maxAlternatives = 1;
+  let teksti = '';
+
+  r.onstart = () => {
+    butoni.classList.add('degjon');
+    butoni.setAttribute('aria-pressed', 'true');
+    fusha.value = '';
+    fusha.placeholder = 'Po degjoj…';
+  };
+  r.onresult = (e) => {
+    let perkohshem = '';
+    for (let i = e.resultIndex; i < e.results.length; i++){
+      const copa = e.results[i][0].transcript;
+      if (e.results[i].isFinal) teksti += copa; else perkohshem += copa;
+    }
+    fusha.value = (teksti + perkohshem).trim();
+  };
+  r.onerror = (e) => {
+    // 'aborted' vjen kur e ndal vete — s'eshte gabim per t'u treguar.
+    if (e.error !== 'aborted')
+      njofto(GABIMET_E_ZERIT[e.error] || ('Zeri: ' + e.error), 6000);
+  };
+  r.onend = () => {
+    DEGJIMI = null;
+    butoni.classList.remove('degjon');
+    butoni.setAttribute('aria-pressed', 'false');
+    fusha.placeholder = vendi;
+    if (teksti.trim()){
+      fusha.value = teksti.trim();
+      dergo();                                     // si te shtypej "Shto"
+    }
+  };
+  DEGJIMI = r;
+  try { r.start(); }
+  catch (e) { DEGJIMI = null; njofto('Zeri nuk u nis: ' + e.message, 5000); }
 }
 
 /* ── Modali i pageses ─────────────────────────────────────────────────── */
@@ -2731,6 +2822,7 @@ async function ruajCilesimet(){
    ═══════════════════════════════════════════════════════════════════════ */
 ndertoSkedat();
 ndertoNenSkedat();
+pergatitMikrofonat();
 $('#sk-data').value = sot();
 if (TOKEN){
   $('#hyrja').classList.add('fshihu');
