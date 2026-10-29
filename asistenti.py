@@ -88,30 +88,123 @@ def _sa_numer(copa: str) -> Optional[float]:
     return float(c)
 
 
+# Numrat me fjale, ashtu si i shkruan njohja e zerit. Shqipja i ndertot
+# numrat nga pjese: "dy mije e peseqind" = 2 × 1000 + 500, "njezet e pese
+# mije" = (20 + 5) × 1000. Nje tabele e thjeshte fjale → numer nuk mjafton:
+# me te, "dy mije e peseqind" lexohej 2000 dhe "peseqind" nuk lexohej fare.
+_NJESHET = {"nje": 1, "dy": 2, "tre": 3, "tri": 3, "kater": 4, "pese": 5,
+            "gjashte": 6, "shtate": 7, "tete": 8, "nente": 9}
+_DHJETESHET = {"dhjete": 10, "njezet": 20, "tridhjete": 30, "dyzet": 40,
+               "pesedhjete": 50, "gjashtedhjete": 60, "shtatedhjete": 70,
+               "tetedhjete": 80, "nentedhjete": 90}
+
+
+def _numer_me_fjale(fjala: str) -> Optional[int]:
+    """Nje fjale e vetme numerike: 'pese', 'pesembedhjete', 'peseqind'…"""
+    if fjala in _NJESHET:
+        return _NJESHET[fjala]
+    if fjala in _DHJETESHET:
+        return _DHJETESHET[fjala]
+    if fjala.endswith("mbedhjete") and fjala[:-9] in _NJESHET:
+        return _NJESHET[fjala[:-9]] + 10            # njembedhjete = 11
+    if fjala == "qind":
+        return 100
+    if fjala.endswith("qind") and fjala[:-4] in _NJESHET:
+        return _NJESHET[fjala[:-4]] * 100            # peseqind = 500
+    return None
+
+
+_MONEDHAT_NE_FJALE = {"lek", "leke", "leket", "lekesh", "lekshe", "euro",
+                      "eur", "eurosh", "dollar", "dollare", "usd", "chf",
+                      "frange", "paund", "gbp"}
+
+
+def _frazat_numerike(t: str) -> List[dict]:
+    """Cdo fraze numerike ne fjali, me vleren dhe sa e besueshme eshte si shume.
+
+    Fraza ndertohet duke ecur nder fjale: numrat mblidhen, "mije" e shumezon
+    pjesen deri aty, "e" lidh dy pjese, "gjysme" shton gjysmen e shumezuesit
+    te fundit ("nje mije e gjysme" = 1500).
+    """
+    fjalet_e_frazes = re.findall(r"\d[\d.,]*|[a-z]+", t)
+    frazat: List[dict] = []
+    i = 0
+    while i < len(fjalet_e_frazes):
+        totali, tani, shumezuesi_fundit = 0.0, 0.0, 1.0
+        filloi, ka_shifra, ka_shumezues, fjale_numrash = False, False, False, []
+        while i < len(fjalet_e_frazes):
+            f = fjalet_e_frazes[i]
+            if f[0].isdigit():
+                v = _sa_numer(f.rstrip(".,"))
+                if v is None:
+                    break
+                tani += v; filloi = ka_shifra = True
+            elif (v := _numer_me_fjale(f)) is not None:
+                if f == "qind" and tani and tani < 100:
+                    tani *= 100                       # "dy qind" e ndare
+                else:
+                    tani += v
+                filloi = True; fjale_numrash.append(f)
+            elif filloi and f in ("mije", "mij", "mijra", "k"):
+                totali += (tani or 1) * 1000; tani = 0
+                shumezuesi_fundit, ka_shumezues = 1000.0, True
+            elif filloi and f in ("milion", "milione", "mln"):
+                totali += (tani or 1) * 1_000_000; tani = 0
+                shumezuesi_fundit, ka_shumezues = 1_000_000.0, True
+            elif filloi and f == "gjysme":
+                totali += shumezuesi_fundit / 2
+            elif (filloi and f == "e" and i + 1 < len(fjalet_e_frazes)
+                  and (fjalet_e_frazes[i + 1][0].isdigit()
+                       or _numer_me_fjale(fjalet_e_frazes[i + 1]) is not None
+                       or fjalet_e_frazes[i + 1] == "gjysme")):
+                pass
+            else:
+                break
+            i += 1
+        if filloi:
+            pas = fjalet_e_frazes[i] if i < len(fjalet_e_frazes) else ""
+            vlera = totali + tani
+            frazat.append({
+                "vlera": vlera,
+                "monedhe_pas": pas in _MONEDHAT_NE_FJALE,
+                # "nje kafe", "dy kafe" — nje numer i vogel me fjale, pa mije
+                # dhe pa shifra, ka me shume gjasa te jete sasi se sa shume.
+                "e_forte": ka_shifra or ka_shumezues or vlera >= 10,
+            })
+        else:
+            i += 1
+    return frazat
+
+
 def lexo_shumen(teksti: str) -> Optional[float]:
-    """Shuma e pare e gjetur ne fjali, me shumezuesit shqip."""
+    """Shuma ne fjali — me shifra, me fjale, ose te perziera.
+
+    Kur ka disa numra, zgjidhet ai qe ka me shume gjasa te jete shuma:
+      1. ai qe pasohet nga monedha ("bleva nje kafe 150 leke" → 150, jo 1);
+      2. perndryshe i pari qe ka shifra, "mije" ose vlere te pakten 10
+         ("dy kafe 300" → 300);
+      3. perndryshe i pari.
+    """
     t = normalizo(teksti)
     # Hiq datat dhe oret, qe '18/09' ose '14:30' te mos lexohen si shuma.
     t = re.sub(r"\b\d{1,2}[:.]\d{2}\b(?!\d)", " ", t)
     t = re.sub(r"\b\d{1,4}[/-]\d{1,2}([/-]\d{1,4})?\b", " ", t)
+    # Njohja e zerit i ndan mijeshet me hapesire: "20 000", "1 500".
+    t = re.sub(r"(?<!me )\b\d{1,3}(?: \d{3})+\b",
+               lambda m: m.group(0).replace(" ", ""), t)
+    # "95mije", "50k" — shifra te ngjitura me shumezuesin
+    t = re.sub(r"(\d)(mije|mij|mijra|milion|milione|mln|k)\b", r"\1 \2", t)
 
-    # "95 mije", "95mije", "2.5 milion", "50k"
-    m = re.search(r"(\d[\d.,]*)\s*(mije|mij|mijra|milion|milione|mln|k)\b", t)
-    if m:
-        baza = _sa_numer(m.group(1))
-        if baza is not None:
-            return baza * SHUMEZUESIT[m.group(2)]
-
-    # "nje mije", "dy mije"
-    m = re.search(r"\b(" + "|".join(NUMRAT_ME_FJALE) + r")\s+(mije|mij|milion)\b", t)
-    if m:
-        return NUMRAT_ME_FJALE[m.group(1)] * SHUMEZUESIT[m.group(2)]
-
-    for copa in re.findall(r"\d[\d.,]*", t):
-        v = _sa_numer(copa)
-        if v is not None and v > 0:
-            return v
-    return None
+    frazat = [f for f in _frazat_numerike(t) if f["vlera"] > 0]
+    if not frazat:
+        return None
+    for f in frazat:
+        if f["monedhe_pas"]:
+            return f["vlera"]
+    for f in frazat:
+        if f["e_forte"]:
+            return f["vlera"]
+    return frazat[0]["vlera"]
 
 
 # ==========================================================================
